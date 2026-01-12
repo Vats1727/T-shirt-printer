@@ -25,6 +25,8 @@ export const insertDesignSchema = createInsertSchema(designs).pick({
   imagePosition: true,
 }).extend({
   product: z.string().default("T-shirt"),
+  textPosition: z.object({ x: z.number(), y: z.number() }).default({ x: 150, y: 135 }),
+  imagePosition: z.object({ x: z.number(), y: z.number() }).default({ x: 150, y: 150 }),
 });
 
 export type Design = typeof designs.$inferSelect;

@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion } from "framer-motion";
-import { Palette, PenTool, ShoppingBag, Sparkles, Loader2, Save, CheckCircle2 } from "lucide-react";
+import { Palette, PenTool, Sparkles, Loader2, Save, Image as ImageIcon, Move, Type, Trash2 } from "lucide-react";
 
 import { insertDesignSchema } from "@shared/schema";
 import { useCreateDesign, useDesigns } from "@/hooks/use-designs";
@@ -19,47 +19,68 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-
-const PRODUCTS = ["T-Shirt", "Mug", "Hoodie", "Tote Bag", "Cap"];
+import { Slider } from "@/components/ui/slider";
+import { Separator } from "@/components/ui/separator";
 
 export default function Home() {
   const [slogan, setSlogan] = useState("");
-  const [product, setProduct] = useState("T-Shirt");
-  const [color, setColor] = useState("#7c3aed"); // Primary purple
+  const [color, setColor] = useState("#7c3aed");
+  const [textSize, setTextSize] = useState(24);
+  const [textPosition, setTextPosition] = useState({ x: 200, y: 180 });
+  const [image, setImage] = useState<string | null>(null);
+  const [imageScale, setImageScale] = useState(100);
+  const [imagePosition, setImagePosition] = useState({ x: 200, y: 200 });
 
   const { mutate: createDesign, isPending } = useCreateDesign();
   const { data: designs, isLoading: isLoadingDesigns } = useDesigns();
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm({
     resolver: zodResolver(insertDesignSchema),
     defaultValues: {
       slogan: "",
-      product: "T-Shirt",
       color: "#7c3aed",
+      textSize: 24,
+      textPosition: { x: 200, y: 180 },
+      image: null as string | null,
+      imageScale: 100,
+      imagePosition: { x: 200, y: 200 },
     },
   });
 
   const onSubmit = form.handleSubmit((data) => {
-    createDesign(data);
+    createDesign({
+      ...data,
+      slogan: slogan || null,
+      image: image,
+      textSize,
+      textPosition,
+      imageScale,
+      imagePosition,
+    });
   });
 
-  // Animation variants
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        setImage(base64String);
+        form.setValue("image", base64String);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: {
       opacity: 1,
-      transition: {
-        staggerChildren: 0.1,
-      },
+      transition: { staggerChildren: 0.1 },
     },
   };
 
@@ -74,113 +95,151 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-slate-50 selection:bg-primary/20">
-      {/* Decorative background elements */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
         <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-accent/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
       </div>
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-20">
-        
-        {/* Header */}
         <div className="text-center max-w-2xl mx-auto mb-16">
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
+          <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white border border-border shadow-sm mb-6">
               <Sparkles className="w-4 h-4 text-accent" />
-              <span className="text-sm font-medium text-foreground/80">Design Studio v1.0</span>
+              <span className="text-sm font-medium text-foreground/80">Pro Studio v2.0</span>
             </div>
             <h1 className="text-5xl md:text-6xl font-bold tracking-tight text-foreground mb-6 font-display">
-              T-Shirt <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent">Launcher</span>
+              Design your <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent">Masterpiece</span>
             </h1>
             <p className="text-lg text-muted-foreground leading-relaxed">
-              Design your perfect custom T-shirt in seconds. Visualize your slogan with our real-time preview engine.
+              Now with image uploads and draggable elements. Create the perfect T-shirt design exactly how you want it.
             </p>
           </motion.div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
-          
-          {/* LEFT COLUMN: Controls */}
-          <motion.div 
-            className="lg:col-span-5 space-y-8"
-            initial="hidden"
-            animate="visible"
-            variants={containerVariants}
-          >
+          <motion.div className="lg:col-span-5 space-y-8" initial="hidden" animate="visible" variants={containerVariants}>
             <Card className="glass-card overflow-hidden">
               <div className="h-1.5 w-full bg-gradient-to-r from-primary via-accent to-primary animate-gradient" />
               <CardContent className="p-8">
                 <Form {...form}>
                   <form onSubmit={onSubmit} className="space-y-6">
                     
-                    {/* Slogan Input */}
-                    <motion.div variants={itemVariants}>
-                      <FormField
-                        control={form.control}
-                        name="slogan"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-base font-semibold flex items-center gap-2">
-                              <PenTool className="w-4 h-4 text-primary" />
-                              Your Slogan
-                            </FormLabel>
-                            <FormControl>
-                              <Input
-                                placeholder="e.g. Code Sleep Repeat"
-                                className="h-12 text-lg bg-white/50 border-2 focus:ring-primary/20 transition-all"
-                                {...field}
-                                onChange={(e) => {
-                                  field.onChange(e);
-                                  setSlogan(e.target.value);
-                                }}
-                              />
-                            </FormControl>
-                            <FormDescription>Make it catchy! Short slogans work best.</FormDescription>
-                            <FormMessage />
-                          </FormItem>
-                        )}
+                    <motion.div variants={itemVariants} className="space-y-4">
+                      <FormLabel className="text-base font-semibold flex items-center gap-2">
+                        <PenTool className="w-4 h-4 text-primary" />
+                        Slogan
+                      </FormLabel>
+                      <Input
+                        placeholder="e.g. Code Sleep Repeat"
+                        className="h-12 text-lg bg-white/50 border-2"
+                        value={slogan}
+                        onChange={(e) => {
+                          setSlogan(e.target.value);
+                          form.setValue("slogan", e.target.value);
+                        }}
                       />
+                      {slogan && (
+                        <div className="space-y-3 pl-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                              <Type className="w-3 h-3" /> Text Size
+                            </span>
+                            <span className="text-xs font-bold text-primary">{textSize}px</span>
+                          </div>
+                          <Slider
+                            value={[textSize]}
+                            min={12}
+                            max={64}
+                            step={1}
+                            onValueChange={([val]) => {
+                              setTextSize(val);
+                              form.setValue("textSize", val);
+                            }}
+                          />
+                          <div className="flex items-center gap-3 mt-4">
+                            <Palette className="w-4 h-4 text-primary" />
+                            <Input
+                              type="color"
+                              className="h-10 w-20 cursor-pointer p-1 border-2"
+                              value={color}
+                              onChange={(e) => {
+                                setColor(e.target.value);
+                                form.setValue("color", e.target.value);
+                              }}
+                            />
+                            <span className="text-sm text-muted-foreground italic">Drag text on canvas to reposition</span>
+                          </div>
+                        </div>
+                      )}
                     </motion.div>
 
-                    <div className="grid grid-cols-1 gap-6">
-                      {/* Color Picker */}
-                      <motion.div variants={itemVariants}>
-                        <FormField
-                          control={form.control}
-                          name="color"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className="text-base font-semibold flex items-center gap-2">
-                                <Palette className="w-4 h-4 text-primary" />
-                                Text Color
-                              </FormLabel>
-                              <div className="flex items-center gap-3">
-                                <div 
-                                  className="w-12 h-12 rounded-lg shadow-sm border-2 border-white ring-1 ring-border"
-                                  style={{ backgroundColor: field.value }}
-                                />
-                                <FormControl>
-                                  <Input
-                                    type="color"
-                                    className="h-12 w-full cursor-pointer bg-white/50 p-1 border-2"
-                                    {...field}
-                                    onChange={(e) => {
-                                      field.onChange(e);
-                                      setColor(e.target.value);
-                                    }}
-                                  />
-                                </FormControl>
+                    <Separator />
+
+                    <motion.div variants={itemVariants} className="space-y-4">
+                      <FormLabel className="text-base font-semibold flex items-center gap-2">
+                        <ImageIcon className="w-4 h-4 text-primary" />
+                        Graphics
+                      </FormLabel>
+                      
+                      {!image ? (
+                        <div 
+                          className="border-2 border-dashed border-muted-foreground/25 rounded-xl p-8 text-center hover:bg-muted/50 transition-colors cursor-pointer"
+                          onClick={() => fileInputRef.current?.click()}
+                        >
+                          <ImageIcon className="w-8 h-8 text-muted-foreground/50 mx-auto mb-2" />
+                          <p className="text-sm text-muted-foreground">Click to upload image (PNG/JPG)</p>
+                          <input 
+                            type="file" 
+                            ref={fileInputRef} 
+                            className="hidden" 
+                            accept="image/*"
+                            onChange={handleImageUpload}
+                          />
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between p-3 bg-white/50 border rounded-lg">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded border overflow-hidden bg-white">
+                                <img src={image} className="w-full h-full object-contain" />
                               </div>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </motion.div>
-                    </div>
+                              <span className="text-sm font-medium">Custom Graphic</span>
+                            </div>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="text-destructive"
+                              onClick={() => {
+                                setImage(null);
+                                form.setValue("image", null);
+                              }}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                          
+                          <div className="space-y-3 pl-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                                <Move className="w-3 h-3" /> Scale
+                              </span>
+                              <span className="text-xs font-bold text-primary">{imageScale}%</span>
+                            </div>
+                            <Slider
+                              value={[imageScale]}
+                              min={10}
+                              max={200}
+                              step={1}
+                              onValueChange={([val]) => {
+                                setImageScale(val);
+                                form.setValue("imageScale", val);
+                              }}
+                            />
+                            <span className="text-xs text-muted-foreground italic block pt-1">Drag image on canvas to reposition</span>
+                          </div>
+                        </div>
+                      )}
+                    </motion.div>
 
                     <motion.div variants={itemVariants} className="pt-4">
                       <Button 
@@ -191,12 +250,12 @@ export default function Home() {
                         {isPending ? (
                           <>
                             <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                            Saving Design...
+                            Saving...
                           </>
                         ) : (
                           <>
                             <Save className="mr-2 h-5 w-5" />
-                            Save Masterpiece
+                            Save Design
                           </>
                         )}
                       </Button>
@@ -207,45 +266,36 @@ export default function Home() {
             </Card>
           </motion.div>
 
-          {/* RIGHT COLUMN: Preview & History */}
           <div className="lg:col-span-7 space-y-8">
-            
-            {/* Live Preview */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-            >
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.5, delay: 0.2 }}>
               <div className="bg-white rounded-3xl p-8 shadow-2xl border border-border/50 relative overflow-hidden group">
-                <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
-                  <div className="text-9xl font-display font-bold text-foreground select-none pointer-events-none">
-                    PREVIEW
-                  </div>
-                </div>
-                
                 <div className="relative z-10 flex flex-col items-center">
-                  <h3 className="text-2xl font-bold font-display text-foreground mb-8">Live Preview</h3>
-                  <div className="transform transition-transform duration-500 hover:scale-[1.02]">
+                  <h3 className="text-2xl font-bold font-display text-foreground mb-8 text-center">Interactive Canvas</h3>
+                  <div className="transform transition-transform duration-500 hover:scale-[1.01]">
                     <DesignCanvas
                       slogan={slogan}
-                      product={product}
                       color={color}
+                      textSize={textSize}
+                      textPosition={textPosition}
+                      onTextMove={setTextPosition}
+                      image={image}
+                      imageScale={imageScale}
+                      imagePosition={imagePosition}
+                      onImageMove={setImagePosition}
                       width={400}
                       height={400}
                     />
                   </div>
+                  <p className="mt-4 text-xs text-muted-foreground font-medium uppercase tracking-widest">
+                    Drag elements directly on the T-shirt
+                  </p>
                 </div>
               </div>
             </motion.div>
 
-            {/* Recent Designs List */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.4 }}
-            >
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.4 }}>
               <div className="flex items-center justify-between mb-6 px-2">
-                <h3 className="text-xl font-bold font-display text-foreground">Community Designs</h3>
+                <h3 className="text-xl font-bold font-display text-foreground">Design Gallery</h3>
                 <span className="text-sm font-medium text-muted-foreground bg-secondary px-3 py-1 rounded-full">
                   {designs?.length || 0} designs
                 </span>
@@ -260,50 +310,32 @@ export default function Home() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    {designs?.map((design) => (
-                      <motion.div
-                        key={design.id}
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="group relative"
-                      >
-                        <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <div className="bg-white/90 backdrop-blur rounded-full p-1.5 shadow-sm text-green-600">
-                            <CheckCircle2 className="w-4 h-4" />
-                          </div>
-                        </div>
+                    {designs?.slice().reverse().map((design) => (
+                      <motion.div key={design.id} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="group relative">
                         <DesignCanvas
-                          slogan={design.slogan}
-                          product={design.product}
+                          slogan={design.slogan || ""}
                           color={design.color}
+                          textSize={design.textSize}
+                          textPosition={design.textPosition as {x:number, y:number}}
+                          image={design.image}
+                          imageScale={design.imageScale}
+                          imagePosition={design.imagePosition as {x:number, y:number}}
                           width={200}
                           height={200}
+                          readonly
                         />
                         <div className="mt-3 px-1">
-                          <p className="font-semibold text-sm truncate">{design.slogan}</p>
-                          <div className="flex justify-between items-center mt-1">
-                            <p className="text-xs text-muted-foreground">{design.product}</p>
-                            <div 
-                              className="w-3 h-3 rounded-full border border-border" 
-                              style={{ backgroundColor: design.color }}
-                            />
-                          </div>
+                          <p className="font-semibold text-sm truncate">{design.slogan || "Custom Design"}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(design.createdAt!).toLocaleDateString()}
+                          </p>
                         </div>
                       </motion.div>
                     ))}
-                    {!designs?.length && (
-                      <div className="col-span-full py-12 text-center">
-                        <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-                          <PenTool className="w-8 h-8 text-muted-foreground" />
-                        </div>
-                        <p className="text-muted-foreground">No designs yet. Be the first!</p>
-                      </div>
-                    )}
                   </div>
                 )}
               </ScrollArea>
             </motion.div>
-
           </div>
         </div>
       </div>

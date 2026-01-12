@@ -38,7 +38,7 @@ export class JsonStorage implements IStorage {
       product: "T-shirt",
       id: designs.length + 1,
       createdAt: new Date(),
-    };
+    } as Design;
     designs.push(newDesign);
     await this.writeData(designs);
     return newDesign;
