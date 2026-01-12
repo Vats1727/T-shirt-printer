@@ -5,5 +5,12 @@
     "product": "T-shirt",
     "id": 1,
     "createdAt": "2026-01-12T11:09:38.571Z"
+  },
+  {
+    "slogan": "What a Superbbbb... Day It is! ",
+    "color": "#292823",
+    "product": "T-shirt",
+    "id": 2,
+    "createdAt": "2026-01-12T11:12:44.958Z"
   }
 ]
