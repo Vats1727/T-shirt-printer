@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion } from "framer-motion";
-import { Palette, PenTool, Sparkles, Loader2, Save, Image as ImageIcon, Move, Type, Trash2 } from "lucide-react";
+import { Palette, PenTool, Sparkles, Loader2, Save, Image as ImageIcon, Move, Type, Trash2, RotateCcw } from "lucide-react";
 
 import { insertDesignSchema } from "@shared/schema";
 import { useCreateDesign, useDesigns } from "@/hooks/use-designs";
@@ -28,9 +28,11 @@ export default function Home() {
   const [slogan, setSlogan] = useState("");
   const [color, setColor] = useState("#7c3aed");
   const [textSize, setTextSize] = useState(24);
+  const [textRotation, setTextRotation] = useState(0);
   const [textPosition, setTextPosition] = useState({ x: 200, y: 180 });
   const [image, setImage] = useState<string | null>(null);
-  const [imageScale, setImageScale] = useState(100);
+  const [imageScale, setImageScale] = useState(50);
+  const [imageRotation, setImageRotation] = useState(0);
   const [imagePosition, setImagePosition] = useState({ x: 200, y: 200 });
 
   const { mutate: createDesign, isPending } = useCreateDesign();
@@ -44,9 +46,11 @@ export default function Home() {
       slogan: "",
       color: "#7c3aed",
       textSize: 24,
+      textRotation: 0,
       textPosition: { x: 200, y: 180 },
       image: null as string | null,
-      imageScale: 100,
+      imageScale: 50,
+      imageRotation: 0,
       imagePosition: { x: 200, y: 200 },
     },
   });
@@ -57,8 +61,10 @@ export default function Home() {
       slogan: slogan || null,
       image: image,
       textSize,
+      textRotation,
       textPosition,
       imageScale,
+      imageRotation,
       imagePosition,
     });
   });
@@ -105,13 +111,13 @@ export default function Home() {
           <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white border border-border shadow-sm mb-6">
               <Sparkles className="w-4 h-4 text-accent" />
-              <span className="text-sm font-medium text-foreground/80">Pro Studio v2.0</span>
+              <span className="text-sm font-medium text-foreground/80">Pro Studio v2.1</span>
             </div>
             <h1 className="text-5xl md:text-6xl font-bold tracking-tight text-foreground mb-6 font-display">
               Design your <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent">Masterpiece</span>
             </h1>
             <p className="text-lg text-muted-foreground leading-relaxed">
-              Now with image uploads and draggable elements. Create the perfect T-shirt design exactly how you want it.
+              New: Scale down to 1% and rotate your elements freely. Create the perfect T-shirt design exactly how you want it.
             </p>
           </motion.div>
         </div>
@@ -156,6 +162,24 @@ export default function Home() {
                               form.setValue("textSize", val);
                             }}
                           />
+                          
+                          <div className="flex items-center justify-between pt-2">
+                            <span className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                              <RotateCcw className="w-3 h-3" /> Text Rotation
+                            </span>
+                            <span className="text-xs font-bold text-primary">{textRotation}°</span>
+                          </div>
+                          <Slider
+                            value={[textRotation]}
+                            min={0}
+                            max={360}
+                            step={1}
+                            onValueChange={([val]) => {
+                              setTextRotation(val);
+                              form.setValue("textRotation", val);
+                            }}
+                          />
+
                           <div className="flex items-center gap-3 mt-4">
                             <Palette className="w-4 h-4 text-primary" />
                             <Input
@@ -167,7 +191,7 @@ export default function Home() {
                                 form.setValue("color", e.target.value);
                               }}
                             />
-                            <span className="text-sm text-muted-foreground italic">Drag text on canvas to reposition</span>
+                            <span className="text-sm text-muted-foreground italic">Drag text on canvas</span>
                           </div>
                         </div>
                       )}
@@ -227,7 +251,7 @@ export default function Home() {
                             </div>
                             <Slider
                               value={[imageScale]}
-                              min={10}
+                              min={1}
                               max={200}
                               step={1}
                               onValueChange={([val]) => {
@@ -235,7 +259,24 @@ export default function Home() {
                                 form.setValue("imageScale", val);
                               }}
                             />
-                            <span className="text-xs text-muted-foreground italic block pt-1">Drag image on canvas to reposition</span>
+
+                            <div className="flex items-center justify-between pt-2">
+                              <span className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                                <RotateCcw className="w-3 h-3" /> Image Rotation
+                              </span>
+                              <span className="text-xs font-bold text-primary">{imageRotation}°</span>
+                            </div>
+                            <Slider
+                              value={[imageRotation]}
+                              min={0}
+                              max={360}
+                              step={1}
+                              onValueChange={([val]) => {
+                                setImageRotation(val);
+                                form.setValue("imageRotation", val);
+                              }}
+                            />
+                            <span className="text-xs text-muted-foreground italic block pt-1">Drag image on canvas</span>
                           </div>
                         </div>
                       )}
@@ -276,10 +317,12 @@ export default function Home() {
                       slogan={slogan}
                       color={color}
                       textSize={textSize}
+                      textRotation={textRotation}
                       textPosition={textPosition}
                       onTextMove={setTextPosition}
                       image={image}
                       imageScale={imageScale}
+                      imageRotation={imageRotation}
                       imagePosition={imagePosition}
                       onImageMove={setImagePosition}
                       width={400}
@@ -316,9 +359,11 @@ export default function Home() {
                           slogan={design.slogan || ""}
                           color={design.color}
                           textSize={design.textSize}
+                          textRotation={design.textRotation}
                           textPosition={design.textPosition as {x:number, y:number}}
                           image={design.image}
                           imageScale={design.imageScale}
+                          imageRotation={design.imageRotation}
                           imagePosition={design.imagePosition as {x:number, y:number}}
                           width={200}
                           height={200}

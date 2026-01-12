@@ -7,9 +7,11 @@ export const designs = pgTable("designs", {
   slogan: text("slogan"),
   color: text("color").notNull(),
   textSize: integer("text_size").notNull().default(24),
+  textRotation: integer("text_rotation").notNull().default(0),
   textPosition: jsonb("text_position").notNull().default({ x: 150, y: 135 }),
   image: text("image"), // base64 string
   imageScale: integer("image_scale").notNull().default(100),
+  imageRotation: integer("image_rotation").notNull().default(0),
   imagePosition: jsonb("image_position").notNull().default({ x: 150, y: 150 }),
   product: text("product").notNull().default("T-shirt"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -19,9 +21,11 @@ export const insertDesignSchema = createInsertSchema(designs).pick({
   slogan: true,
   color: true,
   textSize: true,
+  textRotation: true,
   textPosition: true,
   image: true,
   imageScale: true,
+  imageRotation: true,
   imagePosition: true,
 }).extend({
   product: z.string().default("T-shirt"),

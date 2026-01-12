@@ -5,10 +5,12 @@ interface DesignCanvasProps {
   slogan: string;
   color: string;
   textSize?: number;
+  textRotation?: number;
   textPosition?: { x: number; y: number };
   onTextMove?: (pos: { x: number; y: number }) => void;
   image?: string | null;
   imageScale?: number;
+  imageRotation?: number;
   imagePosition?: { x: number; y: number };
   onImageMove?: (pos: { x: number; y: number }) => void;
   width?: number;
@@ -20,10 +22,12 @@ export function DesignCanvas({
   slogan,
   color,
   textSize = 24,
+  textRotation = 0,
   textPosition = { x: 150, y: 135 },
   onTextMove,
   image,
   imageScale = 100,
+  imageRotation = 0,
   imagePosition = { x: 150, y: 150 },
   onImageMove,
   width = 300,
@@ -69,21 +73,25 @@ export function DesignCanvas({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    const scale = width / 400;
+
     ctx.clearRect(0, 0, width, height);
     ctx.drawImage(tshirtRef.current, 0, 0, width, height);
 
     // Draw Image first (behind text)
     if (userImageRef.current && image) {
-      const scale = (imageScale / 100) * (width / 400); // Normalize scale
-      const imgWidth = userImageRef.current.width * scale;
-      const imgHeight = userImageRef.current.height * scale;
+      const imgScale = (imageScale / 100) * scale;
+      const imgWidth = userImageRef.current.width * imgScale;
+      const imgHeight = userImageRef.current.height * imgScale;
       
       ctx.save();
+      ctx.translate(imagePosition.x * scale, imagePosition.y * scale);
+      ctx.rotate((imageRotation * Math.PI) / 180);
       ctx.globalAlpha = 0.9;
       ctx.drawImage(
         userImageRef.current, 
-        (imagePosition.x * (width / 400)) - (imgWidth / 2), 
-        (imagePosition.y * (height / 400)) - (imgHeight / 2), 
+        -imgWidth / 2, 
+        -imgHeight / 2, 
         imgWidth, 
         imgHeight
       );
@@ -92,7 +100,10 @@ export function DesignCanvas({
 
     // Draw Slogan
     if (slogan) {
-      const scale = width / 400;
+      ctx.save();
+      ctx.translate(textPosition.x * scale, textPosition.y * scale);
+      ctx.rotate((textRotation * Math.PI) / 180);
+      
       ctx.font = `bold ${textSize * scale}px 'Outfit', sans-serif`;
       ctx.fillStyle = color;
       ctx.textAlign = "center";
@@ -104,11 +115,12 @@ export function DesignCanvas({
       wrapText(
         ctx, 
         slogan, 
-        textPosition.x * scale, 
-        textPosition.y * scale, 
+        0, 
+        0, 
         maxWidth, 
         lineHeight
       );
+      ctx.restore();
     }
   };
 
@@ -147,7 +159,7 @@ export function DesignCanvas({
 
   useEffect(() => {
     render();
-  }, [slogan, color, textSize, textPosition, image, imageScale, imagePosition, width, height]);
+  }, [slogan, color, textSize, textRotation, textPosition, image, imageScale, imageRotation, imagePosition, width, height]);
 
   const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
     if (readonly) return;
@@ -191,8 +203,8 @@ export function DesignCanvas({
     const x = (clientX - rect.left) * (400 / rect.width);
     const y = (clientY - rect.top) * (400 / rect.height);
 
-    const newX = Math.max(50, Math.min(350, x - dragOffset.x));
-    const newY = Math.max(50, Math.min(350, y - dragOffset.y));
+    const newX = Math.max(0, Math.min(400, x - dragOffset.x));
+    const newY = Math.max(0, Math.min(400, y - dragOffset.y));
 
     if (isDragging === 'text' && onTextMove) {
       onTextMove({ x: newX, y: newY });
