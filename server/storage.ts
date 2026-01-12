@@ -1,38 +1,51 @@
-import { type User, type InsertUser } from "@shared/schema";
-import { randomUUID } from "crypto";
-
-// modify the interface with any CRUD methods
-// you might need
+import { type Design, type InsertDesign } from "@shared/schema";
+import fs from "fs/promises";
+import path from "path";
 
 export interface IStorage {
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  createDesign(design: InsertDesign): Promise<Design>;
+  getDesigns(): Promise<Design[]>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
+export class JsonStorage implements IStorage {
+  private filePath = path.join(process.cwd(), "designs.json");
 
-  constructor() {
-    this.users = new Map();
+  private async readData(): Promise<Design[]> {
+    try {
+      const data = await fs.readFile(this.filePath, "utf-8");
+      const parsed = JSON.parse(data);
+      // Reconstruct Date objects
+      return parsed.map((d: any) => ({
+        ...d,
+        createdAt: new Date(d.createdAt)
+      }));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return [];
+      }
+      throw error;
+    }
   }
 
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+  private async writeData(designs: Design[]) {
+    await fs.writeFile(this.filePath, JSON.stringify(designs, null, 2));
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+  async createDesign(insertDesign: InsertDesign): Promise<Design> {
+    const designs = await this.readData();
+    const newDesign: Design = {
+      ...insertDesign,
+      id: designs.length + 1,
+      createdAt: new Date(),
+    };
+    designs.push(newDesign);
+    await this.writeData(designs);
+    return newDesign;
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
-    return user;
+  async getDesigns(): Promise<Design[]> {
+    return this.readData();
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new JsonStorage();
