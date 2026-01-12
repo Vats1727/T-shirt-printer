@@ -17,10 +17,20 @@ export function DesignCanvas({
   height = 300,
 }: DesignCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
 
   useEffect(() => {
+    const img = new Image();
+    img.src = "/templates/tshirt.png";
+    img.onload = () => {
+      imageRef.current = img;
+      render();
+    };
+  }, []);
+
+  const render = () => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !imageRef.current) return;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
@@ -28,43 +38,26 @@ export function DesignCanvas({
     // 1. Clear Canvas
     ctx.clearRect(0, 0, width, height);
 
-    // 2. Draw Background (Product representation)
-    // Add a slight gradient for depth
-    const gradient = ctx.createLinearGradient(0, 0, width, height);
-    gradient.addColorStop(0, "#ffffff");
-    gradient.addColorStop(1, "#f0f0f5");
-    ctx.fillStyle = gradient;
-    
-    // Draw rounded rect equivalent (simplified as fillRect for canvas)
-    ctx.fillRect(0, 0, width, height);
+    // 2. Draw T-shirt Template
+    ctx.drawImage(imageRef.current, 0, 0, width, height);
 
-    // Add a border
-    ctx.strokeStyle = "#e2e8f0";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(0, 0, width, height);
-
-    // 3. Draw Product Name
-    ctx.font = "500 16px 'DM Sans', sans-serif";
-    ctx.fillStyle = "#94a3b8"; // Muted text
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    ctx.fillText(product.toUpperCase(), width / 2, 20);
-
-    // 4. Draw Slogan
-    // We need to handle basic text wrapping if it's too long
-    ctx.font = "bold 32px 'Outfit', sans-serif";
+    // 3. Draw Slogan
+    ctx.font = "bold 24px 'Outfit', sans-serif";
     ctx.fillStyle = color;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
     const text = slogan || "Your Slogan Here";
-    const maxWidth = width - 40;
-    const lineHeight = 40;
+    const maxWidth = width * 0.5; // Constrain to chest area
+    const lineHeight = 30;
     const x = width / 2;
-    let y = height / 2;
+    const y = height * 0.45; // Position on chest
 
     wrapText(ctx, text, x, y, maxWidth, lineHeight);
+  };
 
+  useEffect(() => {
+    render();
   }, [slogan, product, color, width, height]);
 
   // Helper for wrapping text

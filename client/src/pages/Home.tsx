@@ -94,10 +94,10 @@ export default function Home() {
               <span className="text-sm font-medium text-foreground/80">Design Studio v1.0</span>
             </div>
             <h1 className="text-5xl md:text-6xl font-bold tracking-tight text-foreground mb-6 font-display">
-              Create your <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent">Merch</span>
+              T-Shirt <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent">Launcher</span>
             </h1>
             <p className="text-lg text-muted-foreground leading-relaxed">
-              Design custom products in seconds. Visualize your slogan on t-shirts, mugs, and more with our real-time preview engine.
+              Design your perfect custom T-shirt in seconds. Visualize your slogan with our real-time preview engine.
             </p>
           </motion.div>
         </div>
@@ -146,44 +146,7 @@ export default function Home() {
                       />
                     </motion.div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                      {/* Product Select */}
-                      <motion.div variants={itemVariants}>
-                        <FormField
-                          control={form.control}
-                          name="product"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className="text-base font-semibold flex items-center gap-2">
-                                <ShoppingBag className="w-4 h-4 text-primary" />
-                                Product
-                              </FormLabel>
-                              <Select
-                                onValueChange={(val) => {
-                                  field.onChange(val);
-                                  setProduct(val);
-                                }}
-                                defaultValue={field.value}
-                              >
-                                <FormControl>
-                                  <SelectTrigger className="h-12 bg-white/50 border-2">
-                                    <SelectValue placeholder="Select product" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  {PRODUCTS.map((p) => (
-                                    <SelectItem key={p} value={p}>
-                                      {p}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </motion.div>
-
+                    <div className="grid grid-cols-1 gap-6">
                       {/* Color Picker */}
                       <motion.div variants={itemVariants}>
                         <FormField
