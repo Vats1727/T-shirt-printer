@@ -35,6 +35,7 @@ export class JsonStorage implements IStorage {
     const designs = await this.readData();
     const newDesign: Design = {
       ...insertDesign,
+      product: "T-shirt",
       id: designs.length + 1,
       createdAt: new Date(),
     };

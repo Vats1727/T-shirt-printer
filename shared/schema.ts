@@ -5,15 +5,16 @@ import { z } from "zod";
 export const designs = pgTable("designs", {
   id: serial("id").primaryKey(),
   slogan: text("slogan").notNull(),
-  product: text("product").notNull(),
+  product: text("product").notNull().default("T-shirt"),
   color: text("color").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const insertDesignSchema = createInsertSchema(designs).pick({
   slogan: true,
-  product: true,
   color: true,
+}).extend({
+  product: z.string().default("T-shirt"),
 });
 
 export type Design = typeof designs.$inferSelect;
