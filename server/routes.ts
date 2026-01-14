@@ -83,6 +83,51 @@ export async function registerRoutes(
       const list = await usersSvc.listUsers();
       res.json(list);
     }));
+
+    app.post('/api/debug/set-password', safe(async (req, res) => {
+      const { username, password } = req.body || {};
+      if (!username || !password) return res.status(400).json({ message: 'username and password required' });
+      const usersSvcMod = await import('./src/services/users');
+      const usersSvc = usersSvcMod.usersService;
+      const bcrypt = (await import('bcryptjs')) as typeof import('bcryptjs');
+      const hash = await bcrypt.hash(password, 10);
+      // Try DB update
+      try {
+        const modDb = await import('./db');
+        const { db } = modDb as any;
+        const { users } = await import('@shared/schema');
+        const { eq } = await import('drizzle-orm');
+        // if user exists, update, else insert
+        const found = await usersSvc.getByUsername(username);
+        if (found) {
+          await db.update(users).set({ password: hash }).where(eq(users.id, (found as any).id));
+          return res.json({ message: 'password updated (db)' });
+        } else {
+          const [row] = await db.insert(users).values({ username, role: 'admin', password: hash }).returning();
+          return res.status(201).json({ message: 'user created (db)', user: row });
+        }
+      } catch (dbErr) {
+        // Fallback to JSON update
+        try {
+          const fs = await import('fs/promises');
+          const usersFile = (await import('./src/services/users')).usersFile || '../../users.json';
+          let arr = [];
+          try { arr = JSON.parse(await fs.readFile(usersFile, 'utf-8')); } catch (e) { arr = []; }
+          let found = arr.find((u: any) => u.username === username);
+          if (found) {
+            found.password = hash;
+          } else {
+            const id = (arr[arr.length-1]?.id || 0) + 1;
+            found = { id, username, role: 'admin', password: hash, createdAt: new Date() };
+            arr.push(found);
+          }
+          await fs.writeFile(usersFile, JSON.stringify(arr, null, 2));
+          return res.json({ message: 'password set (json)', user: found });
+        } catch (jsonErr) {
+          return res.status(500).json({ message: 'failed to set password', error: String(jsonErr) });
+        }
+      }
+    }));
   }
 
   return httpServer;
