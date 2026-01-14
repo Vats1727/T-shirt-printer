@@ -1,6 +1,62 @@
-node_modules
-dist
+# Node dependencies
+node_modules/
+
+# Build output
+/dist/
+/client/dist/
+/client/dist/public/
+/server/dist/
+build/
+/out/
+
+# Environment files (do NOT commit secrets)
+.env
+.env.local
+.env.*.local
+server/.env
+
+# OS files
 .DS_Store
-server/public
-vite.config.ts.*
-*.tar.gz
+Thumbs.db
+ehthumbs.db
+
+# Editor folders
+.vscode/
+.idea/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# Coverage and test output
+coverage/
+.nyc_output/
+
+# TypeScript
+*.tsbuildinfo
+
+# Cache and temp
+.cache/
+.parcel-cache/
+.next/
+*.tmp
+*.temp
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Misc
+*.tgz
+*.pem
+*.local
+
+# Project-specific: ignore generated or backup artifacts
+server/designs.json.corrupt-*
+
+# Keep project config files tracked - do not ignore package.json, package-lock.json, tsconfig.json, scripts, or assets
+# (If you intentionally want to ignore any of these, add them explicitly)
