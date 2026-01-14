@@ -49,18 +49,33 @@ export async function registerRoutes(
   app.post('/api/users/login', safe(async (req, res) => {
     const { username, password } = req.body || {};
     if (!username || !password) return res.status(400).json({ message: 'username and password required' });
-    const usersSvc = (await import('./src/services/users')).usersService;
-    const user = await usersSvc.getByUsername(username);
-    if (!user) return res.status(401).json({ message: 'Invalid credentials' });
-    if (!(user as any).password) return res.status(401).json({ message: 'Invalid credentials' });
-    const bcryptMod = await import('bcryptjs');
-    const bcrypt = (bcryptMod as any).default ?? bcryptMod;
-    const ok = bcrypt.compareSync ? bcrypt.compareSync(password, (user as any).password) : await bcrypt.compare(password, (user as any).password);
-    if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
-    const jwt = (await import('jsonwebtoken')) as typeof import('jsonwebtoken');
-    const secret = process.env.JWT_SECRET || 'dev-secret';
-    const token = jwt.sign({ id: (user as any).id, username: user.username, role: user.role }, secret, { expiresIn: '7d' });
-    return res.json({ token, user: { id: (user as any).id, username: user.username, role: user.role } });
+
+    try {
+      const usersSvc = (await import('./src/services/users')).usersService;
+      const user = await usersSvc.getByUsername(username);
+      console.debug('DEBUG login attempt for user:', username, 'found user:', !!user);
+      if (!user) return res.status(401).json({ message: 'Invalid credentials' });
+      if (!(user as any).password) return res.status(401).json({ message: 'Invalid credentials' });
+
+      const bcryptMod = await import('bcryptjs');
+      const bcrypt = (bcryptMod as any).default ?? bcryptMod;
+      console.debug('DEBUG bcrypt has compareSync:', typeof bcrypt.compareSync, 'and compare:', typeof bcrypt.compare);
+
+      const ok = typeof bcrypt.compareSync === 'function'
+        ? bcrypt.compareSync(password, (user as any).password)
+        : await bcrypt.compare(password, (user as any).password);
+
+      console.debug('DEBUG password compare result:', ok);
+      if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
+
+      const jwt = (await import('jsonwebtoken')) as typeof import('jsonwebtoken');
+      const secret = process.env.JWT_SECRET || 'dev-secret';
+      const token = jwt.sign({ id: (user as any).id, username: user.username, role: user.role }, secret, { expiresIn: '7d' });
+      return res.json({ token, user: { id: (user as any).id, username: user.username, role: user.role } });
+    } catch (err) {
+      console.error('ERROR in /api/users/login handler:', err);
+      return res.status(500).json({ message: String(err) });
+    }
   }));
 
   app.post('/api/users', authFromHeader, requireRole('admin'), safe(async (req, res) => {
