@@ -51,7 +51,8 @@ export async function registerRoutes(
     if (!username || !password) return res.status(400).json({ message: 'username and password required' });
     const usersSvc = (await import('./src/services/users')).usersService;
     const user = await usersSvc.getByUsername(username);
-    if (!user) return res.status(404).json({ message: 'Not found' });
+    if (!user) return res.status(401).json({ message: 'Invalid credentials' });
+    if (!(user as any).password) return res.status(401).json({ message: 'Invalid credentials' });
     const bcrypt = (await import('bcryptjs')) as typeof import('bcryptjs');
     const ok = await bcrypt.compare(password, (user as any).password);
     if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
@@ -74,6 +75,15 @@ export async function registerRoutes(
     const list = await usersSvc.listUsers();
     res.json(list);
   }));
+
+  // Development-only debug: list users without auth so we can verify seeding/passwords
+  if (process.env.NODE_ENV === 'development') {
+    app.get('/api/debug/users', safe(async (_req, res) => {
+      const usersSvc = (await import('./src/services/users')).usersService;
+      const list = await usersSvc.listUsers();
+      res.json(list);
+    }));
+  }
 
   return httpServer;
 }
