@@ -7,7 +7,7 @@ import { Palette, PenTool, Sparkles, Loader2, Save, Image as ImageIcon, Move, Ty
 import { insertDesignSchema } from "@shared/schema";
 import type { DesignResponse } from "@shared/routes";
 import { useCreateDesign, useDesigns } from "@/hooks/use-designs";
-import { DesignCanvas } from "@/components/DesignCanvas";
+import { DesignCanvas } from "@/components/design/DesignCanvas";
 
 import {
   Form,

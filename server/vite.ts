@@ -24,9 +24,34 @@ export async function setupVite(server: Server, app: Express) {
 
   const viteModule = await import('vite');
   // Some distributions export different shapes; cast to any to access fallbacks safely
-  const vmAny = viteModule as any;
+  let vmAny = viteModule as any;
+
+  // If import('vite') accidentally resolved to this file (e.g., due to name collision), detect and re-resolve from node_modules
+  // (some loaders can resolve bare specifiers to local files in odd setups)
+  if (vmAny && typeof vmAny.setupVite === 'function') {
+    // eslint-disable-next-line no-console
+    console.warn('DEBUG: import("vite") resolved to local module; re-resolving from node_modules');
+    try {
+      // Use createRequire to resolve the installed vite package entrypoint and import via file:// URL
+      const { createRequire } = await import('module');
+      const require = createRequire(import.meta.url);
+      const vitePkgPath = require.resolve('vite');
+      const { pathToFileURL } = await import('url');
+      const vitePkgUrl = pathToFileURL(vitePkgPath).href;
+      vmAny = (await import(vitePkgUrl)) as any;
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('DEBUG: failed to re-resolve vite from node_modules', err);
+    }
+  }
+
+  // Debugging: log available exports when createServer is missing
   const createServerFn = vmAny.createServer ?? vmAny.createViteServer ?? vmAny.default?.createServer ?? vmAny.default;
   if (typeof createServerFn !== 'function') {
+    // eslint-disable-next-line no-console
+    console.error('DEBUG: vite module keys:', Object.keys(vmAny || {}));
+    // eslint-disable-next-line no-console
+    if (vmAny && vmAny.default) console.error('DEBUG: vite.default keys:', Object.keys(vmAny.default));
     throw new Error('vite.createServer is not available');
   }
   const reactPlugin = (await import('@vitejs/plugin-react')).default;
