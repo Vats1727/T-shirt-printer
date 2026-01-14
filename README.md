@@ -1,24 +1,19 @@
-# Tshirt-printer (client/server)
+# T-shirt-printer
 
-This repository is organized into two top-level folders:
-- `server/` — Express backend
-- `client/` — Vite + React frontend
+Quick start
 
-Goal: run client and server independently (Option B).
+- Start server (development):
+  - `npm start` (runs server with SKIP_VITE=1 in development)
+- Start full dev environment (server then client):
+  - `npm run dev` (starts server, waits for http://localhost:5000, then starts Vite client)
+- Start client only:
+  - `npm --prefix client run dev`
 
-## Quick start (Windows PowerShell)
+Project structure
 
-1. Server (one terminal)
-   - cd server
-   - npm install
-   - npm run server:dev
-   - The server listens on http://localhost:5000
+- `client/` – React + Vite frontend (source in `client/src`).
+- `server/` – Express + TypeScript backend (source in `server/*.ts` and `server/src/*`).
 
-2. Client (another terminal)
-   - cd client
-   - npm install
-   - npm run dev
-   - The client dev server runs at http://localhost:5173 and proxies `/api/*` → `http://localhost:5000`
 
 ## Build & Production
 1. cd client && npm run build
