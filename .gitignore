@@ -58,5 +58,17 @@ venv/
 # Project-specific: ignore generated or backup artifacts
 server/designs.json.corrupt-*
 
+# Root-only files we keep local (do not commit)
+/.replit
+/components.json
+/designs.json
+/drizzle.config.ts
+/package.json
+/package-lock.json
+/postcss.config.js
+/script/
+/tailwind.config.ts
+/vite.config.ts
+
 # Keep project config files tracked - do not ignore package.json, package-lock.json, tsconfig.json, scripts, or assets
 # (If you intentionally want to ignore any of these, add them explicitly)

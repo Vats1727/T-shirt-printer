@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, type ChangeEvent } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion } from "framer-motion";
 import { Palette, PenTool, Sparkles, Loader2, Save, Image as ImageIcon, Move, Type, Trash2, RotateCcw } from "lucide-react";
 
 import { insertDesignSchema } from "@shared/schema";
+import type { DesignResponse } from "@shared/routes";
 import { useCreateDesign, useDesigns } from "@/hooks/use-designs";
 import { DesignCanvas } from "@/components/DesignCanvas";
 
@@ -27,6 +28,21 @@ import { Separator } from "@/components/ui/separator";
 export default function Home() {
   const [slogan, setSlogan] = useState("");
   const [color, setColor] = useState("#7c3aed");
+  const [templateColor, setTemplateColor] = useState("#ffffff");
+  const [template, setTemplate] = useState<'tshirt' | 'women_tshirt' | 'unisex-hoodie'>('tshirt');
+
+  const templates: Array<{ id: string; label: string }> = [
+    { id: 'tshirt', label: 'T-shirt' },
+    { id: 'women_tshirt', label: "Women's T-shirt" },
+    { id: 'unisex-hoodie', label: 'Hoodie' },
+  ];
+
+  const cycleTemplate = (dir: 1 | -1 = 1) => {
+    const idx = templates.findIndex(t => t.id === template);
+    const next = (idx + dir + templates.length) % templates.length;
+    setTemplate(templates[next].id as any);
+    form.setValue('template', templates[next].id);
+  };
   const [textSize, setTextSize] = useState(24);
   const [textRotation, setTextRotation] = useState(0);
   const [textPosition, setTextPosition] = useState({ x: 200, y: 180 });
@@ -45,6 +61,8 @@ export default function Home() {
     defaultValues: {
       slogan: "",
       color: "#7c3aed",
+      templateColor: "#ffffff",
+      template: 'tshirt' as const,
       textSize: 24,
       textRotation: 0,
       textPosition: { x: 200, y: 180 },
@@ -66,6 +84,8 @@ export default function Home() {
       imageScale,
       imageRotation,
       imagePosition,
+      templateColor,
+      template,
     });
   });
 
@@ -109,15 +129,12 @@ export default function Home() {
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-20">
         <div className="text-center max-w-2xl mx-auto mb-16">
           <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white border border-border shadow-sm mb-6">
-              <Sparkles className="w-4 h-4 text-accent" />
-              <span className="text-sm font-medium text-foreground/80">Pro Studio v2.1</span>
-            </div>
+           
             <h1 className="text-5xl md:text-6xl font-bold tracking-tight text-foreground mb-6 font-display">
               Design your <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent">Masterpiece</span>
             </h1>
             <p className="text-lg text-muted-foreground leading-relaxed">
-              New: Scale down to 1% and rotate your elements freely. Create the perfect T-shirt design exactly how you want it.
+              Precisely scale, position, and rotate elements — craft the T-shirt design you envision.
             </p>
           </motion.div>
         </div>
@@ -139,7 +156,7 @@ export default function Home() {
                         placeholder="e.g. Code Sleep Repeat"
                         className="h-12 text-lg bg-white/50 border-2"
                         value={slogan}
-                        onChange={(e) => {
+                        onChange={(e: ChangeEvent<HTMLInputElement>) => {
                           setSlogan(e.target.value);
                           form.setValue("slogan", e.target.value);
                         }}
@@ -157,7 +174,7 @@ export default function Home() {
                             min={12}
                             max={64}
                             step={1}
-                            onValueChange={([val]) => {
+                            onValueChange={([val]: number[]) => {
                               setTextSize(val);
                               form.setValue("textSize", val);
                             }}
@@ -174,7 +191,7 @@ export default function Home() {
                             min={0}
                             max={360}
                             step={1}
-                            onValueChange={([val]) => {
+                            onValueChange={([val]: number[]) => {
                               setTextRotation(val);
                               form.setValue("textRotation", val);
                             }}
@@ -186,12 +203,39 @@ export default function Home() {
                               type="color"
                               className="h-10 w-20 cursor-pointer p-1 border-2"
                               value={color}
-                              onChange={(e) => {
+                              onChange={(e: ChangeEvent<HTMLInputElement>) => {
                                 setColor(e.target.value);
                                 form.setValue("color", e.target.value);
                               }}
                             />
                             <span className="text-sm text-muted-foreground italic">Drag text on canvas</span>
+                          </div>
+
+                          <div className="flex items-center gap-3 mt-4">
+                            <Palette className="w-4 h-4 text-primary" />
+                            <Input
+                              type="color"
+                              className="h-10 w-20 cursor-pointer p-1 border-2"
+                              value={templateColor}
+                              onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                                setTemplateColor(e.target.value);
+                                form.setValue("templateColor", e.target.value);
+                              }}
+                            />
+                            <span className="text-sm text-muted-foreground italic">T-shirt template color</span>
+                          </div>
+
+                          <div className="flex items-center gap-3 mt-4">
+                            <div className="flex items-center gap-3">
+                              <img src={`/templates/${template}.png`} alt={template} className="w-16 h-16 rounded border" />
+                              <div className="flex flex-col">
+                                <span className="text-sm font-medium text-muted-foreground">{templates.find(t => t.id === template)?.label}</span>
+                                <div className="flex items-center gap-2 mt-2">
+                                  <Button type="button" size="sm" variant="ghost" onClick={() => cycleTemplate(-1)}>▲</Button>
+                                  <Button type="button" size="sm" onClick={() => cycleTemplate(1)}>▼</Button>
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       )}
@@ -230,6 +274,7 @@ export default function Home() {
                               <span className="text-sm font-medium">Custom Graphic</span>
                             </div>
                             <Button 
+                              type="button"
                               variant="ghost" 
                               size="icon" 
                               className="text-destructive"
@@ -254,7 +299,7 @@ export default function Home() {
                               min={1}
                               max={200}
                               step={1}
-                              onValueChange={([val]) => {
+                              onValueChange={([val]: number[]) => {
                                 setImageScale(val);
                                 form.setValue("imageScale", val);
                               }}
@@ -271,7 +316,7 @@ export default function Home() {
                               min={0}
                               max={360}
                               step={1}
-                              onValueChange={([val]) => {
+                              onValueChange={([val]: number[]) => {
                                 setImageRotation(val);
                                 form.setValue("imageRotation", val);
                               }}
@@ -316,6 +361,8 @@ export default function Home() {
                     <DesignCanvas
                       slogan={slogan}
                       color={color}
+                      template={template}
+                      templateColor={templateColor}
                       textSize={textSize}
                       textRotation={textRotation}
                       textPosition={textPosition}
@@ -353,11 +400,13 @@ export default function Home() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    {designs?.slice().reverse().map((design) => (
+                    {designs?.slice().reverse().map((design: DesignResponse) => (
                       <motion.div key={design.id} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="group relative">
                         <DesignCanvas
                           slogan={design.slogan || ""}
                           color={design.color}
+                          template={(design as any).template || 'tshirt'}
+                          templateColor={(design as any).templateColor || '#ffffff'}
                           textSize={design.textSize}
                           textRotation={design.textRotation}
                           textPosition={design.textPosition as {x:number, y:number}}

@@ -4,6 +4,8 @@ import { Card } from "@/components/ui/card";
 interface DesignCanvasProps {
   slogan: string;
   color: string;
+  template?: string;
+  templateColor?: string;
   textSize?: number;
   textRotation?: number;
   textPosition?: { x: number; y: number };
@@ -21,7 +23,7 @@ interface DesignCanvasProps {
 export function DesignCanvas({
   slogan,
   color,
-  textSize = 24,
+  templateColor,  template = 'tshirt',  textSize = 24,
   textRotation = 0,
   textPosition = { x: 150, y: 135 },
   onTextMove,
@@ -41,15 +43,19 @@ export function DesignCanvas({
   const [isDragging, setIsDragging] = useState<'text' | 'image' | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
-  // Load T-shirt template
+  // Load template image (tshirt, hoodie, etc.)
   useEffect(() => {
     const img = new Image();
-    img.src = "/templates/tshirt.png";
+    img.src = `/templates/${template}.png`;
     img.onload = () => {
       tshirtRef.current = img;
       render();
     };
-  }, []);
+    img.onerror = () => {
+      // If template not available, fallback to tshirt
+      img.src = '/templates/tshirt.png';
+    };
+  }, [template]);
 
   // Load user image
   useEffect(() => {
@@ -76,7 +82,59 @@ export function DesignCanvas({
     const scale = width / 400;
 
     ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(tshirtRef.current, 0, 0, width, height);
+
+    // Fill T-shirt template color with robust masking and preserve shading
+    if (templateColor) {
+      const off = document.createElement('canvas');
+      off.width = width;
+      off.height = height;
+      const offCtx = off.getContext('2d');
+
+      // Draw template into a mask canvas to inspect alpha at the shirt center
+      const mask = document.createElement('canvas');
+      mask.width = width;
+      mask.height = height;
+      const maskCtx = mask.getContext('2d');
+
+      if (offCtx && maskCtx) {
+        maskCtx.drawImage(tshirtRef.current, 0, 0, width, height);
+        // sample center pixel (approx center of the shirt) to decide mask polarity
+        const center = maskCtx.getImageData(Math.floor(width / 2), Math.floor(height / 2), 1, 1).data;
+        const alphaCenter = center[3];
+
+        // Fill with chosen color
+        offCtx.fillStyle = templateColor;
+        offCtx.fillRect(0, 0, width, height);
+
+        // If template is opaque at the shirt center, template image marks the shirt area -> keep color where template is opaque
+        // Otherwise, template is opaque in background and transparent for shirt -> remove template pixels from color (destination-out)
+        if (alphaCenter > 128) {
+          offCtx.globalCompositeOperation = 'destination-in';
+          offCtx.drawImage(tshirtRef.current, 0, 0, width, height);
+          offCtx.globalCompositeOperation = 'source-over';
+        } else {
+          offCtx.globalCompositeOperation = 'destination-out';
+          offCtx.drawImage(tshirtRef.current, 0, 0, width, height);
+          offCtx.globalCompositeOperation = 'source-over';
+        }
+
+        // Draw the colored masked result onto the main canvas
+        ctx.drawImage(off, 0, 0);
+
+        // Now draw the template image on top in 'multiply' mode to apply shading/highlights
+        ctx.save();
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.drawImage(tshirtRef.current, 0, 0, width, height);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.restore();
+      } else {
+        // Fallback: just draw the template image if offscreen context not available
+        ctx.drawImage(tshirtRef.current, 0, 0, width, height);
+      }
+    } else {
+      // Default behavior: draw template image
+      ctx.drawImage(tshirtRef.current, 0, 0, width, height);
+    }
 
     // Draw Image first (behind text)
     if (userImageRef.current && image) {
@@ -159,7 +217,7 @@ export function DesignCanvas({
 
   useEffect(() => {
     render();
-  }, [slogan, color, textSize, textRotation, textPosition, image, imageScale, imageRotation, imagePosition, width, height]);
+  }, [slogan, color, template, templateColor, textSize, textRotation, textPosition, image, imageScale, imageRotation, imagePosition, width, height]);
 
   const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
     if (readonly) return;

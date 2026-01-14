@@ -14,6 +14,8 @@ export const designs = pgTable("designs", {
   imageRotation: integer("image_rotation").notNull().default(0),
   imagePosition: jsonb("image_position").notNull().default({ x: 150, y: 150 }),
   product: text("product").notNull().default("T-shirt"),
+  template: text("template").notNull().default("tshirt"),
+  templateColor: text("template_color").notNull().default("#ffffff"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -31,7 +33,10 @@ export const insertDesignSchema = createInsertSchema(designs).pick({
   product: z.string().default("T-shirt"),
   textPosition: z.object({ x: z.number(), y: z.number() }).default({ x: 150, y: 135 }),
   imagePosition: z.object({ x: z.number(), y: z.number() }).default({ x: 150, y: 150 }),
+  template: z.string().default('tshirt'),
+  templateColor: z.string().default('#ffffff'),
 });
+
 
 export type Design = typeof designs.$inferSelect;
 export type InsertDesign = z.infer<typeof insertDesignSchema>;

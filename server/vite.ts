@@ -1,12 +1,11 @@
 import { type Express } from "express";
-import { createServer as createViteServer, createLogger } from "vite";
+
 import { type Server } from "http";
-import viteConfig from "../vite.config";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import { nanoid } from "nanoid";
-
-const viteLogger = createLogger();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export async function setupVite(server: Server, app: Express) {
   const serverOptions = {
@@ -15,18 +14,36 @@ export async function setupVite(server: Server, app: Express) {
     allowedHosts: true as const,
   };
 
-  const vite = await createViteServer({
-    ...viteConfig,
+  // Build a minimal client config for the embedded Vite server instead of importing the client's config file
+  const clientRoot = path.resolve(__dirname, "..", "client");
+  const aliases = {
+    '@': path.resolve(clientRoot, 'src'),
+    '@shared': path.resolve(__dirname, 'shared'),
+    '@assets': path.resolve(clientRoot, 'attached_assets'),
+  };
+
+  const viteModule = await import('vite');
+  // Some distributions export different shapes; cast to any to access fallbacks safely
+  const vmAny = viteModule as any;
+  const createServerFn = vmAny.createServer ?? vmAny.createViteServer ?? vmAny.default?.createServer ?? vmAny.default;
+  if (typeof createServerFn !== 'function') {
+    throw new Error('vite.createServer is not available');
+  }
+  const reactPlugin = (await import('@vitejs/plugin-react')).default;
+
+  const vite = await createServerFn({
+    root: clientRoot,
     configFile: false,
-    customLogger: {
-      ...viteLogger,
-      error: (msg, options) => {
-        viteLogger.error(msg, options);
-        process.exit(1);
-      },
+    plugins: [reactPlugin()],
+    resolve: {
+      alias: aliases,
+    },
+    build: {
+      outDir: path.resolve(clientRoot, 'dist/public'),
+      emptyOutDir: true,
     },
     server: serverOptions,
-    appType: "custom",
+    appType: 'custom',
   });
 
   app.use(vite.middlewares);
@@ -36,7 +53,7 @@ export async function setupVite(server: Server, app: Express) {
 
     try {
       const clientTemplate = path.resolve(
-        import.meta.dirname,
+        __dirname,
         "..",
         "client",
         "index.html",
