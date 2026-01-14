@@ -43,8 +43,9 @@ class JsonUsers implements IUserService {
     const users = await this.read();
     if (users.find(u => u.username === username)) throw new Error('User exists');
     // Hash password
-    const bcrypt = (await import('bcryptjs')) as typeof import('bcryptjs');
-    const hash = await bcrypt.hash(password, 10);
+    const bcryptMod = await import('bcryptjs');
+    const bcrypt = (bcryptMod as any).default ?? bcryptMod;
+    const hash = bcrypt.hashSync(password, 10);
     const user: User = { id: (users[users.length-1]?.id || 0) + 1, username, role, createdAt: new Date(), password: hash } as any;
     users.push(user as any);
     await this.write(users as any);
@@ -109,9 +110,10 @@ export const usersService: IUserService = impl!;
 
       if (!created) {
         try {
-          const bcrypt = (await import('bcryptjs')) as typeof import('bcryptjs');
-          const adminHash = await bcrypt.hash('password123', 10);
-          const supHash = await bcrypt.hash('supplierpass', 10);
+          const bcryptMod = await import('bcryptjs');
+          const bcrypt = (bcryptMod as any).default ?? bcryptMod;
+          const adminHash = bcrypt.hashSync('password123', 10);
+          const supHash = bcrypt.hashSync('supplierpass', 10);
           const seed = [
             { id: 1, username: 'admin', role: 'admin', password: adminHash, createdAt: new Date() },
             { id: 2, username: 'supplier1', role: 'supplier', password: supHash, createdAt: new Date() },
@@ -125,7 +127,8 @@ export const usersService: IUserService = impl!;
     } else {
       // Ensure existing users have password hashes (for DB migrations that had no password)
       try {
-        const bcrypt = (await import('bcryptjs')) as typeof import('bcryptjs');
+        const bcryptMod = await import('bcryptjs');
+        const bcrypt = (bcryptMod as any).default ?? bcryptMod;
 
         // Try DB-backed update first (if postgres is available)
         try {
@@ -136,7 +139,7 @@ export const usersService: IUserService = impl!;
 
           for (const u of list as any[]) {
             if (!u.password) {
-              const hash = await bcrypt.hash(u.username === 'admin' ? 'password123' : 'supplierpass', 10);
+              const hash = bcrypt.hashSync(u.username === 'admin' ? 'password123' : 'supplierpass', 10);
               await db.update(users).set({ password: hash }).where(eq(users.id, u.id));
               console.log(`Set password for user ${u.username} (dev DB)`);
             }
@@ -149,7 +152,7 @@ export const usersService: IUserService = impl!;
             let changed = false;
             for (const obj of arr) {
               if (!obj.password) {
-                obj.password = await bcrypt.hash(obj.username === 'admin' ? 'password123' : 'supplierpass', 10);
+                obj.password = bcrypt.hashSync(obj.username === 'admin' ? 'password123' : 'supplierpass', 10);
                 changed = true;
                 console.log(`Set password for user ${obj.username} (dev JSON)`);
               }
