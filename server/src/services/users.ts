@@ -65,11 +65,13 @@ try {
 
   impl = {
     async getByUsername(username: string) {
-      const rows = await (db.select().from(users).where(users.username.eq(username)));
+      const { eq } = await import('drizzle-orm');
+      const rows = await db.select().from(users).where(eq(users.username, username));
       return rows[0] as User | undefined;
     },
     async getById(id: number) {
-      const rows = await (db.select().from(users).where(users.id.eq(id)));
+      const { eq } = await import('drizzle-orm');
+      const rows = await db.select().from(users).where(eq(users.id, id));
       return rows[0] as User | undefined;
     },
     async createUser(username: string, role: 'admin'|'supplier', password: string) {
@@ -95,12 +97,71 @@ export const usersService: IUserService = impl!;
     const list = await usersService.listUsers();
     if (!list || list.length === 0) {
       console.log('Seeding initial users (dev): admin/password123 and supplier1/supplierpass');
+      // Try to create via service (DB or JSON). If it fails, fall back to writing users.json directly.
+      let created = false;
       try {
         await usersService.createUser('admin', 'admin', 'password123');
-      } catch (e) { /* ignore if exists */ }
-      try {
         await usersService.createUser('supplier1', 'supplier', 'supplierpass');
-      } catch (e) { /* ignore if exists */ }
+        created = true;
+      } catch (e) {
+        console.warn('usersService.createUser failed during seeding, falling back to direct JSON write:', e);
+      }
+
+      if (!created) {
+        try {
+          const bcrypt = (await import('bcryptjs')) as typeof import('bcryptjs');
+          const adminHash = await bcrypt.hash('password123', 10);
+          const supHash = await bcrypt.hash('supplierpass', 10);
+          const seed = [
+            { id: 1, username: 'admin', role: 'admin', password: adminHash, createdAt: new Date() },
+            { id: 2, username: 'supplier1', role: 'supplier', password: supHash, createdAt: new Date() },
+          ];
+          await fs.writeFile(usersFile, JSON.stringify(seed, null, 2));
+          console.log('Wrote fallback users.json with seeded users (dev)');
+        } catch (e) {
+          console.warn('Failed to write fallback users.json during seeding:', e);
+        }
+      }
+    } else {
+      // Ensure existing users have password hashes (for DB migrations that had no password)
+      try {
+        const bcrypt = (await import('bcryptjs')) as typeof import('bcryptjs');
+
+        // Try DB-backed update first (if postgres is available)
+        try {
+          const modDb = await import('../db');
+          const { db } = modDb as any;
+          const { users } = await import('@shared/schema');
+          const { eq } = await import('drizzle-orm');
+
+          for (const u of list as any[]) {
+            if (!u.password) {
+              const hash = await bcrypt.hash(u.username === 'admin' ? 'password123' : 'supplierpass', 10);
+              await db.update(users).set({ password: hash }).where(eq(users.id, u.id));
+              console.log(`Set password for user ${u.username} (dev DB)`);
+            }
+          }
+        } catch (dbErr) {
+          // Fallback to JSON file update
+          try {
+            const raw = await fs.readFile(usersFile, 'utf-8');
+            const arr = JSON.parse(raw) as any[];
+            let changed = false;
+            for (const obj of arr) {
+              if (!obj.password) {
+                obj.password = await bcrypt.hash(obj.username === 'admin' ? 'password123' : 'supplierpass', 10);
+                changed = true;
+                console.log(`Set password for user ${obj.username} (dev JSON)`);
+              }
+            }
+            if (changed) await fs.writeFile(usersFile, JSON.stringify(arr, null, 2));
+          } catch (jsonErr) {
+            console.warn('Failed to update users file with password hashes:', jsonErr);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to ensure password hashes for users:', e);
+      }
     }
   } catch (e) {
     console.warn('User seeding failed:', e);
