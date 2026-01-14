@@ -63,8 +63,6 @@ server/designs.json.corrupt-*
 /components.json
 /designs.json
 /drizzle.config.ts
-/package.json
-/package-lock.json
 /postcss.config.js
 /script/
 /tailwind.config.ts
