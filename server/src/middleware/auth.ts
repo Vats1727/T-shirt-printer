@@ -9,16 +9,22 @@ declare global {
   }
 }
 
+import jwt from 'jsonwebtoken';
+
 export async function authFromHeader(req: Request, res: Response, next: NextFunction) {
   const auth = req.headers['authorization'] as string | undefined;
   if (!auth) return res.status(401).json({ message: 'Missing Authorization header' });
   const parts = auth.split(' ');
   if (parts.length !== 2 || parts[0] !== 'Bearer') return res.status(401).json({ message: 'Invalid Authorization header' });
-  const username = parts[1];
-  const user = await usersService.getByUsername(username);
-  if (!user) return res.status(401).json({ message: 'Unknown user' });
-  req.user = { id: (user as any).id, username: user.username, role: user.role };
-  next();
+  const token = parts[1];
+  try {
+    const secret = process.env.JWT_SECRET || 'dev-secret';
+    const payload = jwt.verify(token, secret) as any;
+    req.user = { id: payload.id, username: payload.username, role: payload.role };
+    next();
+  } catch (err) {
+    return res.status(401).json({ message: 'Invalid token' });
+  }
 }
 
 export function requireRole(role: string | string[]) {

@@ -47,12 +47,18 @@ export async function registerRoutes(
 
   // Users endpoints
   app.post('/api/users/login', safe(async (req, res) => {
-    const { username } = req.body || {};
-    if (!username) return res.status(400).json({ message: 'username required' });
-    const user = await (await import('./src/services/users')).usersService.getByUsername(username);
+    const { username, password } = req.body || {};
+    if (!username || !password) return res.status(400).json({ message: 'username and password required' });
+    const usersSvc = (await import('./src/services/users')).usersService;
+    const user = await usersSvc.getByUsername(username);
     if (!user) return res.status(404).json({ message: 'Not found' });
-    // For simple testing, return a Bearer token that is just the username
-    return res.json({ token: `Bearer ${user.username}`, user: { id: (user as any).id, username: user.username, role: user.role } });
+    const bcrypt = (await import('bcryptjs')) as typeof import('bcryptjs');
+    const ok = await bcrypt.compare(password, (user as any).password);
+    if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
+    const jwt = (await import('jsonwebtoken')) as typeof import('jsonwebtoken');
+    const secret = process.env.JWT_SECRET || 'dev-secret';
+    const token = jwt.sign({ id: (user as any).id, username: user.username, role: user.role }, secret, { expiresIn: '7d' });
+    return res.json({ token, user: { id: (user as any).id, username: user.username, role: user.role } });
   }));
 
   app.post('/api/users', authFromHeader, requireRole('admin'), safe(async (req, res) => {

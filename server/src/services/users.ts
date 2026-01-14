@@ -9,7 +9,7 @@ const usersFile = path.join(__dirname, "../../users.json");
 export interface IUserService {
   getByUsername(username: string): Promise<User | undefined>;
   getById(id: number): Promise<User | undefined>;
-  createUser(username: string, role: 'admin'|'supplier'): Promise<User>;
+  createUser(username: string, role: 'admin'|'supplier', password: string): Promise<User>;
   listUsers(): Promise<User[]>;
 }
 
@@ -31,21 +31,24 @@ class JsonUsers implements IUserService {
 
   async getByUsername(username: string) {
     const users = await this.read();
-    return users.find(u => u.username === username);
+    return users.find(u => u.username === username) as any;
   }
 
   async getById(id: number) {
     const users = await this.read();
-    return users.find(u => u.id === id);
+    return users.find(u => u.id === id) as any;
   }
 
-  async createUser(username: string, role: 'admin'|'supplier') {
+  async createUser(username: string, role: 'admin'|'supplier', password: string) {
     const users = await this.read();
     if (users.find(u => u.username === username)) throw new Error('User exists');
-    const user: User = { id: (users[users.length-1]?.id || 0) + 1, username, role, createdAt: new Date() };
-    users.push(user);
-    await this.write(users);
-    return user;
+    // Hash password
+    const bcrypt = (await import('bcryptjs')) as typeof import('bcryptjs');
+    const hash = await bcrypt.hash(password, 10);
+    const user: User = { id: (users[users.length-1]?.id || 0) + 1, username, role, createdAt: new Date(), password: hash } as any;
+    users.push(user as any);
+    await this.write(users as any);
+    return user as any;
   }
 
   async listUsers() {
@@ -69,8 +72,10 @@ try {
       const rows = await (db.select().from(users).where(users.id.eq(id)));
       return rows[0] as User | undefined;
     },
-    async createUser(username: string, role: 'admin'|'supplier') {
-      const [row] = await db.insert(users).values({ username, role }).returning();
+    async createUser(username: string, role: 'admin'|'supplier', password: string) {
+      const bcrypt = (await import('bcryptjs')) as typeof import('bcryptjs');
+      const hash = await bcrypt.hash(password, 10);
+      const [row] = await db.insert(users).values({ username, role, password: hash }).returning();
       return row as User;
     },
     async listUsers() {
@@ -83,3 +88,10 @@ try {
 }
 
 export const usersService: IUserService = impl!;
+
+export async function createJwtForUser(user: User) {
+  const jwt = (await import('jsonwebtoken')) as typeof import('jsonwebtoken');
+  const secret = process.env.JWT_SECRET || 'dev-secret';
+  const token = jwt.sign({ id: (user as any).id, username: user.username, role: user.role }, secret, { expiresIn: '7d' });
+  return token;
+}

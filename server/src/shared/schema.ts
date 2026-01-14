@@ -41,6 +41,7 @@ export const insertDesignSchema = createInsertSchema(designs).pick({
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
+  password: text("password"),
   role: text("role").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -48,6 +49,9 @@ export const users = pgTable("users", {
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   role: true,
+  password: true,
+}).extend({
+  password: z.string().min(8),
 });
 
 export type User = {
