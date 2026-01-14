@@ -89,6 +89,24 @@ try {
 
 export const usersService: IUserService = impl!;
 
+// Seed default users for development if no users exist
+(async () => {
+  try {
+    const list = await usersService.listUsers();
+    if (!list || list.length === 0) {
+      console.log('Seeding initial users (dev): admin/password123 and supplier1/supplierpass');
+      try {
+        await usersService.createUser('admin', 'admin', 'password123');
+      } catch (e) { /* ignore if exists */ }
+      try {
+        await usersService.createUser('supplier1', 'supplier', 'supplierpass');
+      } catch (e) { /* ignore if exists */ }
+    }
+  } catch (e) {
+    console.warn('User seeding failed:', e);
+  }
+})();
+
 export async function createJwtForUser(user: User) {
   const jwt = (await import('jsonwebtoken')) as typeof import('jsonwebtoken');
   const secret = process.env.JWT_SECRET || 'dev-secret';

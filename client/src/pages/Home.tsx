@@ -8,6 +8,7 @@ import { insertDesignSchema } from "@shared/schema";
 import type { DesignResponse } from "@shared/routes";
 import { useCreateDesign, useDesigns } from "@/hooks/use-designs";
 import { DesignCanvas } from "@/components/design/DesignCanvas";
+import { useAuth } from '@/contexts/AuthContext';
 
 import {
   Form,
@@ -26,6 +27,7 @@ import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 
 export default function Home() {
+  const { user, logout } = useAuth();
   const [slogan, setSlogan] = useState("");
   const [color, setColor] = useState("#7c3aed");
   const [templateColor, setTemplateColor] = useState("#ffffff");
@@ -128,6 +130,19 @@ export default function Home() {
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-20">
         <div className="text-center max-w-2xl mx-auto mb-16">
+          <div className="flex items-center justify-between mb-6">
+            <h1 className="text-2xl font-semibold">T-shirt design tool</h1>
+            <div>
+              {user ? (
+                <div className="flex items-center gap-3">
+                  <div className="text-sm">Signed in: <strong>{user.username}</strong> ({user.role})</div>
+                  <button onClick={() => logout()} className="px-3 py-1 border rounded">Sign out</button>
+                </div>
+              ) : (
+                <a href="/login" className="px-3 py-1 border rounded">Sign in</a>
+              )}
+            </div>
+          </div>
           <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
            
             <h1 className="text-5xl md:text-6xl font-bold tracking-tight text-foreground mb-6 font-display">
