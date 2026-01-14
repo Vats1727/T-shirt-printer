@@ -1,0 +1,32 @@
+import { Request, Response, NextFunction } from 'express';
+import { usersService } from '../services/users';
+
+declare global {
+  namespace Express {
+    interface Request {
+      user?: { id: number; username: string; role: string };
+    }
+  }
+}
+
+export async function authFromHeader(req: Request, res: Response, next: NextFunction) {
+  const auth = req.headers['authorization'] as string | undefined;
+  if (!auth) return res.status(401).json({ message: 'Missing Authorization header' });
+  const parts = auth.split(' ');
+  if (parts.length !== 2 || parts[0] !== 'Bearer') return res.status(401).json({ message: 'Invalid Authorization header' });
+  const username = parts[1];
+  const user = await usersService.getByUsername(username);
+  if (!user) return res.status(401).json({ message: 'Unknown user' });
+  req.user = { id: (user as any).id, username: user.username, role: user.role };
+  next();
+}
+
+export function requireRole(role: string | string[]) {
+  const roles = Array.isArray(role) ? role : [role];
+  return (req: Request, res: Response, next: NextFunction) => {
+    const user = req.user;
+    if (!user) return res.status(401).json({ message: 'Unauthorized' });
+    if (!roles.includes(user.role)) return res.status(403).json({ message: 'Forbidden' });
+    next();
+  };
+}

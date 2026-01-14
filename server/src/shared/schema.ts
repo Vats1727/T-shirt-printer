@@ -38,5 +38,24 @@ export const insertDesignSchema = createInsertSchema(designs).pick({
 });
 
 
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  username: text("username").notNull().unique(),
+  role: text("role").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertUserSchema = createInsertSchema(users).pick({
+  username: true,
+  role: true,
+});
+
+export type User = {
+  id: number;
+  username: string;
+  role: 'admin' | 'supplier';
+  createdAt: string | Date;
+};
+
 export type Design = typeof designs.$inferSelect;
 export type InsertDesign = z.infer<typeof insertDesignSchema>;
