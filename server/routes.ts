@@ -53,8 +53,9 @@ export async function registerRoutes(
     const user = await usersSvc.getByUsername(username);
     if (!user) return res.status(401).json({ message: 'Invalid credentials' });
     if (!(user as any).password) return res.status(401).json({ message: 'Invalid credentials' });
-    const bcrypt = (await import('bcryptjs')) as typeof import('bcryptjs');
-    const ok = await bcrypt.compare(password, (user as any).password);
+    const bcryptMod = await import('bcryptjs');
+    const bcrypt = (bcryptMod as any).default ?? bcryptMod;
+    const ok = bcrypt.compareSync ? bcrypt.compareSync(password, (user as any).password) : await bcrypt.compare(password, (user as any).password);
     if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
     const jwt = (await import('jsonwebtoken')) as typeof import('jsonwebtoken');
     const secret = process.env.JWT_SECRET || 'dev-secret';
@@ -89,8 +90,9 @@ export async function registerRoutes(
       if (!username || !password) return res.status(400).json({ message: 'username and password required' });
       const usersSvcMod = await import('./src/services/users');
       const usersSvc = usersSvcMod.usersService;
-      const bcrypt = (await import('bcryptjs')) as typeof import('bcryptjs');
-      const hash = await bcrypt.hash(password, 10);
+      const bcryptMod = await import('bcryptjs');
+      const bcrypt = (bcryptMod as any).default ?? bcryptMod;
+      const hash = bcrypt.hashSync ? bcrypt.hashSync(password, 10) : await bcrypt.hash(password, 10);
       // Try DB update
       try {
         const modDb = await import('./db');
