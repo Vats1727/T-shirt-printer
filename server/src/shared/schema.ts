@@ -9,7 +9,8 @@ export const designs = pgTable("designs", {
   textSize: integer("text_size").notNull().default(24),
   textRotation: integer("text_rotation").notNull().default(0),
   textPosition: jsonb("text_position").notNull().default({ x: 150, y: 135 }),
-  image: text("image"), // base64 string
+  image: text("image"), // base64 string or hosted composite path
+  image_mask: text("image_mask"), // server-generated mask path
   imageScale: integer("image_scale").notNull().default(100),
   imageRotation: integer("image_rotation").notNull().default(0),
   imagePosition: jsonb("image_position").notNull().default({ x: 150, y: 150 }),
@@ -19,6 +20,7 @@ export const designs = pgTable("designs", {
   // Front/back support
   back_slogan: text("back_slogan"),
   back_image: text("back_image"),
+  back_image_mask: text("back_image_mask"),
   back_image_scale: integer("back_image_scale").notNull().default(100),
   back_image_rotation: integer("back_image_rotation").notNull().default(0),
   back_image_position: jsonb("back_image_position").notNull().default({ x: 150, y: 150 }),

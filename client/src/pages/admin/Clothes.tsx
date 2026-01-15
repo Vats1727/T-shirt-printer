@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter, CardDescription } from '@/components/ui/card';
-import { Plus, Trash2, Save } from 'lucide-react';
+import { Plus, Trash2, Save, ArrowLeft } from 'lucide-react';
 import { DesignCanvas } from '@/components/design/DesignCanvas';
 
 export default function AdminClothes() {
   const { token } = useAuth();
+  const [, setLocation] = useLocation();
   const [colors, setColors] = useState<any[]>([]);
   const [sizes, setSizes] = useState<any[]>([]);
   const [colorName, setColorName] = useState('');
@@ -27,6 +29,7 @@ export default function AdminClothes() {
   const sectionsEnabled = productSaved || productName.trim() !== '';
 
   const [designSide, setDesignSide] = useState<'front'|'back'>('front');
+  const [activeTab, setActiveTab] = useState<'product'|'design'|'sizes'|'pricing'>('product');
   const [designs, setDesigns] = useState<any>({
     front: { image: null as string | null, imageScale: 100, imageRotation: 0, imagePosition: { x: 180, y: 180 }, slogan: '', color: '#000000', template: 'tshirt' },
     back: { image: null as string | null, imageScale: 100, imageRotation: 0, imagePosition: { x: 180, y: 180 }, slogan: '', color: '#000000', template: 'tshirt' }
@@ -241,9 +244,8 @@ export default function AdminClothes() {
         const data = await res.json();
         setMessage('Product saved to DB');
         setProductSaved(true);
-        // optionally refresh size chart
-        const scRes = await fetch(`/api/admin/size-chart?product=${encodeURIComponent(data.slug)}`, { headers: { Authorization: token ? `Bearer ${token}` : '' } });
-        if (scRes.ok) setSizeChart(await scRes.json());
+        // update local sizeChart from saved product (products_full stores size_chart inline)
+        setSizeChart(data.sizeChart || data.size_chart || []);
       }
     } catch (err: any) {
       setError(err?.message || 'Failed to save');
@@ -251,93 +253,197 @@ export default function AdminClothes() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-4 sm:p-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">Create Product</h1>
-        <p className="text-sm text-muted-foreground mt-1">Follow the steps to create a product, design front/back, assign sizes & colors, and define pricing.</p>
+    <div className="max-w-screen-xl mx-auto px-6 py-8">
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Create Product</h1>
+          <p className="text-sm text-muted-foreground mt-1">Follow the steps to create a product, design front/back, assign sizes & colors, and define pricing.</p>
+        </div>
+        <div>
+          <button type="button" onClick={() => setLocation('/admin/dashboard')} className="inline-flex items-center gap-2 px-3 py-2 bg-gray-100 rounded">
+            <ArrowLeft className="h-4 w-4" /> Back to Dashboard
+          </button>
+        </div>
       </div>
 
       <form onSubmit={handleSaveAll}>
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Create Product Configuration</CardTitle>
-            <CardDescription>Define the product, design front/back, select sizes & colors, and set pricing — then save in one step.</CardDescription>
-          </CardHeader>
-
-          <CardContent>
-            <section className="mb-6">
-              <h3 className="font-semibold mb-2">1. Product</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-                <input value={productName} onChange={e => setProductName(e.target.value)} placeholder="Product name" className="col-span-1 sm:col-span-3 border px-3 py-2 rounded" />
-                <div className="sm:col-span-3">
-                  {!productSaved && <div className="text-sm text-muted-foreground mt-2">Later sections are disabled until product is saved (use the Save Product Configuration button below).</div>}
-                  {productSaved && <div className="text-sm text-green-600 mt-2">Product saved: <strong>{productName}</strong></div>}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+          {/* Left: main form (wider) */}
+          <div className="lg:col-span-2">
+            <Card className="mb-6 shadow-lg border">
+              <div className="px-6 py-4 bg-gray-50 rounded-t">
+                <div className="max-w-3xl">
+                  <h2 className="text-lg font-semibold">Create / Edit Product</h2>
+                  <p className="text-sm text-muted-foreground mt-1">Complete product details, upload front/back designs, select sizes & colors, and set pricing.</p>
                 </div>
               </div>
-            </section> 
+              <CardContent className="px-6 py-6">
+                {/* Tabs */}
+                <div className="mb-6 border-b pb-4">
+                  <nav className="flex gap-3">
+                    <button type="button" onClick={() => setActiveTab('product')} className={`px-3 py-2 rounded ${activeTab==='product' ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-muted-foreground'}`}>Product</button>
+                    <button type="button" onClick={() => setActiveTab('design')} className={`px-3 py-2 rounded ${activeTab==='design' ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-muted-foreground'}`}>Design</button>
+                    <button type="button" onClick={() => setActiveTab('sizes')} className={`px-3 py-2 rounded ${activeTab==='sizes' ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-muted-foreground'}`}>Sizes</button>
+                    <button type="button" onClick={() => setActiveTab('pricing')} className={`px-3 py-2 rounded ${activeTab==='pricing' ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-muted-foreground'}`}>Pricing</button>
+                  </nav>
+                </div>
 
-            <section className="mb-6">
-              <h3 className="font-semibold mb-2">2. Design</h3>
-              <div className={`${sectionsEnabled ? '' : 'opacity-60 pointer-events-none'}`}>
-                <div className="flex items-center gap-2 mb-3">
-                  <button type="button" onClick={() => setDesignSide('front')} className={`px-3 py-1 rounded ${designSide==='front' ? 'bg-slate-100' : ''}`}>Front</button>
-                  <button type="button" onClick={() => setDesignSide('back')} className={`px-3 py-1 rounded ${designSide==='back' ? 'bg-slate-100' : ''}`}>Back</button>
-                  <div className="ml-auto text-sm text-muted-foreground">Design side: {designSide}</div>
-                </div> 
+                {/* Product tab */}
+                <div hidden={activeTab !== 'product'}>
+                  <div className="mb-2">
+                    <h3 className="text-base font-semibold mb-3">Product</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                      <input value={productName} onChange={e => setProductName(e.target.value)} placeholder="Product name" className="col-span-1 sm:col-span-3 border px-3 py-3 rounded shadow-sm" />
+                      <div className="sm:col-span-3">
+                        {!productSaved && <div className="text-sm text-muted-foreground mt-2">Later sections are disabled until product is saved.</div>}
+                        {productSaved && <div className="text-sm text-green-600 mt-2">Product saved: <strong>{productName}</strong></div>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Front image</label>
-                <input type="file" accept="image/*" onChange={async (e) => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  setFrontFilename(f.name);
-                  // make sure preview shows front side
-                  setDesignSide('front');
-                  const reader = new FileReader();
-                  reader.onload = () => {
-                    const dataUrl = reader.result as string;
-                    const img = new Image();
-                    img.onload = () => {
-                      const maxDim = 360 * 0.7;
-                      const scalePct = Math.max(10, Math.min(200, Math.round((maxDim / Math.max(img.width, img.height)) * 100)));
-                      setDesigns((d: any) => ({ ...d, front: { ...d.front, image: dataUrl, imageScale: scalePct, imagePosition: { x: 180, y: 180 } } }));
-                    };
-                    img.src = dataUrl;
-                  };
-                  reader.readAsDataURL(f);
-                }} />
-                {frontFilename && <div className="text-sm text-muted-foreground mt-2">{frontFilename}</div>}
+                {/* Design tab */}
+                <div hidden={activeTab !== 'design'}>
+                  <section className="mb-6">
+                    <h3 className="font-semibold mb-2">Design uploads</h3>
+                    <div className={`${sectionsEnabled ? '' : 'opacity-60 pointer-events-none'}`}>
+                      <div className="flex items-center gap-2 mb-3">
+                        <button type="button" onClick={() => setDesignSide('front')} className={`px-3 py-1 rounded ${designSide==='front' ? 'bg-slate-100' : ''}`}>Front</button>
+                        <button type="button" onClick={() => setDesignSide('back')} className={`px-3 py-1 rounded ${designSide==='back' ? 'bg-slate-100' : ''}`}>Back</button>
+                        <div className="ml-auto text-sm text-muted-foreground">Preview side: {designSide}</div>
+                      </div>
 
-                <label className="block text-sm font-medium mt-4 mb-1">Back image</label>
-                <input type="file" accept="image/*" onChange={async (e) => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  setBackFilename(f.name);
-                  // make sure preview shows back side
-                  setDesignSide('back');
-                  const reader = new FileReader();
-                  reader.onload = () => {
-                    const dataUrl = reader.result as string;
-                    const img = new Image();
-                    img.onload = () => {
-                      const maxDim = 360 * 0.7;
-                      const scalePct = Math.max(10, Math.min(200, Math.round((maxDim / Math.max(img.width, img.height)) * 100)));
-                      setDesigns((d: any) => ({ ...d, back: { ...d.back, image: dataUrl, imageScale: scalePct, imagePosition: { x: 180, y: 180 } } }));
-                    };
-                    img.src = dataUrl;
-                  };
-                  reader.readAsDataURL(f);
-                }} />
-                {backFilename && <div className="text-sm text-muted-foreground mt-2">{backFilename}</div>}
+                      <div className="grid grid-cols-1 gap-4">
+                        <label className="block text-sm font-medium">Front image</label>
+                        <input type="file" accept="image/*" onChange={async (e) => {
+                          const f = e.target.files?.[0];
+                          if (!f) return;
+                          setFrontFilename(f.name);
+                          setDesignSide('front');
+                          const reader = new FileReader();
+                          reader.onload = () => { const dataUrl = reader.result as string; const img = new Image(); img.onload = () => { const maxDim = 360 * 0.7; const scalePct = Math.max(10, Math.min(200, Math.round((maxDim / Math.max(img.width, img.height)) * 100))); setDesigns((d: any) => ({ ...d, front: { ...d.front, image: dataUrl, imageScale: scalePct, imagePosition: { x: 180, y: 180 } } })); }; img.src = dataUrl; }; reader.readAsDataURL(f);
+                        }} />
+                        {frontFilename && <div className="text-sm text-muted-foreground">{frontFilename}</div>}
 
-                <div className="text-sm text-muted-foreground mt-3">Canvas background: <strong>Default plain white</strong></div>
+                        <label className="block text-sm font-medium">Back image</label>
+                        <input type="file" accept="image/*" onChange={async (e) => {
+                          const f = e.target.files?.[0];
+                          if (!f) return;
+                          setBackFilename(f.name);
+                          setDesignSide('back');
+                          const reader = new FileReader();
+                          reader.onload = () => { const dataUrl = reader.result as string; const img = new Image(); img.onload = () => { const maxDim = 360 * 0.7; const scalePct = Math.max(10, Math.min(200, Math.round((maxDim / Math.max(img.width, img.height)) * 100))); setDesigns((d: any) => ({ ...d, back: { ...d.back, image: dataUrl, imageScale: scalePct, imagePosition: { x: 180, y: 180 } } })); }; img.src = dataUrl; }; reader.readAsDataURL(f);
+                        }} />
+                        {backFilename && <div className="text-sm text-muted-foreground">{backFilename}</div>}
 
+                        <div className="text-sm text-muted-foreground mt-2">Canvas background: <strong>Plain white</strong></div>
+                      </div>
+                    </div>
+                  </section>
+                </div>
 
-              </div>
+                {/* Sizes tab */}
+                <div hidden={activeTab !== 'sizes'}>
+                  <section className="mb-6">
+                    <h3 className="font-semibold mb-2">Sizes & Colors</h3>
+                    <div className={`${sectionsEnabled ? '' : 'opacity-60 pointer-events-none'}`}>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4"> 
+                        <div>
+                          <h4 className="font-medium mb-2">Sizes</h4>
+                          <div className="flex flex-wrap gap-2">
+                            {sizes.map(s => (
+                              <label key={s.id} className={`border rounded px-3 py-1 ${selectedSizes.includes(s.id) ? 'bg-slate-100' : ''}`}>
+                                <input type="checkbox" className="mr-2" checked={selectedSizes.includes(s.id)} onChange={() => {
+                                  setSelectedSizes(prev => prev.includes(s.id) ? prev.filter(x => x !== s.id) : [...prev, s.id]);
+                                }} />
+                                {s.label}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <h4 className="font-medium mb-2">Colors</h4>
+                          <div className="flex flex-wrap gap-2">
+                            {colors.map(c => (
+                              <label key={c.id} className={`border rounded px-3 py-1 flex items-center gap-2 ${selectedColors.includes(c.id) ? 'bg-slate-100' : ''}`}>
+                                <input type="checkbox" className="mr-2" checked={selectedColors.includes(c.id)} onChange={() => {
+                                  setSelectedColors(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id]);
+                                }} />
+                                <span className="w-3 h-3 rounded" style={{ background: c.hex }} /> {c.name}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
 
-              <div>
-                <div className="border rounded-lg p-3 bg-white">
+                      <div className="mt-6">
+                        <h4 className="font-medium mb-2">Size Chart ({product.replace('_', ' ')})</h4>
+                        {sizes.length === 0 ? (
+                          <div className="text-sm text-muted-foreground">No sizes configured yet. Add sizes above to edit the size chart.</div>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="table-auto w-full text-left">
+                              <thead>
+                                <tr className="bg-gray-50"><th className="px-3 py-2">Size</th><th className="px-3 py-2">Chest</th><th className="px-3 py-2">Length</th><th className="px-3 py-2">Shoulder</th></tr>
+                              </thead>
+                              <tbody>
+                                {sizes.map(s => {
+                                  const sc = sizeChart.find(x => x.size_id === s.id) || {};
+                                  return (
+                                    <tr key={s.id} className="border-b">
+                                      <td className="px-3 py-2">{s.label}</td>
+                                      <td className="px-3 py-2"><input className="w-36 border px-2 py-1 rounded" defaultValue={sc.chest || ''} id={`chest-${s.id}`} /></td>
+                                      <td className="px-3 py-2"><input className="w-36 border px-2 py-1 rounded" defaultValue={sc.length || ''} id={`length-${s.id}`} /></td>
+                                      <td className="px-3 py-2"><input className="w-36 border px-2 py-1 rounded" defaultValue={sc.shoulder || ''} id={`shoulder-${s.id}`} /></td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+
+                    </div>
+                  </section>
+                </div>
+
+                {/* Pricing tab */}
+                <div hidden={activeTab !== 'pricing'}>
+                  <section className="mb-6">
+                    <h3 className="font-semibold mb-2">Pricing</h3>
+                    <div className={`${sectionsEnabled ? '' : 'opacity-60 pointer-events-none'}`}>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Single unit price</label>
+                          <input type="number" value={singlePrice as any} onChange={e => setSinglePrice(e.target.value === '' ? '' : Number(e.target.value))} className="border px-3 py-2 rounded w-full" placeholder="0.00" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Bulk minimum qty</label>
+                          <input type="number" value={bulkMin} onChange={e => setBulkMin(Number(e.target.value))} className="border px-3 py-2 rounded w-full" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Bulk price</label>
+                          <input type="number" value={bulkPrice as any} onChange={e => setBulkPrice(e.target.value === '' ? '' : Number(e.target.value))} className="border px-3 py-2 rounded w-full" placeholder="0.00" />
+                        </div>
+                      </div>
+
+                    </div>
+                  </section>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Right: preview & actions */}
+          <aside className="lg:col-span-1 lg:sticky lg:top-24">
+            <Card className="shadow-lg">
+              <CardHeader>
+                <CardTitle className="text-lg">Live Preview</CardTitle>
+                <CardDescription className="text-sm text-muted-foreground">Preview your design and submit when ready.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="w-full h-auto flex items-center justify-center bg-white rounded-md p-6 border">
                   <DesignCanvas
                     side={designSide}
                     slogan={designs[designSide].slogan}
@@ -347,115 +453,57 @@ export default function AdminClothes() {
                     imageScale={designs[designSide].imageScale}
                     imageRotation={designs[designSide].imageRotation}
                     imagePosition={designs[designSide].imagePosition}
-                    width={360}
-                    height={360}
+                    width={420}
+                    height={420}
                   />
                 </div>
-              </div>
-            </div>
-          </div>
-            </section>
 
-            {/* 3. Sizes / Colors / Size Chart */} 
-            <section className="mb-6">
-              <h3 className="font-semibold mb-2">3. Sizes & Colors</h3>
-              <div className={`${sectionsEnabled ? '' : 'opacity-60 pointer-events-none'}`}>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4"> 
-              <div>
-                <h4 className="font-medium mb-2">Sizes</h4>
-                <div className="flex flex-wrap gap-2">
-                  {sizes.map(s => (
-                    <label key={s.id} className={`border rounded px-3 py-1 ${selectedSizes.includes(s.id) ? 'bg-slate-100' : ''}`}>
-                      <input type="checkbox" className="mr-2" checked={selectedSizes.includes(s.id)} onChange={() => {
-                        setSelectedSizes(prev => prev.includes(s.id) ? prev.filter(x => x !== s.id) : [...prev, s.id]);
-                      }} />
-                      {s.label}
-                    </label>
-                  ))}
+                <div className="mt-4 flex gap-2 items-center">
+                  <button type="button" onClick={() => setDesignSide('front')} className={`px-3 py-1 rounded ${designSide==='front' ? 'bg-slate-100' : ''}`}>Front</button>
+                  <button type="button" onClick={() => setDesignSide('back')} className={`px-3 py-1 rounded ${designSide==='back' ? 'bg-slate-100' : ''}`}>Back</button>
+                  <div className="ml-auto text-sm text-muted-foreground">Slogan: <strong>{designs[designSide]?.slogan || '—'}</strong></div>
                 </div>
-              </div>
+              </CardContent>
 
-              <div>
-                <h4 className="font-medium mb-2">Colors</h4>
-                <div className="flex flex-wrap gap-2">
-                  {colors.map(c => (
-                    <label key={c.id} className={`border rounded px-3 py-1 flex items-center gap-2 ${selectedColors.includes(c.id) ? 'bg-slate-100' : ''}`}>
-                      <input type="checkbox" className="mr-2" checked={selectedColors.includes(c.id)} onChange={() => {
-                        setSelectedColors(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id]);
-                      }} />
-                      <span className="w-3 h-3 rounded" style={{ background: c.hex }} /> {c.name}
-                    </label>
-                  ))}
+              <CardFooter>
+                <div className="w-full flex flex-col sm:flex-row gap-3">
+                  <button id="save-product-btn" type="submit" className="w-full sm:flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded shadow-md"><Save className="h-4 w-4" /> Save product</button>
+                  {editingProductId && <button type="button" onClick={async () => {
+                    if (!confirm('Delete this product? This is a soft delete and will hide it from lists.')) return;
+                    try {
+                      const res = await fetch(`/api/admin/products/${editingProductId}`, { method: 'DELETE', headers: { Authorization: token ? `Bearer ${token}` : '' } });
+                      if (!res.ok) {
+                        const js = await res.json().catch(() => ({}));
+                        setError(js.message || 'Failed to delete product');
+                      } else {
+                        setMessage('Product deleted');
+                        // reset form
+                        setEditingProductId(null);
+                        setProductName(''); setProductSaved(false);
+                        setSelectedSizes([]); setSelectedColors([]);
+                      }
+                    } catch (err: any) {
+                      setError(err?.message || 'Failed to delete');
+                    }
+                  }} className="w-full sm:flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 bg-red-600 text-white rounded shadow-md">Delete product</button>}
                 </div>
-              </div>
-            </div>
+              </CardFooter>
+            </Card>
 
-            <div className="mt-6">
-              <h4 className="font-medium mb-2">Size Chart ({product.replace('_', ' ')})</h4>
-              {/* Reuse existing size-chart table unchanged for logic */}
-              {sizes.length === 0 ? (
-                <div className="text-sm text-muted-foreground">No sizes configured yet. Add sizes above to edit the size chart.</div>
-              ) : (
-                <>
-                <div className="overflow-x-auto">
-                  <table className="table-auto w-full text-left">
-                    <thead>
-                      <tr className="bg-gray-50"><th className="px-3 py-2">Size</th><th className="px-3 py-2">Chest</th><th className="px-3 py-2">Length</th><th className="px-3 py-2">Shoulder</th></tr>
-                    </thead>
-                    <tbody>
-                      {sizes.map(s => {
-                        const sc = sizeChart.find(x => x.size_id === s.id) || {};
-                        return (
-                          <tr key={s.id} className="border-b">
-                            <td className="px-3 py-2">{s.label}</td>
-                            <td className="px-3 py-2"><input className="w-36 border px-2 py-1 rounded" defaultValue={sc.chest || ''} id={`chest-${s.id}`} /></td>
-                            <td className="px-3 py-2"><input className="w-36 border px-2 py-1 rounded" defaultValue={sc.length || ''} id={`length-${s.id}`} /></td>
-                            <td className="px-3 py-2"><input className="w-36 border px-2 py-1 rounded" defaultValue={sc.shoulder || ''} id={`shoulder-${s.id}`} /></td>
-                            {/* Actions removed: size chart entries are saved when 'Save Product Configuration' is clicked */}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="text-sm text-muted-foreground mt-3">Note: size chart edits are saved when you click "Save Product Configuration".</div>
-                </>
-              )}
-            </div>
-          </div>
-            </section>
+            {message && <div className="text-sm text-green-600 mt-4">{message}</div>}
+            {error && <div className="text-sm text-red-600 mt-4">{error}</div>}
+          </aside>
+        </div>
+      </form>
 
-            {/* 4. Pricing */} 
-            <section className="mb-6">
-              <h3 className="font-semibold mb-2">4. Pricing</h3>
-              <div className={`${sectionsEnabled ? '' : 'opacity-60 pointer-events-none'}`}>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Single unit price</label>
-                    <input type="number" value={singlePrice as any} onChange={e => setSinglePrice(e.target.value === '' ? '' : Number(e.target.value))} className="border px-3 py-2 rounded w-full" placeholder="0.00" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Bulk minimum qty</label>
-                    <input type="number" value={bulkMin} onChange={e => setBulkMin(Number(e.target.value))} className="border px-3 py-2 rounded w-full" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Bulk price</label>
-                    <input type="number" value={bulkPrice as any} onChange={e => setBulkPrice(e.target.value === '' ? '' : Number(e.target.value))} className="border px-3 py-2 rounded w-full" placeholder="0.00" />
-                  </div>
-                </div>
+      {/* Mobile sticky save bar */}
+      <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-lg px-4 sm:hidden">
+        <div className="bg-white border shadow-lg rounded-lg p-3 flex gap-3">
+          <button onClick={() => (document.getElementById('save-product-btn') as HTMLButtonElement | null)?.click()} className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded shadow-md">Save</button>
+          {editingProductId && <button onClick={async () => { if (!confirm('Delete this product?')) return; const res = await fetch(`/api/admin/products/${editingProductId}`, { method: 'DELETE', headers: { Authorization: token ? `Bearer ${token}` : '' } }); if (res.ok) { setMessage('Product deleted'); setEditingProductId(null); setProductName(''); setProductSaved(false); setSelectedSizes([]); setSelectedColors([]); } else { setError('Failed to delete'); } }} className="px-4 py-3 bg-red-600 text-white rounded">Delete</button>}
+        </div>
+      </div>
 
-              </div>
-            </section>
-          </CardContent>
-
-            <CardFooter>
-              <button type="submit" className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded"><Save className="h-4 w-4" /> Save Product Configuration</button>
-            </CardFooter>
-          </Card>
-        </form>
-
-      {message && <div className="text-sm text-green-600 mt-4">{message}</div>}
-      {error && <div className="text-sm text-red-600 mt-4">{error}</div>}
     </div>
   );
 }

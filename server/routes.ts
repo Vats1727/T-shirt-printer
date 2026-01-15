@@ -60,6 +60,7 @@ export async function registerRoutes(
   app.get('/api/admin/products', requireAuth, requireRole('admin'), safe(productsCtrl.listProducts));
   app.get('/api/admin/products/:id', requireAuth, requireRole('admin'), safe(productsCtrl.getProduct));
   app.put('/api/admin/products/:id', requireAuth, requireRole('admin'), safe(productsCtrl.updateProduct));
+  app.delete('/api/admin/products/:id', requireAuth, requireRole('admin'), safe(productsCtrl.deleteProduct));
 
   // Supplier endpoints
   const supplierCtrl = await import('./src/controllers/supplierController');

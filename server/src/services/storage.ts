@@ -52,6 +52,39 @@ export class JsonStorage implements IStorage {
     } as Design;
     designs.push(newDesign);
     await this.writeData(designs);
+
+    // generate masks for any images (optional)
+    try {
+      const { generateMaskFromBase64 } = await import('./maskGenerator');
+      let updated = false;
+      if (newDesign.image && typeof newDesign.image === 'string' && newDesign.image.startsWith('data:')) {
+        const r = await generateMaskFromBase64(newDesign.image, `design-${newDesign.id}-front`);
+        if (r) {
+          if (r.composite) newDesign.image = r.composite;
+          (newDesign as any).image_mask = r.mask;
+          updated = true;
+        }
+      }
+      if ((newDesign as any).back_image && typeof (newDesign as any).back_image === 'string' && (newDesign as any).back_image.startsWith('data:')) {
+        const r = await generateMaskFromBase64((newDesign as any).back_image, `design-${newDesign.id}-back`);
+        if (r) {
+          if (r.composite) (newDesign as any).back_image = r.composite;
+          (newDesign as any).back_image_mask = r.mask;
+          updated = true;
+        }
+      }
+      if (updated) {
+        // persist changes
+        const idx = designs.findIndex(d => d.id === newDesign.id);
+        if (idx !== -1) {
+          designs[idx] = newDesign;
+          await this.writeData(designs);
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
     return newDesign;
   }
 
@@ -73,6 +106,38 @@ export class JsonStorage implements IStorage {
     const updated = { ...designs[idx], ...changes } as Design;
     designs[idx] = updated;
     await this.writeData(designs);
+
+    // generate masks if image changed
+    try {
+      const { generateMaskFromBase64 } = await import('./maskGenerator');
+      let changed = false;
+
+      if (changes.image && typeof changes.image === 'string' && changes.image.startsWith('data:')) {
+        const r = await generateMaskFromBase64(changes.image, `design-${id}-front`);
+        if (r) {
+          if (r.composite) updated.image = r.composite as any;
+          (updated as any).image_mask = r.mask;
+          changed = true;
+        }
+      }
+
+      if ((changes as any).back_image && typeof (changes as any).back_image === 'string' && (changes as any).back_image.startsWith('data:')) {
+        const r = await generateMaskFromBase64((changes as any).back_image, `design-${id}-back`);
+        if (r) {
+          if (r.composite) (updated as any).back_image = r.composite as any;
+          (updated as any).back_image_mask = r.mask;
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        designs[idx] = updated;
+        await this.writeData(designs);
+      }
+    } catch (e) {
+      // ignore
+    }
+
     return updated;
   }
 

@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
+import { useLocation } from 'wouter';
 
 export default function SupplierDashboard() {
   const { token } = useAuth();
+  const [, setLocation] = useLocation();
   const [catalog, setCatalog] = useState<any>(null);
 
   useEffect(() => { (async () => {
@@ -71,6 +73,11 @@ export default function SupplierDashboard() {
                   ) : <div className="text-sm text-muted-foreground">No size chart</div>}
                 </div>
               </details>
+
+              <div className="mt-4 flex gap-2">
+                <button onClick={() => setLocation('/supplier/product/' + p.id)} className="px-3 py-1 bg-sky-600 text-white rounded text-sm">Place order</button>
+                <button onClick={() => { navigator.clipboard?.writeText(location.origin + '/product/' + p.slug); }} className="px-3 py-1 bg-gray-100 rounded text-sm">Copy URL</button>
+              </div>
               </CardContent>
             </Card>
           ))}

@@ -29,3 +29,11 @@ export async function updateProduct(req: Request, res: Response) {
   const p = await productsStore.updateProduct(id, body);
   return res.json(p);
 }
+
+export async function deleteProduct(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ message: 'invalid id' });
+  const p = await productsStore.softDeleteProduct(id);
+  if (!p) return res.status(404).json({ message: 'not found' });
+  return res.json({ success: true, product: p });
+}

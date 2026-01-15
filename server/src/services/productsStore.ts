@@ -1,6 +1,5 @@
 import { pool, db } from '../../db';
 import { slugify } from '../utils';
-import { storage } from '../services/storage';
 import * as catalog from './catalogStore';
 
 export async function createProduct(payload: {
@@ -12,94 +11,105 @@ export async function createProduct(payload: {
   colors?: number[];
   designs?: any; // { front: {...}, back: {...} }
   sizeChart?: Array<{ size_id: number; chest: number; length: number; shoulder: number }>;
+  inventory?: Array<{ color_id:number; size_id:number; quantity:number; price:number }>;
 }) {
   const slugBase = slugify(payload.name);
   if (pool) {
-    // ensure slug uniqueness by appending a numeric suffix if needed
+    // ensure slug uniqueness in products_full
     let slug = slugBase;
     let counter = 1;
     while (true) {
-      const exists = await pool.query('SELECT 1 FROM products WHERE lower(slug) = lower($1) LIMIT 1', [slug]);
+      const exists = await pool.query('SELECT 1 FROM products_full WHERE lower(slug) = lower($1) LIMIT 1', [slug]);
       if (!exists.rows.length) break;
       slug = `${slugBase}-${counter++}`;
     }
 
-    const res = await pool.query(
-      'INSERT INTO products (name, slug, single_price, bulk_min, bulk_price) VALUES ($1,$2,$3,$4,$5) RETURNING id, name, slug, single_price, bulk_min, bulk_price, created_at',
-      [payload.name, slug, payload.single_price || 0, payload.bulk_min || 100, payload.bulk_price || 0]
-    );
-    const product = res.rows[0];
-    const productId = product.id;
-
-    // sizes
-    if (payload.sizes && payload.sizes.length) {
-      for (const sizeId of payload.sizes) {
-        await pool.query('INSERT INTO product_sizes (product_id,size_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [productId, sizeId]);
-      }
-    }
-
-    // colors
-    if (payload.colors && payload.colors.length) {
-      for (const colorId of payload.colors) {
-        await pool.query('INSERT INTO product_colors (product_id,color_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [productId, colorId]);
-      }
-    }
-
-    // designs: use storage.createDesign and link product_id
+    const sizes = payload.sizes || [];
+    const colors = payload.colors || [];
+    const sizeChart = payload.sizeChart || [];
+    const designs = [] as any[];
     if (payload.designs) {
-      const designs = payload.designs;
-      if (designs.front) {
-        const d = await storage.createDesign({ ...designs.front, product: slug });
-        await pool.query('UPDATE designs SET product_id=$1 WHERE id=$2', [productId, (d as any).id]);
-      }
-      if (designs.back) {
-        const d = await storage.createDesign({ ...designs.back, product: slug });
-        await pool.query('UPDATE designs SET product_id=$1 WHERE id=$2', [productId, (d as any).id]);
-      }
+      if (payload.designs.front) designs.push({ side: 'front', ...payload.designs.front });
+      if (payload.designs.back) designs.push({ side: 'back', ...payload.designs.back });
     }
 
-    // size chart
-    if (payload.sizeChart && payload.sizeChart.length) {
-      for (const sc of payload.sizeChart) {
-        await catalog.upsertSizeChart({ product: slug, size_id: sc.size_id, chest: sc.chest, length: sc.length, shoulder: sc.shoulder });
+    // Server-side: generate masks and composites for any admin-provided base64 images to improve color swaps
+    try {
+      const { generateMaskFromBase64 } = await import('./maskGenerator');
+      for (const d of designs) {
+        if (d.image && typeof d.image === 'string' && d.image.startsWith('data:')) {
+          const res = await generateMaskFromBase64(d.image, `product-${slug}-${d.side}`);
+          if (res) {
+            if (res.composite) d.image = res.composite; // replace heavy base64 with a static composite file
+            d.image_mask = res.mask;
+          }
+        }
       }
+    } catch (e) {
+      // mask generation optional; log but continue
+      console.warn('mask generation failed at product create', e?.message || e);
     }
+    const inventory = payload.inventory || [];
 
-    return product;
+    const res = await pool.query(
+      `INSERT INTO products_full (name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, name, slug, single_price, bulk_min, bulk_price, created_at`, 
+      [payload.name, slug, payload.single_price || 0, payload.bulk_min || 100, payload.bulk_price || 0, JSON.stringify(sizes), JSON.stringify(colors), JSON.stringify(sizeChart), JSON.stringify(designs), JSON.stringify(inventory)]
+    );
+
+    return res.rows[0];
   }
 
-  // JSON fallback - not implemented, throw
   throw new Error('DB not configured');
 }
 
 export async function listProducts() {
   if (pool) {
-    const r = await pool.query('SELECT id, name, slug, single_price, bulk_min, bulk_price, created_at FROM products ORDER BY id');
-    // Convert numeric strings to numbers so clients don't have to handle it
-    return r.rows.map((row: any) => ({
-      ...row,
-      single_price: row.single_price !== null ? Number(row.single_price) : 0,
-      bulk_price: row.bulk_price !== null ? Number(row.bulk_price) : 0,
-    }));
+    // Exclude soft-deleted products by default
+    const r = await pool.query(`SELECT id, name, slug, single_price, bulk_min, bulk_price, created_at, designs FROM products_full WHERE COALESCE(is_deleted, false) = false ORDER BY id`);
+    return r.rows.map((row: any) => {
+      // ensure numeric coercion
+      const single_price = row.single_price !== null ? Number(row.single_price) : 0;
+      const bulk_price = row.bulk_price !== null ? Number(row.bulk_price) : 0;
+      // normalize designs into { front, back } shape if stored as array
+      const rawDesigns = row.designs || [];
+      let designs: any = {};
+      if (Array.isArray(rawDesigns)) {
+        for (const d of rawDesigns) {
+          if (!d) continue;
+          const side = (d.side || '').toLowerCase();
+          if (side === 'front') designs.front = d;
+          else if (side === 'back') designs.back = d;
+        }
+        // fallback: if array but no named sides, map by position
+        if (!designs.front && rawDesigns[0]) designs.front = rawDesigns[0];
+        if (!designs.back && rawDesigns[1]) designs.back = rawDesigns[1];
+      } else {
+        designs = rawDesigns;
+      }
+
+      return { ...row, single_price, bulk_price, designs };
+    });
   }
   return [];
 }
 
 export async function getProduct(id: number) {
   if (pool) {
-    const r = await pool.query('SELECT id, name, slug, single_price, bulk_min, bulk_price, created_at FROM products WHERE id=$1', [id]);
+    const r = await pool.query('SELECT id, name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory, is_deleted, deleted_at, updated_at, created_at FROM products_full WHERE id=$1', [id]);
     const prod = r.rows[0];
     if (!prod) return null;
-    // coerce numeric values
     prod.single_price = prod.single_price !== null ? Number(prod.single_price) : 0;
     prod.bulk_price = prod.bulk_price !== null ? Number(prod.bulk_price) : 0;
 
-    const sizes = (await pool.query('SELECT size_id FROM product_sizes WHERE product_id=$1 ORDER BY size_id', [id])).rows.map(r => r.size_id);
-    const colors = (await pool.query('SELECT color_id FROM product_colors WHERE product_id=$1 ORDER BY color_id', [id])).rows.map(r => r.color_id);
-    const sizeChart = await catalog.listSizeChart(prod.slug);
-    // designs by product_id
-    const designs = (await pool.query('SELECT * FROM designs WHERE product_id=$1 ORDER BY id', [id])).rows;
-    return { ...prod, sizes, colors, sizeChart, designs };
+    // sizes/colors are stored as arrays of ids
+    const sizes = prod.sizes || [];
+    const colors = prod.colors || [];
+    const sizeChart = prod.size_chart || [];
+    const designs = prod.designs || [];
+    const inventory = prod.inventory || [];
+
+    return { ...prod, sizes, colors, sizeChart, designs, inventory };
   }
   return null;
 }
@@ -113,66 +123,70 @@ export async function updateProduct(id: number, payload: {
   colors?: number[];
   designs?: any;
   sizeChart?: Array<{ size_id: number; chest: number; length: number; shoulder: number }>;
+  inventory?: Array<{ color_id:number; size_id:number; quantity:number; price:number }>;
 }) {
   if (!pool) throw new Error('DB not configured');
 
-  // Update product row
-  const slugBase = slugify(payload.name || '');
-  // If name changed, compute new unique slug; otherwise keep existing slug
+  // Name/slug handling
   let slug: string | null = null;
   if (payload.name) {
+    const slugBase = slugify(payload.name);
     slug = slugBase;
     let counter = 1;
     while (true) {
-      const exists = await pool.query('SELECT 1 FROM products WHERE lower(slug) = lower($1) AND id <> $2 LIMIT 1', [slug, id]);
+      const exists = await pool.query('SELECT 1 FROM products_full WHERE lower(slug) = lower($1) AND id <> $2 LIMIT 1', [slug, id]);
       if (!exists.rows.length) break;
       slug = `${slugBase}-${counter++}`;
     }
-    await pool.query('UPDATE products SET name=$1, slug=$2, single_price=$3, bulk_min=$4, bulk_price=$5 WHERE id=$6', [payload.name, slug, payload.single_price || 0, payload.bulk_min || 100, payload.bulk_price || 0, id]);
+    await pool.query('UPDATE products_full SET name=$1, slug=$2, single_price=$3, bulk_min=$4, bulk_price=$5, updated_at=now() WHERE id=$6', [payload.name, slug, payload.single_price || 0, payload.bulk_min || 100, payload.bulk_price || 0, id]);
   } else {
-    await pool.query('UPDATE products SET single_price=$1, bulk_min=$2, bulk_price=$3 WHERE id=$4', [payload.single_price || 0, payload.bulk_min || 100, payload.bulk_price || 0, id]);
-    const r = await pool.query('SELECT slug FROM products WHERE id=$1', [id]);
-    slug = r.rows[0]?.slug || slugBase;
+    await pool.query('UPDATE products_full SET single_price=$1, bulk_min=$2, bulk_price=$3, updated_at=now() WHERE id=$4', [payload.single_price || 0, payload.bulk_min || 100, payload.bulk_price || 0, id]);
+    const r = await pool.query('SELECT slug FROM products_full WHERE id=$1', [id]);
+    slug = r.rows[0]?.slug || null;
   }
 
-  // sizes - replace
-  await pool.query('DELETE FROM product_sizes WHERE product_id=$1', [id]);
-  if (payload.sizes && payload.sizes.length) {
-    for (const sizeId of payload.sizes) {
-      await pool.query('INSERT INTO product_sizes (product_id,size_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [id, sizeId]);
-    }
+  // replace sizes/colors/size_chart/designs/inventory if provided
+  if (payload.sizes) {
+    await pool.query('UPDATE products_full SET sizes=$1, updated_at=now() WHERE id=$2', [JSON.stringify(payload.sizes), id]);
   }
-
-  // colors - replace
-  await pool.query('DELETE FROM product_colors WHERE product_id=$1', [id]);
-  if (payload.colors && payload.colors.length) {
-    for (const colorId of payload.colors) {
-      await pool.query('INSERT INTO product_colors (product_id,color_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [id, colorId]);
-    }
+  if (payload.colors) {
+    await pool.query('UPDATE products_full SET colors=$1, updated_at=now() WHERE id=$2', [JSON.stringify(payload.colors), id]);
   }
-
-  // designs - remove old and create new ones
-  await pool.query('UPDATE designs SET product_id = NULL WHERE product_id = $1', [id]);
+  if (payload.sizeChart) {
+    await pool.query('UPDATE products_full SET size_chart=$1, updated_at=now() WHERE id=$2', [JSON.stringify(payload.sizeChart), id]);
+  }
   if (payload.designs) {
-    // delete previous design rows linked to this product
-    await pool.query('DELETE FROM designs WHERE product_id=$1', [id]);
-    const designs = payload.designs;
-    if (designs.front) {
-      const d = await storage.createDesign({ ...designs.front, product: slug });
-      await pool.query('UPDATE designs SET product_id=$1 WHERE id=$2', [id, (d as any).id]);
+    const designs = [] as any[];
+    if (payload.designs.front) designs.push({ side: 'front', ...payload.designs.front });
+    if (payload.designs.back) designs.push({ side: 'back', ...payload.designs.back });
+
+    // Server-side mask generation for provided images
+    try {
+      const { generateMaskFromBase64 } = await import('./maskGenerator');
+      for (const d of designs) {
+        if (d.image && typeof d.image === 'string' && d.image.startsWith('data:')) {
+          const res = await generateMaskFromBase64(d.image, `product-${id}-${d.side}`);
+          if (res) {
+            if (res.composite) d.image = res.composite; // replace base64 with static composite
+            d.image_mask = res.mask;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('mask generation failed at product update', e?.message || e);
     }
-    if (designs.back) {
-      const d = await storage.createDesign({ ...designs.back, product: slug });
-      await pool.query('UPDATE designs SET product_id=$1 WHERE id=$2', [id, (d as any).id]);
-    }
+
+    await pool.query('UPDATE products_full SET designs=$1, updated_at=now() WHERE id=$2', [JSON.stringify(designs), id]);
+  }
+  if (payload.inventory) {
+    await pool.query('UPDATE products_full SET inventory=$1, updated_at=now() WHERE id=$2', [JSON.stringify(payload.inventory), id]);
   }
 
-  // size chart
-  if (payload.sizeChart && payload.sizeChart.length) {
-    for (const sc of payload.sizeChart) {
-      await catalog.upsertSizeChart({ product: slug, size_id: sc.size_id, chest: sc.chest, length: sc.length, shoulder: sc.shoulder });
-    }
-  }
+  return getProduct(id);
+}
 
+export async function softDeleteProduct(id: number) {
+  if (!pool) throw new Error('DB not configured');
+  await pool.query('UPDATE products_full SET is_deleted = true, deleted_at = now(), updated_at = now() WHERE id=$1', [id]);
   return getProduct(id);
 }

@@ -13,6 +13,7 @@ import AdminClothes from '@/pages/admin/Clothes';
 import AdminRoute from '@/components/AdminRoute';
 import SupplierDashboard from '@/pages/supplier/Dashboard';
 import SupplierOrder from '@/pages/supplier/Order';
+import SupplierProductOrder from '@/pages/supplier/ProductOrder';
 import SupplierRoute from '@/components/SupplierRoute';
 
 function Router() {
@@ -27,6 +28,7 @@ function Router() {
       <Route path="/supplier/login" component={Login} />
       <SupplierRoute path="/supplier/dashboard" component={SupplierDashboard} />
       <SupplierRoute path="/supplier/order" component={SupplierOrder} />
+      <SupplierRoute path="/supplier/product/:id" component={SupplierProductOrder} />
       <Route component={NotFound} />
     </Switch>
   );
