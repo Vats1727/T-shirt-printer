@@ -44,11 +44,36 @@ To use Postgres for storage (recommended for persistence across restarts):
 2. Apply the DB migrations:
    - cd server && npm run db:push
 
-3. (Optional) Import existing designs from `designs.json` into the database:
-   - cd server && npm run db:import-json
-   - Or run both migrations + import in one step: `npm run db:setup`
+3. (Optional) Import existing data from JSON files into the database:
+   - Import designs: cd server && npm run db:import-json
+   - Import users: cd server && npm run db:import-users
+   - Or run migrations + imports in one step: `npm run db:setup` (this will also run the user import)
 
 4. Start the server with the DB enabled:
    - cd server && npm run server:dev
 
 You can verify the active storage type by hitting `GET /api/storage-type` which will return `{ type: "db" }` when DB is in use.
+
+To verify the users table and test registration end-to-end:
+
+1. Apply migrations and imports:
+   - cd server && npm run db:setup
+2. Start the server and register a user via the frontend `POST /register`.
+3. Check the DB (psql):
+   - psql -h $DB_HOST -U $DB_USER -d $DB_NAME -c "SELECT id, name, email, role, created_at FROM users ORDER BY id DESC LIMIT 10;"
+
+
+New features added:
+- Back side design support: Toggle "Front Side" / "Back Side" in the designer; each side preserves its own image, slogan, position, rotation, and scale. Back side uses template-specific back images (place `hoodie-back.png`, `t-shirt-back.png`, `women-teshirt-back.png` into `client/public/templates`).
+- Role-based authentication: JWT auth with `POST /api/auth/register` and `POST /api/auth/login`. Use roles `admin` and `supplier`.
+- Admin panel & APIs: `/api/admin/*` endpoints to manage colors, sizes, and inventory. Admin pages at `/admin/dashboard` and `/admin/clothes`.
+- Supplier panel & APIs: `/api/supplier/*` endpoints to fetch catalog and place orders. Supplier pages at `/supplier/dashboard` and `/supplier/order`.
+- DB schema & migrations: Added migrations to create catalog and orders, and to add back-side columns to `designs`.
+
+API summary:
+- POST /api/auth/register { name, email, password, role }
+- POST /api/auth/login { email, password } -> { token }
+- Admin (protected): GET/POST /api/admin/colors, GET/POST /api/admin/sizes, POST /api/admin/inventory
+- Supplier (protected): GET /api/supplier/catalog, POST /api/supplier/order
+
+See `server/migrations/0004_create_catalog.sql` and `server/migrations/0005_add_back_side.sql` for the SQL schema changes.

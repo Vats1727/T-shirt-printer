@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Card } from "@/components/ui/card";
 
 interface DesignCanvasProps {
+  side?: 'front' | 'back';
   slogan: string;
   color: string;
   template?: string;
@@ -15,12 +16,15 @@ interface DesignCanvasProps {
   imageRotation?: number;
   imagePosition?: { x: number; y: number };
   onImageMove?: (pos: { x: number; y: number }) => void;
+  /** optional background image for the canvas (data URL or URL) */
+  backgroundImage?: string | null;
   width?: number;
   height?: number;
   readonly?: boolean;
-}
+} 
 
 export function DesignCanvas({
+  side = 'front',
   slogan,
   color,
   templateColor,  template = 'tshirt',  textSize = 24,
@@ -35,27 +39,72 @@ export function DesignCanvas({
   width = 300,
   height = 300,
   readonly = false,
-}: DesignCanvasProps) {
+  backgroundImage = undefined,
+  showTemplate = false,
+}: DesignCanvasProps & { showTemplate?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const tshirtRef = useRef<HTMLImageElement | null>(null);
   const userImageRef = useRef<HTMLImageElement | null>(null);
+  const backgroundRef = useRef<HTMLImageElement | null>(null);
   
   const [isDragging, setIsDragging] = useState<'text' | 'image' | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
   // Load template image (tshirt, hoodie, etc.)
   useEffect(() => {
+    // If template drawing is disabled, skip loading any template asset and clear ref
+    if (!showTemplate) {
+      tshirtRef.current = null;
+      render();
+      return;
+    }
+
+    // Try to load an override template in public/attached_assets (e.g. /attached_assets/white-bg.jpg) first,
+    // then fall back to the product template in /templates.
     const img = new Image();
-    img.src = `/templates/${template}.png`;
+
+    const tryUrls: string[] = [];
+
+    // common override names (user-provided). We try jpg/png/jpeg variants
+    tryUrls.push('/attached_assets/white-bg.jpg', '/attached_assets/white-bg.png', '/attached_assets/white-bg.jpeg');
+
+    // Support back side images when side === 'back'
+    const tmpl = (side === 'back')
+      ? (template === 'tshirt' ? 't-shirt-back' : template === 'women_tshirt' ? 'women-teshirt-back' : template === 'unisex-hoodie' ? 'hoodie-back' : `${template}-back`)
+      : template;
+
+    // Default template path
+    tryUrls.push(`/templates/${tmpl}.png`, '/templates/tshirt.png');
+
+    let idx = 0;
+    const tryLoadNext = () => {
+      if (idx >= tryUrls.length) {
+        // all attempts failed
+        return;
+      }
+      const url = tryUrls[idx++];
+      img.src = url;
+    };
+
     img.onload = () => {
       tshirtRef.current = img;
       render();
     };
+
     img.onerror = () => {
-      // If template not available, fallback to tshirt
-      img.src = '/templates/tshirt.png';
+      // try next URL in the list
+      tryLoadNext();
     };
-  }, [template]);
+
+    // start attempts
+    tryLoadNext();
+
+    // cleanup
+    return () => {
+      img.onload = null as any;
+      img.onerror = null as any;
+    };
+  }, [template, side, showTemplate]);
 
   // Load user image
   useEffect(() => {
@@ -72,9 +121,24 @@ export function DesignCanvas({
     }
   }, [image]);
 
+  // Load background image
+  useEffect(() => {
+    if (backgroundImage) {
+      const img = new Image();
+      img.src = backgroundImage;
+      img.onload = () => {
+        backgroundRef.current = img;
+        render();
+      };
+    } else {
+      backgroundRef.current = null;
+      render();
+    }
+  }, [backgroundImage]);
+
   const render = () => {
     const canvas = canvasRef.current;
-    if (!canvas || !tshirtRef.current) return;
+    if (!canvas) return;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
@@ -83,58 +147,80 @@ export function DesignCanvas({
 
     ctx.clearRect(0, 0, width, height);
 
-    // Fill T-shirt template color with robust masking and preserve shading
-    if (templateColor) {
-      const off = document.createElement('canvas');
-      off.width = width;
-      off.height = height;
-      const offCtx = off.getContext('2d');
+    // Default to plain white background to avoid texture images showing through
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
 
-      // Draw template into a mask canvas to inspect alpha at the shirt center
-      const mask = document.createElement('canvas');
-      mask.width = width;
-      mask.height = height;
-      const maskCtx = mask.getContext('2d');
+    // Draw background image (cover) if provided (kept for compatibility, but UI removed by admin)
+    if (backgroundRef.current) {
+      const bg = backgroundRef.current;
+      const canvasW = width;
+      const canvasH = height;
+      // cover-fit the image similar to CSS background-size: cover
+      const ratio = Math.max(canvasW / bg.width, canvasH / bg.height);
+      const bgW = bg.width * ratio;
+      const bgH = bg.height * ratio;
+      const bgX = (canvasW - bgW) / 2;
+      const bgY = (canvasH - bgH) / 2;
+      ctx.drawImage(bg, bgX, bgY, bgW, bgH);
+    }
 
-      if (offCtx && maskCtx) {
-        maskCtx.drawImage(tshirtRef.current, 0, 0, width, height);
-        // sample center pixel (approx center of the shirt) to decide mask polarity
-        const center = maskCtx.getImageData(Math.floor(width / 2), Math.floor(height / 2), 1, 1).data;
-        const alphaCenter = center[3];
+    // Draw template only if showTemplate is true AND template image has been loaded
+    if (showTemplate && tshirtRef.current) {
+      // Fill T-shirt template color with robust masking and preserve shading
+      if (templateColor) {
+        const off = document.createElement('canvas');
+        off.width = width;
+        off.height = height;
+        const offCtx = off.getContext('2d');
 
-        // Fill with chosen color
-        offCtx.fillStyle = templateColor;
-        offCtx.fillRect(0, 0, width, height);
+        // Draw template into a mask canvas to inspect alpha at the shirt center
+        const mask = document.createElement('canvas');
+        mask.width = width;
+        mask.height = height;
+        const maskCtx = mask.getContext('2d');
 
-        // If template is opaque at the shirt center, template image marks the shirt area -> keep color where template is opaque
-        // Otherwise, template is opaque in background and transparent for shirt -> remove template pixels from color (destination-out)
-        if (alphaCenter > 128) {
-          offCtx.globalCompositeOperation = 'destination-in';
-          offCtx.drawImage(tshirtRef.current, 0, 0, width, height);
-          offCtx.globalCompositeOperation = 'source-over';
+        if (offCtx && maskCtx) {
+          maskCtx.drawImage(tshirtRef.current, 0, 0, width, height);
+          // sample center pixel (approx center of the shirt) to decide mask polarity
+          const center = maskCtx.getImageData(Math.floor(width / 2), Math.floor(height / 2), 1, 1).data;
+          const alphaCenter = center[3];
+
+          // Fill with chosen color
+          offCtx.fillStyle = templateColor;
+          offCtx.fillRect(0, 0, width, height);
+
+          // If template is opaque at the shirt center, template image marks the shirt area -> keep color where template is opaque
+          // Otherwise, template is opaque in background and transparent for shirt -> remove template pixels from color (destination-out)
+          if (alphaCenter > 128) {
+            offCtx.globalCompositeOperation = 'destination-in';
+            offCtx.drawImage(tshirtRef.current, 0, 0, width, height);
+            offCtx.globalCompositeOperation = 'source-over';
+          } else {
+            offCtx.globalCompositeOperation = 'destination-out';
+            offCtx.drawImage(tshirtRef.current, 0, 0, width, height);
+            offCtx.globalCompositeOperation = 'source-over';
+          }
+
+          // Draw the colored masked result onto the main canvas
+          ctx.drawImage(off, 0, 0);
+
+          // Now draw the template image on top in 'multiply' mode to apply shading/highlights
+          ctx.save();
+          ctx.globalCompositeOperation = 'multiply';
+          ctx.drawImage(tshirtRef.current, 0, 0, width, height);
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.restore();
         } else {
-          offCtx.globalCompositeOperation = 'destination-out';
-          offCtx.drawImage(tshirtRef.current, 0, 0, width, height);
-          offCtx.globalCompositeOperation = 'source-over';
+          // Fallback: just draw the template image if offscreen context not available
+          ctx.drawImage(tshirtRef.current, 0, 0, width, height);
         }
-
-        // Draw the colored masked result onto the main canvas
-        ctx.drawImage(off, 0, 0);
-
-        // Now draw the template image on top in 'multiply' mode to apply shading/highlights
-        ctx.save();
-        ctx.globalCompositeOperation = 'multiply';
-        ctx.drawImage(tshirtRef.current, 0, 0, width, height);
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.restore();
       } else {
-        // Fallback: just draw the template image if offscreen context not available
+        // Default behavior: draw template image
         ctx.drawImage(tshirtRef.current, 0, 0, width, height);
       }
-    } else {
-      // Default behavior: draw template image
-      ctx.drawImage(tshirtRef.current, 0, 0, width, height);
-    }
+    } // else skip drawing template entirely
+
 
     // Draw Image first (behind text)
     if (userImageRef.current && image) {
@@ -217,7 +303,7 @@ export function DesignCanvas({
 
   useEffect(() => {
     render();
-  }, [slogan, color, template, templateColor, textSize, textRotation, textPosition, image, imageScale, imageRotation, imagePosition, width, height]);
+  }, [slogan, color, template, templateColor, textSize, textRotation, textPosition, image, imageScale, imageRotation, imagePosition, width, height, backgroundImage]);
 
   const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
     if (readonly) return;

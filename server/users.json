@@ -1,0 +1,32 @@
+[
+  {
+    "id": 1,
+    "username": "admin",
+    "role": "admin",
+    "createdAt": "2026-01-14T15:35:09.089Z",
+    "password": "$2a$10$IXLbigCOEu6qaQ1SImUa5Os14pUVzD9Kz3QP4YyCKscYeX9p.6AWW"
+  },
+  {
+    "id": 2,
+    "username": "supplier1",
+    "role": "supplier",
+    "createdAt": "2026-01-14T15:35:09.327Z",
+    "password": "$2a$10$D7d78hPiSxN457DshI4KN.4Mw331aB6jyEIjUH.kUzQd/LEDG5Ko."
+  },
+  {
+    "id": 3,
+    "name": "Admin User",
+    "email": "admin@test.local",
+    "role": "admin",
+    "password": "$2b$10$0XIHarH86kntmrsN9ahYleBe.2Bk7H.gjeFC5LeTZo69pYAp7cHRG",
+    "createdAt": "2026-01-15T05:10:25.031Z"
+  },
+  {
+    "id": 4,
+    "name": "Admin",
+    "email": "admin@gmail.com",
+    "role": "admin",
+    "password": "$2b$10$wdbIx7BHHXfuQA92xuFi5uITyd/UeSuiIdrvBQy.X3cdcUreWp2lm",
+    "createdAt": "2026-01-15T05:12:23.989Z"
+  }
+]

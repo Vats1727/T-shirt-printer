@@ -1,27 +1,44 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 
-type User = { name?: string } | null;
+type User = { id?: number; name?: string; email?: string; role?: string } | null;
 
 type AuthContextValue = {
   user: User;
-  login: (user: User) => Promise<void>;
+  token?: string | null;
+  loginWithCredentials: (email: string, password: string) => Promise<void>;
   logout: () => void;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User>(null);
+import * as authService from '@/services/auth';
 
-  const login = async (u: User) => {
-    // Minimal placeholder — replace with real auth (API call / token storage) as needed.
-    setUser(u);
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User>(() => {
+    try {
+      const raw = localStorage.getItem('user');
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  });
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'));
+
+  const loginWithCredentials = async (email: string, password: string) => {
+    const res = await authService.login(email, password);
+    setToken(res.token);
+    setUser(res.user);
+    localStorage.setItem('token', res.token);
+    localStorage.setItem('user', JSON.stringify(res.user));
   };
 
-  const logout = () => setUser(null);
+  const logout = () => {
+    setToken(null);
+    setUser(null);
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+  };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
+    <AuthContext.Provider value={{ user, token, loginWithCredentials, logout }}>
       {children}
     </AuthContext.Provider>
   );

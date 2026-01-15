@@ -4,7 +4,6 @@
   "scripts": {
     "start": "npm --prefix server start",
     "dev": "start-server-and-test 'npm --prefix server start' http://localhost:5000 'npm --prefix client run dev'",
-    "dev:test": "node ./script/run-and-test.js",
     "dev:client": "npm --prefix client run dev"
   },
   "devDependencies": {
