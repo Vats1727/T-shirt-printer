@@ -1,53 +1,15 @@
 import { Request, Response } from 'express';
 import * as catalog from '../services/catalogStore';
 import * as productsStore from '../services/productsStore';
-import { storage, getStorageType } from '../services/storage';
 
 export async function getCatalog(req: Request, res: Response) {
   const data = await catalog.listCatalog();
   // include full product details for suppliers
   const list = await productsStore.listProducts();
   const products = [] as any[];
-
-  // Preload JSON storage designs if we're running in JSON mode (dev fallback)
-  let jsonDesigns: any[] = [];
-  try {
-    if (getStorageType() === 'json') {
-      jsonDesigns = await storage.getDesigns();
-    }
-  } catch (e) {
-    // ignore; storage may be DB-backed
-  }
-
   for (const p of list) {
     const full = await productsStore.getProduct(p.id);
-    if (!full) continue;
-
-    // If server is using JSON storage and there are JSON designs, merge matching designs by product name/slug
-    if (jsonDesigns && jsonDesigns.length) {
-      const normalize = (s: string) => (s || '').toString().toLowerCase().replace(/[^a-z0-9]/g, '');
-    const fullSlugNorm = normalize(full.slug || full.name || '');
-    const matched = jsonDesigns.filter((d: any) => {
-      const prodNameNorm = normalize(d.product || d.product || '');
-      // match when normalized names overlap (e.g., "T-shirt" -> "tshirt" should match "womens-tshirt" -> "womenstshirt")
-      return prodNameNorm && (prodNameNorm === fullSlugNorm || prodNameNorm.includes(fullSlugNorm) || fullSlugNorm.includes(prodNameNorm));
-    }).map((d: any) => ({ id: d.id, slogan: d.slogan, image: d.image, image_mask: d.image_mask || null, image_scale: d.imageScale || d.image_scale || 100, image_rotation: d.imageRotation || d.image_rotation || 0, image_position: d.imagePosition || d.image_position || { x: 150, y: 150 }, color: d.color, template: d.template || 'tshirt' }));
-
-      if (matched.length) {
-        // if products_full has no designs, populate it with matched JSON designs
-        if (!full.designs || (Array.isArray(full.designs) && full.designs.length === 0)) {
-          full.designs = matched;
-        } else {
-          // otherwise, merge any JSON designs that aren't already present (by id or image)
-          const existingImgs = new Set((full.designs || []).map((x: any) => x.image || x.id));
-          for (const m of matched) {
-            if (!existingImgs.has(m.image) && !existingImgs.has(m.id)) full.designs.push(m);
-          }
-        }
-      }
-    }
-
-    products.push(full);
+    if (full) products.push(full);
   }
   return res.json({ ...data, products });
 }

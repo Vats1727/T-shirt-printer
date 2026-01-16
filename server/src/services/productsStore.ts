@@ -32,23 +32,6 @@ export async function createProduct(payload: {
       if (payload.designs.front) designs.push({ side: 'front', ...payload.designs.front });
       if (payload.designs.back) designs.push({ side: 'back', ...payload.designs.back });
     }
-
-    // Server-side: generate masks and composites for any admin-provided base64 images to improve color swaps
-    try {
-      const { generateMaskFromBase64 } = await import('./maskGenerator');
-      for (const d of designs) {
-        if (d.image && typeof d.image === 'string' && d.image.startsWith('data:')) {
-          const res = await generateMaskFromBase64(d.image, `product-${slug}-${d.side}`);
-          if (res) {
-            if (res.composite) d.image = res.composite; // replace heavy base64 with a static composite file
-            d.image_mask = res.mask;
-          }
-        }
-      }
-    } catch (e) {
-      // mask generation optional; log but continue
-      console.warn('mask generation failed at product create', e?.message || e);
-    }
     const inventory = payload.inventory || [];
 
     const res = await pool.query(
@@ -159,23 +142,6 @@ export async function updateProduct(id: number, payload: {
     const designs = [] as any[];
     if (payload.designs.front) designs.push({ side: 'front', ...payload.designs.front });
     if (payload.designs.back) designs.push({ side: 'back', ...payload.designs.back });
-
-    // Server-side mask generation for provided images
-    try {
-      const { generateMaskFromBase64 } = await import('./maskGenerator');
-      for (const d of designs) {
-        if (d.image && typeof d.image === 'string' && d.image.startsWith('data:')) {
-          const res = await generateMaskFromBase64(d.image, `product-${id}-${d.side}`);
-          if (res) {
-            if (res.composite) d.image = res.composite; // replace base64 with static composite
-            d.image_mask = res.mask;
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('mask generation failed at product update', e?.message || e);
-    }
-
     await pool.query('UPDATE products_full SET designs=$1, updated_at=now() WHERE id=$2', [JSON.stringify(designs), id]);
   }
   if (payload.inventory) {

@@ -7,12 +7,15 @@ interface DesignCanvasProps {
   color: string;
   template?: string;
   templateColor?: string;
+  /** Optional override image to use as the shirt/template for this canvas (admin-provided full-shirt image) */
+  templateImage?: string;
+  /** An optional tint color to apply only to user images; if unset `color` is used instead */
+  imageTintColor?: string;
   textSize?: number;
   textRotation?: number;
   textPosition?: { x: number; y: number };
   onTextMove?: (pos: { x: number; y: number }) => void;
   image?: string | null;
-  imageMask?: string | null;
   imageScale?: number;
   imageRotation?: number;
   imagePosition?: { x: number; y: number };
@@ -22,8 +25,10 @@ interface DesignCanvasProps {
   width?: number;
   height?: number;
   readonly?: boolean;
-  /** Whether to tint images by the `color` prop (useful for logos) */
+  /** Whether to tint images by the `imageTintColor` or `color` prop (useful for logos) */
   tintImage?: boolean;
+  /** When true, always fill shirt with `templateColor` and skip drawing user/admin images. Useful for supplier previews. */
+  forceTemplateFill?: boolean;
 } 
 
 export function DesignCanvas({
@@ -35,13 +40,16 @@ export function DesignCanvas({
   textPosition = { x: 150, y: 135 },
   onTextMove,
   image,
-  imageMask = undefined,
   imageScale = 100,
   imageRotation = 0,
   imagePosition = { x: 150, y: 150 },
   onImageMove,
-  /** whether to tint user-uploaded images using the `color` prop */
+  templateImage = undefined,
+  imageTintColor = undefined,
+  /** whether to tint user-uploaded images using the `imageTintColor` or `color` prop */
   tintImage = false,
+  /** When true, skip drawing user/admin images and only fill template color (supplier preview use-case) */
+  forceTemplateFill = false,
   width = 300,
   height = 300,
   readonly = false,
@@ -52,7 +60,6 @@ export function DesignCanvas({
   const tshirtRef = useRef<HTMLImageElement | null>(null);
   const userImageRef = useRef<HTMLImageElement | null>(null);
   const backgroundRef = useRef<HTMLImageElement | null>(null);
-  const maskRef = useRef<HTMLImageElement | null>(null);
   
   const [isDragging, setIsDragging] = useState<'text' | 'image' | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -66,53 +73,29 @@ export function DesignCanvas({
       return;
     }
 
-    // Try to load an override template in public/attached_assets (e.g. /attached_assets/white-bg.jpg) first,
-    // then fall back to the product template in /templates.
     const img = new Image();
 
-    const tryUrls: string[] = [];
+    // If an admin-provided template image is supplied, use it directly and skip the default templates
+    if (templateImage) {
+      img.src = templateImage;
+      img.onload = () => {
+        tshirtRef.current = img;
+        try { console.debug('DesignCanvas: loaded admin template image', img.src, img.width, img.height); } catch (e) {}
+        render();
+      };
+      img.onerror = () => {
+        tshirtRef.current = null;
+        render();
+      };
 
-    // common override names (user-provided). We try jpg/png/jpeg variants
-    tryUrls.push('/attached_assets/white-bg.jpg', '/attached_assets/white-bg.png', '/attached_assets/white-bg.jpeg');
+      return () => { img.onload = null as any; img.onerror = null as any; };
+    }
 
-    // Support back side images when side === 'back'
-    const tmpl = (side === 'back')
-      ? (template === 'tshirt' ? 't-shirt-back' : template === 'women_tshirt' ? 'women-teshirt-back' : template === 'unisex-hoodie' ? 'hoodie-back' : `${template}-back`)
-      : template;
-
-    // Default template path
-    tryUrls.push(`/templates/${tmpl}.png`, '/templates/tshirt.png');
-
-    let idx = 0;
-    const tryLoadNext = () => {
-      if (idx >= tryUrls.length) {
-        // all attempts failed
-        return;
-      }
-      const url = tryUrls[idx++];
-      img.src = url;
-    };
-
-    img.onload = () => {
-      tshirtRef.current = img;
-      try { console.debug('DesignCanvas: loaded template', img.src, img.width, img.height); } catch (e) {}
-      render();
-    };
-
-    img.onerror = () => {
-      // try next URL in the list
-      tryLoadNext();
-    };
-
-    // start attempts
-    tryLoadNext();
-
-    // cleanup
-    return () => {
-      img.onload = null as any;
-      img.onerror = null as any;
-    };
-  }, [template, side, showTemplate]);
+    // If no admin template image is provided, don't load built-in templates — leave shirt blank
+    tshirtRef.current = null;
+    render();
+    return; 
+  }, [template, side, showTemplate, templateImage]);
 
   // Load user image
   useEffect(() => {
@@ -154,19 +137,6 @@ export function DesignCanvas({
       render();
     };
   }, [backgroundImage, image]);
-
-  // Load provided mask image (if any)
-  useEffect(() => {
-    if (imageMask) {
-      const img = new Image();
-      img.src = imageMask;
-      img.onload = () => { maskRef.current = img; try { console.debug('DesignCanvas: loaded mask', img.src); } catch (e) {} ; render(); };
-      img.onerror = () => { maskRef.current = null; render(); };
-    } else {
-      maskRef.current = null;
-      render();
-    }
-  }, [imageMask]);
 
   const render = () => {
     const canvas = canvasRef.current;
@@ -214,24 +184,175 @@ export function DesignCanvas({
 
         if (offCtx && maskCtx) {
           maskCtx.drawImage(tshirtRef.current, 0, 0, width, height);
-          // sample center pixel (approx center of the shirt) to decide mask polarity
-          const center = maskCtx.getImageData(Math.floor(width / 2), Math.floor(height / 2), 1, 1).data;
-          const alphaCenter = center[3];
+          // sample a small area around the center to decide mask polarity (more robust for back-side templates)
+          const sampleSize = 11; // 11x11 center sample
+          const sx = Math.max(0, Math.floor(width / 2 - sampleSize / 2));
+          const sy = Math.max(0, Math.floor(height / 2 - sampleSize / 2));
+          const sample = maskCtx.getImageData(sx, sy, Math.min(sampleSize, width - sx), Math.min(sampleSize, height - sy)).data;
+          let centerAlphaSum = 0;
+          for (let i = 0; i < sample.length; i += 4) centerAlphaSum += sample[i + 3];
+          const centerAlphaAvg = centerAlphaSum / (sample.length / 4);
+
+          // also sample corners to determine background opacity
+          const cornerBox = 5;
+          const cornerSamples = [];
+          const addCorner = (cx: number, cy: number) => {
+            const w = Math.min(cornerBox, width - cx);
+            const h = Math.min(cornerBox, height - cy);
+            const data = maskCtx.getImageData(cx, cy, w, h).data;
+            let s = 0;
+            for (let i = 0; i < data.length; i += 4) s += data[i + 3];
+            cornerSamples.push(s / (data.length / 4));
+          };
+          addCorner(0, 0);
+          addCorner(Math.max(0, width - cornerBox), 0);
+          addCorner(0, Math.max(0, height - cornerBox));
+          addCorner(Math.max(0, width - cornerBox), Math.max(0, height - cornerBox));
+          const cornerAlphaAvg = cornerSamples.reduce((a, b) => a + b, 0) / cornerSamples.length;
 
           // Fill with chosen color
           offCtx.fillStyle = templateColor;
           offCtx.fillRect(0, 0, width, height);
 
-          // If template is opaque at the shirt center, template image marks the shirt area -> keep color where template is opaque
-          // Otherwise, template is opaque in background and transparent for shirt -> remove template pixels from color (destination-out)
-          if (alphaCenter > 128) {
-            offCtx.globalCompositeOperation = 'destination-in';
-            offCtx.drawImage(tshirtRef.current, 0, 0, width, height);
-            offCtx.globalCompositeOperation = 'source-over';
+          // Decide polarity by comparing center vs corners: if center more opaque than corners, template likely marks shirt -> keep where opaque
+          // otherwise template is background-opaque and transparent at shirt -> remove template pixels from color (destination-out)
+          const useDestinationIn = centerAlphaAvg > cornerAlphaAvg;
+          const ambiguous = Math.abs(centerAlphaAvg - cornerAlphaAvg) < 10; // close values -> alpha ambiguous
+          try { console.debug('DesignCanvas: mask polarity', { side, centerAlphaAvg, cornerAlphaAvg, useDestinationIn, ambiguous, templateColor }); } catch(e) {}
+
+          if (!ambiguous) {
+            if (useDestinationIn) {
+              offCtx.globalCompositeOperation = 'destination-in';
+              offCtx.drawImage(tshirtRef.current, 0, 0, width, height);
+              offCtx.globalCompositeOperation = 'source-over';
+            } else {
+              offCtx.globalCompositeOperation = 'destination-out';
+              offCtx.drawImage(tshirtRef.current, 0, 0, width, height);
+              offCtx.globalCompositeOperation = 'source-over';
+            }
           } else {
-            offCtx.globalCompositeOperation = 'destination-out';
-            offCtx.drawImage(tshirtRef.current, 0, 0, width, height);
-            offCtx.globalCompositeOperation = 'source-over';
+            // Ambiguous alpha: build a color-based mask from the template image to isolate the hoodie area
+            try {
+              const tmplData = maskCtx.getImageData(0, 0, width, height);
+              // compute average corner color
+              const sampleBox = 5;
+              const cornerCoords = [
+                { x: 0, y: 0 },
+                { x: Math.max(0, width - sampleBox), y: 0 },
+                { x: 0, y: Math.max(0, height - sampleBox) },
+                { x: Math.max(0, width - sampleBox), y: Math.max(0, height - sampleBox) },
+              ];
+              let cr = 0, cg = 0, cb = 0, ca = 0, ccount = 0;
+              for (const c of cornerCoords) {
+                const w = Math.min(sampleBox, width - c.x);
+                const h = Math.min(sampleBox, height - c.y);
+                for (let yy = 0; yy < h; yy++) {
+                  for (let xx = 0; xx < w; xx++) {
+                    const idx = ((c.y + yy) * width + (c.x + xx)) * 4;
+                    cr += tmplData.data[idx];
+                    cg += tmplData.data[idx + 1];
+                    cb += tmplData.data[idx + 2];
+                    ca += tmplData.data[idx + 3];
+                    ccount++;
+                  }
+                }
+              }
+              if (ccount === 0) ccount = 1;
+              const bcR = Math.round(cr / ccount);
+              const bcG = Math.round(cg / ccount);
+              const bcB = Math.round(cb / ccount);
+              const bcA = Math.round(ca / ccount);
+
+              const colorDist = (r1: number, g1: number, b1: number, r2: number, g2: number, b2: number) => Math.sqrt(Math.pow(r1 - r2, 2) + Math.pow(g1 - g2, 2) + Math.pow(b1 - b2, 2));
+
+              const maskArr = new Uint8ClampedArray(width * height * 4);
+              const threshold = 30;
+              for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                  const idx = (y * width + x) * 4;
+                  const r = tmplData.data[idx];
+                  const g = tmplData.data[idx + 1];
+                  const b = tmplData.data[idx + 2];
+                  const a = tmplData.data[idx + 3];
+                  // require some visibility
+                  if (a < 8) {
+                    maskArr[idx] = maskArr[idx + 1] = maskArr[idx + 2] = 0;
+                    maskArr[idx + 3] = 0;
+                    continue;
+                  }
+
+                  const d = colorDist(r, g, b, bcR, bcG, bcB);
+                  if (d > threshold) {
+                    maskArr[idx] = maskArr[idx + 1] = maskArr[idx + 2] = 255;
+                    maskArr[idx + 3] = 255;
+                  } else {
+                    maskArr[idx] = maskArr[idx + 1] = maskArr[idx + 2] = 0;
+                    maskArr[idx + 3] = 0;
+                  }
+                }
+              }
+
+              // Put mask into a canvas and use destination-in with it to apply the color only where mask exists
+              const maskImg = new ImageData(maskArr, width, height);
+              const maskCanvas2 = document.createElement('canvas');
+              maskCanvas2.width = width; maskCanvas2.height = height;
+              const mctx = maskCanvas2.getContext('2d');
+              if (mctx) {
+                mctx.putImageData(maskImg, 0, 0);
+                // Smooth the mask by downscaling then upscaling (imageSmoothing) to anti-alias edges
+                try {
+                  // Prefer using canvas filter blur if available (smoother, non-pixelated)
+                  const tmp = document.createElement('canvas');
+                  tmp.width = width; tmp.height = height;
+                  const tctx = tmp.getContext('2d');
+                  if (tctx) {
+                    tctx.putImageData(maskImg, 0, 0);
+                    // apply blur on draw if supported
+                    if ('filter' in mctx) {
+                      mctx.clearRect(0, 0, width, height);
+                      (mctx as any).filter = 'blur(1.5px)';
+                      mctx.drawImage(tmp, 0, 0);
+                      (mctx as any).filter = 'none';
+                    } else {
+                      // fallback: gentle downscale/upscale (less aggressive than before)
+                      const small = document.createElement('canvas');
+                      small.width = Math.max(2, Math.floor(width / 4));
+                      small.height = Math.max(2, Math.floor(height / 4));
+                      const sctx = small.getContext('2d');
+                      if (sctx) {
+                        sctx.imageSmoothingEnabled = true;
+                        sctx.imageSmoothingQuality = 'high';
+                        sctx.drawImage(tmp, 0, 0, small.width, small.height);
+                        mctx.clearRect(0, 0, width, height);
+                        mctx.imageSmoothingEnabled = true;
+                        mctx.imageSmoothingQuality = 'high';
+                        mctx.drawImage(small, 0, 0, width, height);
+                      } else {
+                        mctx.putImageData(maskImg, 0, 0);
+                      }
+                    }
+                  } else {
+                    mctx.putImageData(maskImg, 0, 0);
+                  }
+                } catch (e) {
+                  // ignore smoothing failures and continue
+                }
+
+                offCtx.globalCompositeOperation = 'destination-in';
+                offCtx.drawImage(maskCanvas2, 0, 0);
+                offCtx.globalCompositeOperation = 'source-over';
+              } else {
+                // fallback to drawing template directly
+                offCtx.globalCompositeOperation = 'destination-in';
+                offCtx.drawImage(tshirtRef.current, 0, 0, width, height);
+                offCtx.globalCompositeOperation = 'source-over';
+              }
+            } catch (err) {
+              // on any error, fallback to previous alpha-based approach
+              offCtx.globalCompositeOperation = 'destination-in';
+              offCtx.drawImage(tshirtRef.current, 0, 0, width, height);
+              offCtx.globalCompositeOperation = 'source-over';
+            }
           }
 
           // Draw the colored masked result onto the main canvas
@@ -251,18 +372,31 @@ export function DesignCanvas({
         // Default behavior: draw template image
         ctx.drawImage(tshirtRef.current, 0, 0, width, height);
       }
+    } else if (showTemplate && !tshirtRef.current) {
+      // No admin template assigned -> draw a subtle placeholder to indicate missing admin image
+      ctx.save();
+      ctx.fillStyle = '#f3f4f6';
+      const pad = 20 * (width / 400);
+      ctx.fillRect(pad, pad, width - pad*2, height - pad*2);
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = `${14 * (width/400)}px 'Outfit', sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('No admin image assigned', width/2, height/2);
+      ctx.restore();
     } // else skip drawing template entirely
 
 
-    // Draw Image first (behind text). If tintImage is true, fill the image's alpha with `color` so logos follow selected color.
-    if (userImageRef.current && image) {
+    // Draw Image first (behind text). Only draw if image is explicitly provided (admin-assigned). If tintImage is true, fill the image's alpha with `imageTintColor` (or `color`) so logos follow selected color.
+    if (userImageRef.current && image && !forceTemplateFill) {
       const imgScale = (imageScale / 100) * scale;
       const imgWidth = Math.max(1, Math.floor(userImageRef.current.width * imgScale));
       const imgHeight = Math.max(1, Math.floor(userImageRef.current.height * imgScale));
 
       // prepare an offscreen canvas to draw a colorized image when requested
       const coversMostOfCanvas = imgWidth >= (width * 0.9) && imgHeight >= (height * 0.9);
-      if (tintImage && color) {
+      const tintColor = imageTintColor || color;
+      if (tintImage && tintColor) {
         const off = document.createElement('canvas');
         off.width = imgWidth;
         off.height = imgHeight;
@@ -273,46 +407,153 @@ export function DesignCanvas({
           try {
             const srcData = offCtx.getImageData(0, 0, imgWidth, imgHeight);
 
-            // If a server-provided mask image exists, prefer it (fast and deterministic)
-            if (maskRef.current) {
-              const w = imgWidth, h = imgHeight;
-              const mCanvas = document.createElement('canvas'); mCanvas.width = w; mCanvas.height = h;
-              const mctx = mCanvas.getContext('2d');
-              let mask = new Uint8ClampedArray(w*h*4);
-              let foregroundCount = 0;
-              if (mctx) {
-                mctx.drawImage(maskRef.current, 0, 0, w, h);
-                const maskData = mctx.getImageData(0,0,w,h);
-                for (let i=0;i<w*h;i++) {
-                  const idx = i*4;
-                  const a = maskData.data[idx+3];
-                  const r = maskData.data[idx], g = maskData.data[idx+1], b = maskData.data[idx+2];
-                  const lum = (r*0.299 + g*0.587 + b*0.114);
-                  if (a > 10 || lum > 128) { mask[idx]=mask[idx+1]=mask[idx+2]=255; mask[idx+3]=255; foregroundCount++; }
-                  else { mask[idx]=mask[idx+1]=mask[idx+2]=0; mask[idx+3]=0; }
+            // Quick alpha coverage test: if a large portion of the image has alpha > 10, treat as full-shirt photo and use template mask instead
+            let alphaCount = 0;
+            for (let i = 0; i < imgWidth * imgHeight; i++) { if (srcData.data[i*4 + 3] > 10) alphaCount++; }
+            const alphaRatio = alphaCount / (imgWidth * imgHeight);
+            if (alphaRatio > 0.6 && tshirtRef.current) {
+              // template-based fill for full-shirt photo
+              const fillCanvas = document.createElement('canvas');
+              fillCanvas.width = width; fillCanvas.height = height;
+              const fctx = fillCanvas.getContext('2d');
+              if (fctx) {
+                fctx.fillStyle = tintColor;
+                fctx.fillRect(0,0,width,height);
+                fctx.globalCompositeOperation = 'destination-in';
+                fctx.drawImage(tshirtRef.current, 0, 0, width, height);
+                fctx.globalCompositeOperation = 'source-over';
+
+                ctx.save(); ctx.globalAlpha = 0.95; ctx.drawImage(fillCanvas, 0, 0); ctx.restore();
+                ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.drawImage(tshirtRef.current, 0, 0, width, height); ctx.globalCompositeOperation='source-over'; ctx.restore();
+                return;
+              }
+            }
+
+            // detect background color by sampling the four corners (5x5 area) and averaging
+            const sampleBox = 5;
+            const cornerSamples: number[][] = [];
+            const addCorner = (sx: number, sy: number) => {
+              let r = 0, g = 0, b = 0, a = 0, count = 0;
+              for (let y = sy; y < Math.min(imgHeight, sy + sampleBox); y++) {
+                for (let x = sx; x < Math.min(imgWidth, sx + sampleBox); x++) {
+                  const idx = (y * imgWidth + x) * 4;
+                  r += srcData.data[idx];
+                  g += srcData.data[idx + 1];
+                  b += srcData.data[idx + 2];
+                  a += srcData.data[idx + 3];
+                  count++;
                 }
+              }
+              if (count === 0) return [0,0,0,0];
+              return [Math.round(r/count), Math.round(g/count), Math.round(b/count), Math.round(a/count)];
+            };
 
-                // simple smoothing
-                const toBinary = (m: Uint8ClampedArray) => { const b = new Uint8Array(w*h); for (let i=0;i<w*h;i++) b[i] = m[i*4+3] ? 1 : 0; return b; };
-                const fromBinary = (b: Uint8Array) => { const m = new Uint8ClampedArray(w*h*4); for (let i=0;i<w*h;i++) { const v=b[i]?255:0; const idx=i*4; m[idx]=m[idx+1]=m[idx+2]=v; m[idx+3]= b[i]?255:0; } return m; };
-                const dilate = (b: Uint8Array) => { const out = new Uint8Array(w*h); for (let y=0;y<h;y++) for (let x=0;x<w;x++) { let any=0; for (let yy=Math.max(0,y-1); yy<=Math.min(h-1,y+1); yy++) for (let xx=Math.max(0,x-1); xx<=Math.min(w-1,x+1); xx++) { if (b[yy*w+xx]) { any=1; break; } } out[y*w+x]=any; } return out; };
-                const erode = (b: Uint8Array) => { const out = new Uint8Array(w*h); for (let y=0;y<h;y++) for (let x=0;x<w;x++) { let all=1; for (let yy=Math.max(0,y-1); yy<=Math.min(h-1,y+1); yy++) for (let xx=Math.max(0,x-1); xx<=Math.min(w-1,x+1); xx++) { if (!b[yy*w+xx]) { all=0; break; } } out[y*w+x]=all; } return out; };
+            cornerSamples.push(addCorner(0,0));
+            cornerSamples.push(addCorner(imgWidth - sampleBox, 0));
+            cornerSamples.push(addCorner(0, imgHeight - sampleBox));
+            cornerSamples.push(addCorner(imgWidth - sampleBox, imgHeight - sampleBox));
 
-                let binary = toBinary(mask);
-                binary = dilate(binary);
-                binary = dilate(binary);
-                binary = erode(binary);
+            // average corners
+            let br = 0, bg = 0, bb = 0, ba = 0;
+            for (const c of cornerSamples) { br += c[0]; bg += c[1]; bb += c[2]; ba += c[3]; }
+            const bcR = Math.round(br / cornerSamples.length);
+            const bcG = Math.round(bg / cornerSamples.length);
+            const bcB = Math.round(bb / cornerSamples.length);
+            const bcA = Math.round(ba / cornerSamples.length);
 
-                mask = fromBinary(binary);
-                foregroundCount = binary.reduce((s,v)=>s+v,0);
+            const colorDist = (r1:number,g1:number,b1:number, r2:number,g2:number,b2:number) => Math.sqrt(Math.pow(r1-r2,2)+Math.pow(g1-g2,2)+Math.pow(b1-b2,2));
+
+            // build mask where pixels are considered 'design' if they are not close to background color and not transparent
+            const mask = new Uint8ClampedArray(imgWidth * imgHeight * 4);
+            const threshold = 40; // color distance threshold to treat as background
+            for (let i = 0; i < imgWidth * imgHeight; i++) {
+              const idx = i * 4;
+              const r = srcData.data[idx];
+              const g = srcData.data[idx + 1];
+              const b = srcData.data[idx + 2];
+              const a = srcData.data[idx + 3];
+
+              if (a < 10) {
+                mask[idx] = mask[idx+1] = mask[idx+2] = 0; mask[idx+3] = 0; // transparent
+                continue;
               }
 
-              const designFraction = foregroundCount / (w*h);
-              try { console.debug('DesignCanvas: design mask fraction (server)', designFraction); } catch(e) {}
+              const d = colorDist(r,g,b, bcR, bcG, bcB);
+              if (d < threshold) {
+                // pixel similar to corner background -> treat as background (mask alpha 0)
+                mask[idx] = mask[idx+1] = mask[idx+2] = 0; mask[idx+3] = 0;
+              } else {
+                // keep pixel
+                mask[idx] = mask[idx+1] = mask[idx+2] = 255; mask[idx+3] = 255;
+              }
+            }
 
-              if (designFraction < 0.005 || designFraction > 0.90) {
-                // fallback to drawing original
-                try { console.debug('DesignCanvas: skipping server mask tint, designFraction=', designFraction); } catch(e) {}
+            // create color canvas filled with selected color and mask it
+            const colorCanvas = document.createElement('canvas');
+            colorCanvas.width = imgWidth;
+            colorCanvas.height = imgHeight;
+            const cctx = colorCanvas.getContext('2d');
+            if (cctx) {
+              cctx.fillStyle = tintColor;
+              cctx.fillRect(0,0,imgWidth,imgHeight);
+
+              // Improve mask quality: perform a closing (dilate then erode) to fill holes and smooth edges
+              const processMask = (m: Uint8ClampedArray, w: number, h: number) => {
+                const copy = new Uint8ClampedArray(m);
+                const dilate = (src: Uint8ClampedArray) => {
+                  const out = new Uint8ClampedArray(src.length);
+                  for (let y = 0; y < h; y++) {
+                    for (let x = 0; x < w; x++) {
+                      let any = false;
+                      for (let yy = Math.max(0, y-1); yy <= Math.min(h-1, y+1); yy++) {
+                        for (let xx = Math.max(0, x-1); xx <= Math.min(w-1, x+1); xx++) {
+                          const idx = (yy * w + xx) * 4 + 3;
+                          if (src[idx] > 0) { any = true; break; }
+                        }
+                        if (any) break;
+                      }
+                      const idx0 = (y * w + x) * 4;
+                      out[idx0] = out[idx0+1] = out[idx0+2] = any ? 255 : 0;
+                      out[idx0+3] = any ? 255 : 0;
+                    }
+                  }
+                  return out;
+                };
+                const erode = (src: Uint8ClampedArray) => {
+                  const out = new Uint8ClampedArray(src.length);
+                  for (let y = 0; y < h; y++) {
+                    for (let x = 0; x < w; x++) {
+                      let all = true;
+                      for (let yy = Math.max(0, y-1); yy <= Math.min(h-1, y+1); yy++) {
+                        for (let xx = Math.max(0, x-1); xx <= Math.min(w-1, x+1); xx++) {
+                          const idx = (yy * w + xx) * 4 + 3;
+                          if (src[idx] === 0) { all = false; break; }
+                        }
+                        if (!all) break;
+                      }
+                      const idx0 = (y * w + x) * 4;
+                      out[idx0] = out[idx0+1] = out[idx0+2] = all ? 255 : 0;
+                      out[idx0+3] = all ? 255 : 0;
+                    }
+                  }
+                  return out;
+                };
+                // closing: dilate twice, then erode twice
+                let tmp = dilate(copy);
+                tmp = dilate(tmp);
+                tmp = erode(tmp);
+                tmp = erode(tmp);
+                return tmp;
+              };
+
+              const processed = processMask(mask, imgWidth, imgHeight);
+
+              // if processed mask covers almost entire image, fallback to drawing original image (avoid full recolor)
+              let nonZero = 0;
+              for (let i = 0; i < imgWidth * imgHeight; i++) { if (processed[i*4+3] > 0) nonZero++; }
+              const areaRatio = nonZero / (imgWidth * imgHeight);
+              if (areaRatio > 0.95) {
+                // too much of image considered design — likely full-photo; draw original
                 ctx.save();
                 ctx.translate(imagePosition.x * scale, imagePosition.y * scale);
                 ctx.rotate((imageRotation * Math.PI) / 180);
@@ -320,229 +561,40 @@ export function DesignCanvas({
                 ctx.drawImage(userImageRef.current, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
                 ctx.restore();
               } else {
-                const colorCanvas = document.createElement('canvas'); colorCanvas.width = imgWidth; colorCanvas.height = imgHeight;
-                const cctx = colorCanvas.getContext('2d');
-                if (cctx) {
-                  cctx.fillStyle = color; cctx.fillRect(0,0,imgWidth,imgHeight);
-                  const maskImg = new ImageData(mask, imgWidth, imgHeight);
-                  const maskCanvas = document.createElement('canvas'); maskCanvas.width = imgWidth; maskCanvas.height = imgHeight;
-                  const mctx2 = maskCanvas.getContext('2d');
-                  if (mctx2) { mctx2.putImageData(maskImg,0,0); cctx.globalCompositeOperation = 'destination-in'; cctx.drawImage(maskCanvas,0,0); cctx.globalCompositeOperation = 'source-over'; ctx.save(); ctx.translate(imagePosition.x * scale, imagePosition.y * scale); ctx.rotate((imageRotation * Math.PI) / 180); ctx.globalAlpha = 0.95; ctx.drawImage(colorCanvas, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight); ctx.restore(); } else { ctx.save(); ctx.translate(imagePosition.x * scale, imagePosition.y * scale); ctx.rotate((imageRotation * Math.PI) / 180); ctx.globalAlpha = 0.95; ctx.drawImage(userImageRef.current, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight); ctx.restore(); }
+                const maskImg = new ImageData(processed, imgWidth, imgHeight);
+                const maskCanvas = document.createElement('canvas');
+                maskCanvas.width = imgWidth;
+                maskCanvas.height = imgHeight;
+                const mctx = maskCanvas.getContext('2d');
+                if (mctx) {
+                  mctx.putImageData(maskImg, 0, 0);
+                  cctx.globalCompositeOperation = 'destination-in';
+                  cctx.drawImage(maskCanvas, 0, 0);
+                  cctx.globalCompositeOperation = 'source-over';
+
+                  ctx.save();
+                  ctx.translate(imagePosition.x * scale, imagePosition.y * scale);
+                  ctx.rotate((imageRotation * Math.PI) / 180);
+                  ctx.globalAlpha = 0.95;
+                  ctx.drawImage(colorCanvas, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
+                  ctx.restore();
+                } else {
+                  // fallback: draw original image
+                  ctx.save();
+                  ctx.translate(imagePosition.x * scale, imagePosition.y * scale);
+                  ctx.rotate((imageRotation * Math.PI) / 180);
+                  ctx.globalAlpha = 0.95;
+                  ctx.drawImage(userImageRef.current, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
+                  ctx.restore();
                 }
               }
-
             } else {
-              // detect background color by sampling the four corners (5x5 area) and averaging
-              const sampleBox = 5;
-              const cornerSamples: number[][] = [];
-              const addCorner = (sx: number, sy: number) => {
-                let r = 0, g = 0, b = 0, a = 0, count = 0;
-                for (let y = sy; y < Math.min(imgHeight, sy + sampleBox); y++) {
-                  for (let x = sx; x < Math.min(imgWidth, sx + sampleBox); x++) {
-                    const idx = (y * imgWidth + x) * 4;
-                    r += srcData.data[idx];
-                    g += srcData.data[idx + 1];
-                    b += srcData.data[idx + 2];
-                    a += srcData.data[idx + 3];
-                    count++;
-                  }
-                }
-                if (count === 0) return [0,0,0,0];
-                return [Math.round(r/count), Math.round(g/count), Math.round(b/count), Math.round(a/count)];
-              };
-
-              cornerSamples.push(addCorner(0,0));
-              cornerSamples.push(addCorner(imgWidth - sampleBox, 0));
-              cornerSamples.push(addCorner(0, imgHeight - sampleBox));
-              cornerSamples.push(addCorner(imgWidth - sampleBox, imgHeight - sampleBox));
-
-              // average corners
-              let br = 0, bg = 0, bb = 0, ba = 0;
-              for (const c of cornerSamples) { br += c[0]; bg += c[1]; bb += c[2]; ba += c[3]; }
-              const bcR = Math.round(br / cornerSamples.length);
-              const bcG = Math.round(bg / cornerSamples.length);
-              const bcB = Math.round(bb / cornerSamples.length);
-              const bcA = Math.round(ba / cornerSamples.length);
-
-              const colorDist = (r1:number,g1:number,b1:number, r2:number,g2:number,b2:number) => Math.sqrt(Math.pow(r1-r2,2)+Math.pow(g1-g2,2)+Math.pow(b1-b2,2));
-
-              // Robust background detection using flood-fill from corners.
-              // Mark background pixels by growing from corners while color distance is within threshold.
-              const visited = new Uint8Array(imgWidth * imgHeight);
-              const threshold = 60; // more tolerant threshold for photos/shading
-              const queue: Array<[number,number,number,number]> = []; // x,y, baseR, baseG packed? we'll store base sample per corner separately
-
-              const pushIfValid = (sx:number, sy:number) => {
-                if (sx < 0 || sx >= imgWidth || sy < 0 || sy >= imgHeight) return;
-                const idx = (sy * imgWidth + sx) * 4;
-                const a = srcData.data[idx + 3];
-                if (a < 10) return; // transparent pixels are not good seeds
-                if (visited[sy * imgWidth + sx]) return;
-                visited[sy * imgWidth + sx] = 1;
-                queue.push([sx, sy, srcData.data[idx], srcData.data[idx+1]]);
-              };
-
-              // Start flood fill from each corner
-              pushIfValid(0,0);
-              pushIfValid(imgWidth - 1, 0);
-              pushIfValid(0, imgHeight - 1);
-              pushIfValid(imgWidth - 1, imgHeight - 1);
-
-              // If image contains alpha channel, use alpha directly as mask (fast and accurate for PNG logos)
-              let mask = new Uint8ClampedArray(imgWidth * imgHeight * 4);
-              let foregroundCount = 0;
-              let hasAlpha = false;
-              for (let i = 3; i < srcData.data.length; i += 4) { if (srcData.data[i] < 255) { hasAlpha = true; break; } }
-
-              if (hasAlpha) {
-                for (let i = 0; i < imgWidth * imgHeight; i++) {
-                  const idx = i * 4;
-                  const a = srcData.data[idx + 3];
-                  if (a > 10) {
-                    mask[idx] = mask[idx+1] = mask[idx+2] = 255; mask[idx+3] = 255; foregroundCount++;
-                  } else {
-                    mask[idx] = mask[idx+1] = mask[idx+2] = 0; mask[idx+3] = 0;
-                  }
-                }
-              } else {
-                // We'll perform BFS, comparing to the pixel at the neighbor and the corner reference via color distance to the neighbor
-                const dir = [[1,0],[-1,0],[0,1],[0,-1]];
-                while (queue.length) {
-                  const [x,y] = queue.shift()!;
-                  const baseIdx = (y * imgWidth + x) * 4;
-                  const br = srcData.data[baseIdx], bgc = srcData.data[baseIdx+1], bb = srcData.data[baseIdx+2];
-                  for (const dxy of dir) {
-                    const nx = x + dxy[0]; const ny = y + dxy[1];
-                    if (nx < 0 || nx >= imgWidth || ny < 0 || ny >= imgHeight) continue;
-                    const nIdx = (ny * imgWidth + nx) * 4;
-                    if (visited[ny * imgWidth + nx]) continue;
-                    const na = srcData.data[nIdx+3];
-                    if (na < 10) { visited[ny * imgWidth + nx] = 1; continue; }
-                    const nr = srcData.data[nIdx], ng = srcData.data[nIdx+1], nb = srcData.data[nIdx+2];
-                    const dist = colorDist(nr,ng,nb, br, bgc, bb);
-                    if (dist <= threshold) {
-                      visited[ny * imgWidth + nx] = 1;
-                      queue.push([nx, ny, nr, ng]);
-                    }
-                  }
-                }
-
-                for (let i = 0; i < imgWidth * imgHeight; i++) {
-                  const idx = i * 4;
-                  const a = srcData.data[idx+3];
-                  if (a < 10) {
-                    mask[idx] = mask[idx+1] = mask[idx+2] = 0; mask[idx+3] = 0;
-                    continue;
-                  }
-                  if (visited[i]) {
-                    // background
-                    mask[idx] = mask[idx+1] = mask[idx+2] = 0; mask[idx+3] = 0;
-                  } else {
-                    // foreground/design
-                    mask[idx] = mask[idx+1] = mask[idx+2] = 255; mask[idx+3] = 255;
-                    foregroundCount++;
-                  }
-                }
-              }
-              // perform simple morphological closing (dilate then erode) to reduce speckles
-              const w = imgWidth, h = imgHeight;
-              const toBinary = (m: Uint8ClampedArray) => {
-                const b = new Uint8Array(w*h);
-                for (let i=0;i<w*h;i++) b[i] = m[i*4+3] ? 1 : 0;
-                return b;
-              };
-              const fromBinary = (b: Uint8Array) => {
-                const m = new Uint8ClampedArray(w*h*4);
-                for (let i=0;i<w*h;i++) {
-                  const v = b[i] ? 255 : 0;
-                  const idx = i*4; m[idx]=m[idx+1]=m[idx+2]=v; m[idx+3]= b[i] ? 255 : 0;
-                }
-                return m;
-              };
-              const dilate = (b: Uint8Array) => {
-                const out = new Uint8Array(w*h);
-                for (let y=0;y<h;y++) for (let x=0;x<w;x++) {
-                  let any = 0;
-                  for (let yy=Math.max(0,y-1); yy<=Math.min(h-1,y+1); yy++) for (let xx=Math.max(0,x-1); xx<=Math.min(w-1,x+1); xx++) {
-                    if (b[yy*w+xx]) { any = 1; break; }
-                  }
-                  out[y*w+x] = any;
-                }
-                return out;
-              };
-              const erode = (b: Uint8Array) => {
-                const out = new Uint8Array(w*h);
-                for (let y=0;y<h;y++) for (let x=0;x<w;x++) {
-                  let all = 1;
-                  for (let yy=Math.max(0,y-1); yy<=Math.min(h-1,y+1); yy++) for (let xx=Math.max(0,x-1); xx<=Math.min(w-1,x+1); xx++) {
-                    if (!b[yy*w+xx]) { all = 0; break; }
-                  }
-                  out[y*w+x] = all;
-                }
-                return out;
-              };
-              let binary = toBinary(mask);
-              binary = dilate(binary);
-              binary = dilate(binary);
-              binary = erode(binary);
-
-              mask = fromBinary(binary);
-
-              foregroundCount = binary.reduce((s,v)=>s+v,0);
-              const designFraction = foregroundCount / (w*h);
-              try { console.debug('DesignCanvas: design mask fraction (smoothed)', designFraction); } catch(e) {}
-
-              // If the detected design area is extremely noisy/small or almost the whole image, skip tinting
-              // (a very large fraction usually means background or full-bleed image)
-              if (designFraction < 0.005 || designFraction > 0.90) {
-                // fallback: draw original image and skip tint
-                try { console.debug('DesignCanvas: skipping tint, designFraction=', designFraction); } catch(e) {}
-                ctx.save();
-                ctx.translate(imagePosition.x * scale, imagePosition.y * scale);
-                ctx.rotate((imageRotation * Math.PI) / 180);
-                ctx.globalAlpha = 0.95;
-                ctx.drawImage(userImageRef.current, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
-                ctx.restore();
-              } else {
-                // create color canvas filled with selected color and mask it
-                if (designFraction >= 0.005) {
-                  const colorCanvas = document.createElement('canvas');
-                  colorCanvas.width = imgWidth;
-                  colorCanvas.height = imgHeight;
-                  const cctx = colorCanvas.getContext('2d');
-                  if (cctx) {
-                    cctx.fillStyle = color;
-                    cctx.fillRect(0,0,imgWidth,imgHeight);
-
-                    const maskImg = new ImageData(mask, imgWidth, imgHeight);
-                    const maskCanvas = document.createElement('canvas');
-                    maskCanvas.width = imgWidth;
-                    maskCanvas.height = imgHeight;
-                    const mctx = maskCanvas.getContext('2d');
-                    if (mctx) {
-                      mctx.putImageData(maskImg, 0, 0);
-                      cctx.globalCompositeOperation = 'destination-in';
-                      cctx.drawImage(maskCanvas, 0, 0);
-                      cctx.globalCompositeOperation = 'source-over';
-
-                      ctx.save();
-                      ctx.translate(imagePosition.x * scale, imagePosition.y * scale);
-                      ctx.rotate((imageRotation * Math.PI) / 180);
-                      ctx.globalAlpha = 0.95;
-                      ctx.drawImage(colorCanvas, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
-                      ctx.restore();
-                    } else {
-                      // fallback: draw original image
-                      ctx.save();
-                      ctx.translate(imagePosition.x * scale, imagePosition.y * scale);
-                      ctx.rotate((imageRotation * Math.PI) / 180);
-                      ctx.globalAlpha = 0.95;
-                      ctx.drawImage(userImageRef.current, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
-                      ctx.restore();
-                    }
-                  }
-                }
-              }
+              ctx.save();
+              ctx.translate(imagePosition.x * scale, imagePosition.y * scale);
+              ctx.rotate((imageRotation * Math.PI) / 180);
+              ctx.globalAlpha = 0.95;
+              ctx.drawImage(userImageRef.current, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
+              ctx.restore();
             }
           } catch (e) {
             // security error or failure; fallback to original draw
@@ -634,7 +686,7 @@ export function DesignCanvas({
 
   useEffect(() => {
     render();
-  }, [slogan, color, template, templateColor, textSize, textRotation, textPosition, image, imageMask, imageScale, imageRotation, imagePosition, width, height, backgroundImage]);
+  }, [slogan, color, template, templateColor, imageTintColor, textSize, textRotation, textPosition, image, imageScale, imageRotation, imagePosition, width, height, backgroundImage]);
 
   const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
     if (readonly) return;
