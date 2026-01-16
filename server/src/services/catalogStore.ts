@@ -219,3 +219,225 @@ export async function createOrder(supplier_id: number, items: Array<{ product?: 
   await writeJson(orderItemsFile, orderItems);
   return id;
 }
+
+// Create supplier order storing into supplier_orders and supplier_order_lines (supports design snapshots)
+export async function createSupplierOrder(supplier_id: number, placed_by: number | null, items: Array<{ product?: string; color_id: number; size_id: number; quantity: number; price: number; design_id?: number; design_snapshot?: any }>, shipping?: { customer_name?: string; customer_email?: string; shipping_address?: any; shipping_method?: string; shipping_cost_cents?: number }) {
+  if (db) {
+    // Insert into supplier_orders
+    const ins = await pool.query(
+      `INSERT INTO supplier_orders (supplier_id, placed_by, customer_name, customer_email, shipping_address, shipping_method, shipping_cost_cents, subtotal_cents, tax_cents, total_cents, currency) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+      [supplier_id, placed_by, shipping?.customer_name || null, shipping?.customer_email || null, shipping?.shipping_address || null, shipping?.shipping_method || null, shipping?.shipping_cost_cents || 0, 0, 0, 0, 'USD']
+    );
+    const orderId = ins.rows[0].id;
+
+    // Insert lines and decrement inventory
+    for (const it of items) {
+      const product = it.product || 'tshirt';
+      await pool.query(`INSERT INTO supplier_order_lines (order_id, design_id, design_snapshot, product_sku, size, color, quantity, unit_price_cents, line_total_cents) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [orderId, it.design_id || null, it.design_snapshot ? JSON.stringify(it.design_snapshot) : null, product, it.size_id ? String(it.size_id) : null, it.color_id ? String(it.color_id) : null, it.quantity, Math.round(Number(it.price) * 100), Math.round(Number(it.price) * it.quantity * 100) ]);
+
+      // Attempt to decrement cloth_inventory by matching product, color_id, size_id
+      try {
+        await pool.query('UPDATE cloth_inventory SET quantity = GREATEST(0, quantity - $1) WHERE product=$2 AND color_id=$3 AND size_id=$4', [it.quantity, product, it.color_id, it.size_id]);
+      } catch (e) {
+        // ignore inventory decrement failures
+      }
+    }
+
+    // compute totals (simplified) and update order
+    const totals = await pool.query('SELECT SUM(line_total_cents) as subtotal FROM supplier_order_lines WHERE order_id=$1', [orderId]);
+    const subtotal = totals.rows[0].subtotal || 0;
+    const tax = 0;
+    const total = subtotal + tax + (shipping?.shipping_cost_cents || 0);
+    await pool.query('UPDATE supplier_orders SET subtotal_cents=$1, tax_cents=$2, total_cents=$3 WHERE id=$4', [subtotal, tax, total, orderId]);
+
+    return orderId;
+  }
+
+  // Fallback to json storage for non-db mode
+  const ordersFile = path.resolve(dataDir, 'supplier_orders.json');
+  const orderItemsFile = path.resolve(dataDir, 'supplier_order_lines.json');
+  const orders = await readJson<any>(ordersFile);
+  const id = (orders.reduce((m, x) => Math.max(m, x.id || 0), 0) || 0) + 1;
+  const order = { id, supplier_id, placed_by, created_at: new Date().toISOString(), shipping };
+  orders.push(order);
+  await writeJson(ordersFile, orders);
+
+  const orderItems = await readJson<any>(orderItemsFile);
+  for (const it of items) {
+    const itemId = (orderItems.reduce((m, x) => Math.max(m, x.id || 0), 0) || 0) + 1;
+    orderItems.push({ id: itemId, order_id: id, ...it });
+    // decrement inventory file
+    const inv = await readJson<Inventory>(inventoryFile);
+    const found = inv.find(i => i.color_id === it.color_id && i.size_id === it.size_id);
+    if (found) {
+      found.quantity = Math.max(0, found.quantity - it.quantity);
+    }
+    await writeJson(inventoryFile, inv);
+  }
+  await writeJson(orderItemsFile, orderItems);
+  return id;
+}
+
+export async function listSupplierOrders(supplier_id: number) {
+  if (pool) {
+    const rows = await pool.query('SELECT * FROM supplier_orders WHERE supplier_id=$1 ORDER BY created_at DESC', [supplier_id]);
+    const orders = rows.rows;
+    for (const o of orders) {
+      const lines = await pool.query('SELECT * FROM supplier_order_lines WHERE order_id=$1', [o.id]);
+      o.items = lines.rows.map((l:any) => {
+        const ds = l.design_snapshot;
+        let parsed = null;
+        try { parsed = ds ? (typeof ds === 'string' ? JSON.parse(ds) : ds) : null; } catch (e) { parsed = ds; }
+        return { ...l, design_snapshot: parsed };
+      });
+    }
+    return orders;
+  }
+  const ordersFile = path.resolve(dataDir, 'supplier_orders.json');
+  const orderItemsFile = path.resolve(dataDir, 'supplier_order_lines.json');
+  const orders = await readJson<any>(ordersFile);
+  const items = await readJson<any>(orderItemsFile);
+  const filtered = orders.filter(o => o.supplier_id === supplier_id).map(o => ({ ...o, items: items.filter((it:any)=> it.order_id === o.id) }));
+  return filtered;
+}
+
+export async function getSupplierOrder(orderId: number) {
+  if (pool) {
+    const r = await pool.query('SELECT * FROM supplier_orders WHERE id=$1', [orderId]);
+    if (!r.rows.length) return null;
+    const o = r.rows[0];
+    const lines = await pool.query('SELECT * FROM supplier_order_lines WHERE order_id=$1', [o.id]);
+    o.items = lines.rows.map((l:any) => {
+      const ds = l.design_snapshot; let parsed = null; try { parsed = ds ? (typeof ds === 'string' ? JSON.parse(ds) : ds) : null; } catch(e) { parsed = ds; }
+      return { ...l, design_snapshot: parsed };
+    });
+    return o;
+  }
+  const ordersFile = path.resolve(dataDir, 'supplier_orders.json');
+  const orderItemsFile = path.resolve(dataDir, 'supplier_order_lines.json');
+  const orders = await readJson<any>(ordersFile);
+  const items = await readJson<any>(orderItemsFile);
+  const ord = orders.find(o => o.id === orderId);
+  if (!ord) return null;
+  ord.items = items.filter((it:any) => it.order_id === ord.id);
+  return ord;
+}
+
+// Admin: list all supplier orders and fetch by id
+export async function listAllSupplierOrdersForAdmin() {
+  const colors = await listColors();
+  const sizes = await listSizes();
+
+  if (pool) {
+    const rows = await pool.query('SELECT * FROM supplier_orders ORDER BY created_at DESC');
+    const orders = rows.rows;
+    for (const o of orders) {
+      const lines = await pool.query('SELECT * FROM supplier_order_lines WHERE order_id=$1', [o.id]);
+      o.items = lines.rows.map((l:any) => {
+        const ds = l.design_snapshot; let parsed = null; try { parsed = ds ? (typeof ds === 'string' ? JSON.parse(ds) : ds) : null; } catch(e) { parsed = ds; }
+        return { ...l, design_snapshot: parsed };
+      });
+    }
+
+    // Map colors/sizes into human values and sanitize ids where possible
+    const users = await pool.query('SELECT id, name, email FROM users WHERE id = ANY(ARRAY(SELECT DISTINCT supplier_id FROM supplier_orders))');
+    const usersMap: Record<number, any> = {};
+    for (const u of users.rows) usersMap[u.id] = u;
+
+    return orders.map((o:any) => sanitizeOrderForAdmin(o, usersMap, colors, sizes));
+  }
+
+  const ordersFile = path.resolve(dataDir, 'supplier_orders.json');
+  const orderItemsFile = path.resolve(dataDir, 'supplier_order_lines.json');
+  const orders = await readJson<any>(ordersFile);
+  const items = await readJson<any>(orderItemsFile);
+  const mapped = orders.map(o => ({ ...o, items: items.filter((it:any)=> it.order_id === o.id) }));
+  return mapped.map((o:any)=> sanitizeOrderForAdmin(o, {}, colors, sizes));
+}
+
+export async function getSupplierOrderForAdmin(orderId: number) {
+  const colors = await listColors();
+  const sizes = await listSizes();
+
+  const ord = await getSupplierOrder(orderId);
+  if (!ord) return null;
+
+  // load supplier info if possible
+  let user: any = null;
+  if (pool && ord.supplier_id) {
+    const r = await pool.query('SELECT id, name, email FROM users WHERE id=$1', [ord.supplier_id]);
+    if (r.rows.length) user = r.rows[0];
+  }
+
+  return sanitizeOrderForAdmin(ord, user ? { [user.id]: user } : {}, colors, sizes);
+}
+
+function sanitizeOrderForAdmin(order: any, usersMap: Record<number, any> | any, colors: any[], sizes: any[]) {
+  // shallow copy
+  const o = { ...order };
+  // replace supplier_id with supplier info (no ids)
+  if (o.supplier_id && usersMap && usersMap[o.supplier_id]) {
+    o.supplier = { name: usersMap[o.supplier_id].name || null, email: usersMap[o.supplier_id].email || null };
+  } else {
+    o.supplier = null;
+  }
+  delete o.supplier_id;
+  delete o.placed_by;
+  delete o.id;
+
+  // format totals
+  o.subtotal = (o.subtotal_cents || 0) / 100;
+  o.tax = (o.tax_cents || 0) / 100;
+  o.shipping = (o.shipping_cost_cents || 0) / 100;
+  o.total = (o.total_cents || 0) / 100;
+  delete o.subtotal_cents; delete o.tax_cents; delete o.shipping_cost_cents; delete o.total_cents;
+
+  // sanitize items
+  o.items = (o.items || []).map((it:any) => {
+    const copy: any = {};
+    copy.product = it.product_sku || it.product || null;
+
+    // map size id/label
+    let sizeLabel = it.size;
+    const sizeNum = Number(it.size);
+    if (!isNaN(sizeNum)) {
+      const sz = sizes.find((s:any) => Number(s.id) === sizeNum);
+      if (sz) sizeLabel = sz.label;
+    }
+    copy.size = sizeLabel || null;
+
+    // map color id -> hex/name if available
+    let colorLabel: any = it.color;
+    const colorNum = Number(it.color);
+    if (!isNaN(colorNum)) {
+      const c = colors.find((c:any) => Number(c.id) === colorNum);
+      if (c) colorLabel = { name: c.name, hex: c.hex };
+    }
+    copy.color = colorLabel || null;
+
+    copy.quantity = it.quantity || 0;
+    copy.unit_price = (it.unit_price_cents || 0) / 100;
+    copy.line_total = (it.line_total_cents || 0) / 100;
+
+    // design snapshot (remove nested ids like product_id, design_id)
+    if (it.design_snapshot) {
+      const ds = JSON.parse(JSON.stringify(it.design_snapshot));
+      // delete any id keys in snapshot recursively
+      const stripIds = (obj:any) => {
+        if (!obj || typeof obj !== 'object') return;
+        for (const k of Object.keys(obj)) {
+          if (k === 'id' || k.endsWith('_id')) delete obj[k];
+          else stripIds(obj[k]);
+        }
+      };
+      stripIds(ds);
+      copy.design_snapshot = ds;
+    } else {
+      copy.design_snapshot = null;
+    }
+
+    return copy;
+  });
+
+  return o;
+}

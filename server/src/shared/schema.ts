@@ -67,6 +67,93 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at').defaultNow(),
 });
 
+// Extended tables for new supplier flow
+export const designs_full = pgTable('designs_full', {
+  id: serial('id').primaryKey(),
+  user_id: integer('user_id'),
+  name: text('name'),
+  slug: text('slug'),
+  side: text('side').default('front'),
+  slogan: text('slogan'),
+  color: text('color'),
+  template: text('template'),
+  template_color: text('template_color'),
+  template_image_url: text('template_image_url'),
+  image_url: text('image_url'),
+  image_metadata: jsonb('image_metadata'),
+  image_scale: integer('image_scale').default(100),
+  image_rotation: integer('image_rotation').default(0),
+  image_pos_x: integer('image_pos_x').default(150),
+  image_pos_y: integer('image_pos_y').default(150),
+  text_size: integer('text_size').default(24),
+  text_rotation: integer('text_rotation').default(0),
+  text_pos_x: integer('text_pos_x').default(150),
+  text_pos_y: integer('text_pos_y').default(135),
+  image_tint_color: text('image_tint_color'),
+  tint_image: text('tint_image'),
+  force_template_fill: text('force_template_fill'),
+  background_image_url: text('background_image_url'),
+  width: integer('width').default(400),
+  height: integer('height').default(400),
+  layers: jsonb('layers'),
+  thumbnails: jsonb('thumbnails'),
+  rendered_url: text('rendered_url'),
+  metadata: jsonb('metadata'),
+  price_cents: integer('price_cents'),
+  currency: text('currency'),
+  is_public: text('is_public'),
+  is_archived: text('is_archived'),
+  version: integer('version'),
+  revision_of: integer('revision_of'),
+  hash: text('hash'),
+  created_at: timestamp('created_at').defaultNow(),
+  updated_at: timestamp('updated_at').defaultNow(),
+});
+
+export const design_assets = pgTable('design_assets', {
+  id: serial('id').primaryKey(),
+  design_id: integer('design_id'),
+  type: text('type'),
+  url: text('url'),
+  filename: text('filename'),
+  mime: text('mime'),
+  meta: jsonb('meta'),
+  created_at: timestamp('created_at').defaultNow()
+});
+
+export const supplier_orders = pgTable('supplier_orders', {
+  id: serial('id').primaryKey(),
+  supplier_id: integer('supplier_id'),
+  placed_by: integer('placed_by'),
+  customer_name: text('customer_name'),
+  customer_email: text('customer_email'),
+  shipping_address: jsonb('shipping_address'),
+  shipping_method: text('shipping_method'),
+  shipping_cost_cents: integer('shipping_cost_cents').default(0),
+  subtotal_cents: integer('subtotal_cents').default(0),
+  tax_cents: integer('tax_cents').default(0),
+  total_cents: integer('total_cents').default(0),
+  currency: text('currency').default('USD'),
+  status: text('status'),
+  notes: text('notes'),
+  created_at: timestamp('created_at').defaultNow(),
+  updated_at: timestamp('updated_at').defaultNow(),
+});
+
+export const supplier_order_lines = pgTable('supplier_order_lines', {
+  id: serial('id').primaryKey(),
+  order_id: integer('order_id'),  
+  design_id: integer('design_id'),
+  design_snapshot: jsonb('design_snapshot'),
+  product_sku: text('product_sku'),
+  size: text('size'),
+  color: text('color'),
+  quantity: integer('quantity'),
+  unit_price_cents: integer('unit_price_cents'),
+  line_total_cents: integer('line_total_cents'),
+  created_at: timestamp('created_at').defaultNow(),
+});
+
 export type Design = typeof designs.$inferSelect;
 export type InsertDesign = z.infer<typeof insertDesignSchema>;
 export type UserRow = typeof users.$inferSelect;

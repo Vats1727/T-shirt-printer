@@ -75,5 +75,6 @@ API summary:
 - POST /api/auth/login { email, password } -> { token }
 - Admin (protected): GET/POST /api/admin/colors, GET/POST /api/admin/sizes, POST /api/admin/inventory
 - Supplier (protected): GET /api/supplier/catalog, POST /api/supplier/order
+- Supplier Orders: GET /api/supplier/orders, GET /api/supplier/orders/:id (returns supplier-scoped orders and order details)
 
 See `server/migrations/0004_create_catalog.sql` and `server/migrations/0005_add_back_side.sql` for the SQL schema changes.

@@ -254,7 +254,6 @@ export default function SupplierProductOrder() {
     for (const [sidStr, q] of Object.entries(sizeQuantities || {})) {
       const qn = Number(q || 0);
       if (qn > 0) {
-        items.push({ product: product.slug || product.name || 'tshirt', color_id: selectedColor, size_id: Number(sidStr), quantity: qn });
         totalQty += qn;
       }
     }
@@ -262,9 +261,48 @@ export default function SupplierProductOrder() {
 
     // pricing: if bulk order and meets bulk_min, prefer bulk_price, else single_price
     const unitPrice = (orderType === 'bulk' && product.bulk_min && totalQty >= Number(product.bulk_min) && product.bulk_price) ? Number(product.bulk_price) : Number(product.single_price || 0);
-    // attach price per item
-    const pricedItems = items.map(it => ({ ...it, price: unitPrice }));
-    const res = await fetch('/api/supplier/order', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' }, body: JSON.stringify({ items: pricedItems }) });
+
+    // build design snapshot from front/back state (serialize minimal values)
+    const designSnapshot = {
+      product_id: product.id,
+      product_slug: product.slug,
+      front: {
+        slogan: frontState.slogan,
+        color: frontState.color,
+        template: frontState.template,
+        templateColor: frontState.templateColor,
+        image: frontState.image,
+        imageScale: frontState.imageScale,
+        imageRotation: frontState.imageRotation,
+        imagePosition: frontState.imagePosition,
+        textSize: frontState.textSize,
+        textRotation: frontState.textRotation,
+        textPosition: frontState.textPosition,
+      },
+      back: {
+        slogan: backState.slogan,
+        color: backState.color,
+        template: backState.template,
+        templateColor: backState.templateColor,
+        image: backState.image,
+        imageScale: backState.imageScale,
+        imageRotation: backState.imageRotation,
+        imagePosition: backState.imagePosition,
+        textSize: backState.textSize,
+        textRotation: backState.textRotation,
+        textPosition: backState.textPosition,
+      }
+    };
+
+    // create line items per-size with snapshot attached
+    for (const [sidStr, q] of Object.entries(sizeQuantities || {})) {
+      const qn = Number(q || 0);
+      if (qn > 0) {
+        items.push({ product: product.slug || product.name || 'tshirt', color_id: selectedColor, size_id: Number(sidStr), quantity: qn, price: unitPrice, design_snapshot: designSnapshot });
+      }
+    }
+
+    const res = await fetch('/api/supplier/order', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' }, body: JSON.stringify({ items, shipping: {} }) });
     if (!res.ok) {
       if (res.status === 401) {
         setError('Not authorized — please log in as a supplier');

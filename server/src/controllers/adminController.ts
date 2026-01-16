@@ -62,3 +62,29 @@ export async function deleteSizeChart(req: Request, res: Response) {
   await catalog.deleteSizeChart(product, size_id);
   return res.status(200).json({ ok: true });
 }
+
+// Admin: list all supplier orders (sanitized for admin view)
+export async function listOrders(_req: Request, res: Response) {
+  try {
+    const orders = await catalog.listAllSupplierOrdersForAdmin();
+    return res.json({ orders });
+  } catch (e) {
+    console.error('admin.listOrders error', e);
+    return res.status(500).json({ message: 'Failed to list orders' });
+  }
+}
+
+// Admin: get a single order by id (sanitized)
+export async function getOrder(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ message: 'id required' });
+  try {
+    const ord = await catalog.getSupplierOrderForAdmin(id);
+    if (!ord) return res.status(404).json({ message: 'Order not found' });
+    return res.json({ order: ord });
+  } catch (e) {
+    console.error('admin.getOrder error', e);
+    return res.status(500).json({ message: 'Failed to fetch order' });
+  }
+}
+

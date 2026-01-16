@@ -7,10 +7,18 @@ export default function SupplierDashboard() {
   const { token } = useAuth();
   const [, setLocation] = useLocation();
   const [catalog, setCatalog] = useState<any>(null);
+  const [orders, setOrders] = useState<any[]>([]);
 
   useEffect(() => { (async () => {
     const res = await fetch('/api/supplier/catalog', { headers: { Authorization: token ? `Bearer ${token}` : '' } });
     if (res.ok) setCatalog(await res.json());
+
+    // load recent orders
+    const res2 = await fetch('/api/supplier/orders', { headers: { Authorization: token ? `Bearer ${token}` : '' } });
+    if (res2.ok) {
+      const js = await res2.json();
+      setOrders(js.orders || []);
+    }
   })(); }, [token]);
 
   if (!catalog) return <div className="p-6">Loading...</div>;
@@ -80,6 +88,36 @@ export default function SupplierDashboard() {
               </div>
               </CardContent>
             </Card>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-8">
+        <h2 className="font-semibold mb-3">Recent Orders</h2>
+        {orders.length === 0 && <div className="text-sm text-muted-foreground">No recent orders</div>}
+        <div className="space-y-3">
+          {orders.map((o:any) => (
+            <div key={o.id} className="p-3 border rounded bg-white">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-semibold">Order #{o.id}</div>
+                  <div className="text-xs text-muted-foreground">Placed: {new Date(o.created_at).toLocaleString()}</div>
+                </div>
+                <div className="text-sm">
+                  <div>Total: <strong>${((o.total_cents||0)/100).toFixed(2)}</strong></div>
+                  <div className="text-xs text-muted-foreground">Status: {o.status || 'pending'}</div>
+                </div>
+              </div>
+              <div className="mt-2 text-sm">
+                {o.items && o.items.length ? o.items.slice(0,3).map((it:any, idx:number)=> (
+                  <div key={idx} className="flex items-center gap-3 py-1 border-t pt-2">
+                    <div>Qty: <strong>{it.quantity}</strong></div>
+                    <div>Size: <strong>{it.size}</strong></div>
+                    <div>Color: <strong>{it.color}</strong></div>
+                  </div>
+                )) : <div className="text-sm text-muted-foreground">No items</div>}
+              </div>
+            </div>
           ))}
         </div>
       </div>

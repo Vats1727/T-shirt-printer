@@ -10,6 +10,7 @@ import Register from "@/pages/Register";
 import { AuthProvider } from "@/contexts/AuthContext";
 import AdminDashboard from '@/pages/admin/Dashboard';
 import AdminClothes from '@/pages/admin/Clothes';
+import AdminOrders from '@/pages/admin/Orders';
 import AdminRoute from '@/components/AdminRoute';
 import SupplierDashboard from '@/pages/supplier/Dashboard';
 import SupplierOrder from '@/pages/supplier/Order';
@@ -25,6 +26,7 @@ function Router() {
       <Route path="/admin/login" component={Login} />
       <AdminRoute path="/admin/dashboard" component={AdminDashboard} />
       <AdminRoute path="/admin/clothes" component={AdminClothes} />
+      <AdminRoute path="/admin/orders" component={AdminOrders} />
       <Route path="/supplier/login" component={Login} />
       <SupplierRoute path="/supplier/dashboard" component={SupplierDashboard} />
       <SupplierRoute path="/supplier/order" component={SupplierOrder} />

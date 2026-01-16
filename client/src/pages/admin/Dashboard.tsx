@@ -55,8 +55,9 @@ export default function AdminDashboard() {
           <h2 className="text-lg font-semibold">Manage products, inventory and size charts</h2>
           <p className="text-sm text-muted-foreground mt-1">Create and manage products, sizes, colors and inventory from a single place.</p>
         </div>
-        <div>
+        <div className="flex gap-2">
           <button onClick={() => setLocation('/admin/clothes')} className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded">Create Product</button>
+          <button onClick={() => setLocation('/admin/orders')} className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-900 rounded">View Orders</button>
         </div>
       </div>
 

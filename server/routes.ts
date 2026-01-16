@@ -47,7 +47,9 @@ export async function registerRoutes(
     const data = await c.listCatalog();
     return res.json({ inventory: data.inventory });
   }));
-
+  // Admin orders
+  app.get('/api/admin/orders', requireAuth, requireRole('admin'), safe(adminCtrl.listOrders));
+  app.get('/api/admin/orders/:id', requireAuth, requireRole('admin'), safe(adminCtrl.getOrder));
   app.get('/api/admin/size-chart', requireAuth, requireRole('admin'), safe(adminCtrl.listSizeChart));
   app.post('/api/admin/size-chart', requireAuth, requireRole('admin'), safe(adminCtrl.upsertSizeChart));
   app.delete('/api/admin/size-chart', requireAuth, requireRole('admin'), safe(adminCtrl.deleteSizeChart));
@@ -66,6 +68,8 @@ export async function registerRoutes(
   const supplierCtrl = await import('./src/controllers/supplierController');
   app.get('/api/supplier/catalog', requireAuth, requireRole('supplier'), safe(supplierCtrl.getCatalog));
   app.post('/api/supplier/order', requireAuth, requireRole('supplier'), safe(supplierCtrl.placeOrder));
+  app.get('/api/supplier/orders', requireAuth, requireRole('supplier'), safe(supplierCtrl.listOrders));
+  app.get('/api/supplier/orders/:id', requireAuth, requireRole('supplier'), safe(supplierCtrl.getOrder));
 
   app.get('/api/storage-type', async (_req, res) => {
     try {

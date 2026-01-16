@@ -63,11 +63,15 @@ export const api = {
     },
     inventory: {
       upsert: { method: 'POST' as const, path: '/api/admin/inventory', input: z.object({ color_id: z.number(), size_id: z.number(), quantity: z.number(), price: z.number() }), responses: { 200: z.object({ id: z.number(), color_id: z.number(), size_id: z.number(), quantity: z.number(), price: z.number() }) } }
-    }
+    },
+    orders: { method: 'GET' as const, path: '/api/admin/orders', responses: { 200: z.object({ orders: z.array(z.any()) }) } },
+    order: { method: 'GET' as const, path: '/api/admin/orders/:id', responses: { 200: z.object({ order: z.any() }), 404: errorSchemas.validation } }
   },
   supplier: {
     catalog: { method: 'GET' as const, path: '/api/supplier/catalog', responses: { 200: z.object({ colors: z.array(z.object({ id: z.number(), name: z.string(), hex: z.string() })), sizes: z.array(z.object({ id: z.number(), label: z.string() })), inventory: z.array(z.object({ id: z.number(), color_id: z.number(), size_id: z.number(), quantity: z.number(), price: z.number() })) }) } },
-    order: { method: 'POST' as const, path: '/api/supplier/order', input: z.object({ items: z.array(z.object({ color_id: z.number(), size_id: z.number(), quantity: z.number(), price: z.number() })) }), responses: { 201: z.object({ id: z.number() }), 400: errorSchemas.validation } }
+    order: { method: 'POST' as const, path: '/api/supplier/order', input: z.object({ items: z.array(z.object({ color_id: z.number(), size_id: z.number(), quantity: z.number(), price: z.number(), design_id: z.number().optional(), design_snapshot: z.any().optional() })), shipping: z.object({ customer_name: z.string().optional(), customer_email: z.string().optional(), shipping_address: z.any().optional(), shipping_method: z.string().optional(), shipping_cost_cents: z.number().optional() }).optional() }), responses: { 201: z.object({ id: z.number() }), 400: errorSchemas.validation } },
+    ordersList: { method: 'GET' as const, path: '/api/supplier/orders', responses: { 200: z.object({ orders: z.array(z.any()) }) } },
+    ordersGet: { method: 'GET' as const, path: '/api/supplier/orders/:id', responses: { 200: z.object({ order: z.any() }), 404: errorSchemas.validation } }
   }
 };
 
