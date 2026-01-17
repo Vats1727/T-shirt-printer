@@ -11,13 +11,30 @@ export type Color = { id: number; name: string; hex: string };
 export type Size = { id: number; label: string };
 export type Inventory = { id: number; color_id: number; size_id: number; quantity: number; price: number };
 
+// Small file cache to avoid reading JSON on every request (improves dev perf)
+const fileCache: Record<string, { ts: number; data: any[] }> = {};
+const FILE_CACHE_TTL = 2000; // 2s
+
 async function readJson<T>(file: string): Promise<T[]> {
+  const now = Date.now();
+  const cached = fileCache[file];
+  if (cached && now - cached.ts < FILE_CACHE_TTL) return cached.data as T[];
+
   try {
     const raw = await fs.readFile(file, 'utf8');
-    return JSON.parse(raw) as T[];
+    const parsed = JSON.parse(raw) as T[];
+    fileCache[file] = { ts: now, data: parsed };
+    return parsed;
   } catch {
+    fileCache[file] = { ts: now, data: [] };
     return [];
   }
+}
+
+// Helper to invalidate a file cache (used on writes)
+async function writeJsonAndInvalidate<T>(file: string, data: T[]) {
+  await fs.writeFile(file, JSON.stringify(data, null, 2), 'utf8');
+  fileCache[file] = { ts: Date.now(), data: data as any };
 }
 async function writeJson<T>(file: string, data: T[]) { await fs.writeFile(file, JSON.stringify(data, null, 2), 'utf8'); }
 
@@ -104,7 +121,7 @@ export async function upsertInventory(payload: { product?: string; color_id: num
     found = { id, product, ...payload } as any;
     items.push(found);
   }
-  await writeJson(inventoryFile, items);
+  await writeJsonAndInvalidate(inventoryFile, items);
   return found;
 }
 
@@ -202,7 +219,7 @@ export async function createOrder(supplier_id: number, items: Array<{ product?: 
   const id = (orders.reduce((m, x) => Math.max(m, x.id || 0), 0) || 0) + 1;
   const order = { id, supplier_id, created_at: new Date().toISOString() };
   orders.push(order);
-  await writeJson(ordersFile, orders);
+  await writeJsonAndInvalidate(ordersFile, orders);
 
   const orderItems = await readJson<any>(orderItemsFile);
   for (const it of items) {
@@ -213,10 +230,10 @@ export async function createOrder(supplier_id: number, items: Array<{ product?: 
     const found = inv.find(i => i.color_id === it.color_id && i.size_id === it.size_id);
     if (found) {
       found.quantity = Math.max(0, found.quantity - it.quantity);
+      await writeJsonAndInvalidate(inventoryFile, inv);
     }
-    await writeJson(inventoryFile, inv);
   }
-  await writeJson(orderItemsFile, orderItems);
+  await writeJsonAndInvalidate(orderItemsFile, orderItems);
   return id;
 }
 

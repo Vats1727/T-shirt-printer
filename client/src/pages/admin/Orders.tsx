@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { useLocation } from 'wouter';
+import { DesignCanvas } from '@/components/design/DesignCanvas';
 
 export default function AdminOrders() {
   const { token } = useAuth();
@@ -88,9 +89,38 @@ export default function AdminOrders() {
                       <div>Unit price: ${(it.unit_price || 0).toFixed(2)}</div>
                       <div>Line total: ${(it.line_total || 0).toFixed(2)}</div>
                       {it.design_snapshot && (
-                        <details className="mt-2"><summary className="cursor-pointer text-sky-600">View design snapshot</summary>
-                          <pre className="text-xs whitespace-pre-wrap mt-2">{JSON.stringify(it.design_snapshot, null, 2)}</pre>
-                        </details>
+                        <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 items-start">
+                          <div className="w-full">
+                            <div className="border rounded overflow-hidden bg-white p-2">
+                              <div className="text-xs text-muted-foreground mb-1">Design preview</div>
+                              <DesignCanvas
+                                width={220}
+                                height={220}
+                                readonly
+                                showTemplate={true}
+                                slogan={it.design_snapshot.front?.slogan || ''}
+                                color={it.design_snapshot.front?.color || (it.design_snapshot.front?.templateColor || '#000')}
+                                template={it.design_snapshot.front?.template || 'tshirt'}
+                                templateColor={it.design_snapshot.front?.templateColor || undefined}
+                                templateImage={it.design_snapshot.front?.templateImage || undefined}
+                                image={it.design_snapshot.front?.image || undefined}
+                                imageScale={it.design_snapshot.front?.imageScale || 100}
+                                imageRotation={it.design_snapshot.front?.imageRotation || 0}
+                                imagePosition={it.design_snapshot.front?.imagePosition || { x: 150, y: 150 }}
+                                textSize={it.design_snapshot.front?.textSize || 24}
+                                textRotation={it.design_snapshot.front?.textRotation || 0}
+                                textPosition={it.design_snapshot.front?.textPosition || { x: 150, y: 135 }}
+                                tintImage={false}
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <details className="mt-2"><summary className="cursor-pointer text-sky-600">View design snapshot (raw)</summary>
+                              <pre className="text-xs whitespace-pre-wrap mt-2">{JSON.stringify(it.design_snapshot, null, 2)}</pre>
+                            </details>
+                          </div>
+                        </div>
                       )}
                     </div>
                   ))}

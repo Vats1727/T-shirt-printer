@@ -58,44 +58,116 @@ export function DesignCanvas({
 }: DesignCanvasProps & { showTemplate?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const tshirtRef = useRef<HTMLImageElement | null>(null);
+  // Optional separate mask image (silhouette only) used to clip templateColor so card/background art isn't colored
+  const maskRef = useRef<HTMLImageElement | null>(null);
   const userImageRef = useRef<HTMLImageElement | null>(null);
   const backgroundRef = useRef<HTMLImageElement | null>(null);
   
   const [isDragging, setIsDragging] = useState<'text' | 'image' | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
-  // Load template image (tshirt, hoodie, etc.)
+  // Load template image (tshirt, hoodie, etc.) and an optional separate mask
   useEffect(() => {
-    // If template drawing is disabled, skip loading any template asset and clear ref
+    // If template drawing is disabled, skip loading any template asset and clear refs
     if (!showTemplate) {
       tshirtRef.current = null;
-      render();
+      maskRef.current = null;
+      scheduleRender();
       return;
     }
 
-    const img = new Image();
+    // Clear any previous mask when template changes so we don't reuse an old silhouette
+    maskRef.current = null;
 
-    // If an admin-provided template image is supplied, use it directly and skip the default templates
-    if (templateImage) {
-      img.src = templateImage;
-      img.onload = () => {
-        tshirtRef.current = img;
-        try { console.debug('DesignCanvas: loaded admin template image', img.src, img.width, img.height); } catch (e) {}
-        render();
-      };
-      img.onerror = () => {
-        tshirtRef.current = null;
-        render();
-      };
-
+    // Helper to load a single image src into a ref with safe onload/onerror handling
+    const loadInto = (src: string | null, target: React.MutableRefObject<HTMLImageElement | null>, debugName: string) => {
+      if (!src) { target.current = null; scheduleRender(); return () => {} };
+      const img = new Image(); img.src = src;
+      img.onload = () => { target.current = img; try { console.debug(`DesignCanvas: loaded ${debugName}`, src, img.width, img.height); } catch(e) {} scheduleRender(); };
+      img.onerror = () => { target.current = null; scheduleRender(); };
       return () => { img.onload = null as any; img.onerror = null as any; };
+    };
+
+    // Auto-generate a mask by sampling all four corners for background color and thresholding
+    const tryAutoMaskFromTshirt = () => {
+      if (maskRef.current || !tshirtRef.current) return;
+      try {
+        const img = tshirtRef.current as HTMLImageElement;
+        const off = document.createElement('canvas');
+        off.width = img.naturalWidth || img.width;
+        off.height = img.naturalHeight || img.height;
+        const octx = off.getContext('2d');
+        if (!octx) return;
+        octx.drawImage(img, 0, 0, off.width, off.height);
+        const data = octx.getImageData(0,0,off.width,off.height).data;
+
+        // sample small blocks in each corner (top-left, top-right, bottom-left, bottom-right)
+        const sampleBlock = (sx:number, sy:number, sw:number, sh:number) => {
+          const s = octx.getImageData(sx, sy, sw, sh).data; let r=0,g=0,b=0,c=0;
+          for (let i=0;i<s.length;i+=4){ r+=s[i]; g+=s[i+1]; b+=s[i+2]; c++; }
+          return [r/c, g/c, b/c];
+        };
+
+        const sw = Math.min(6, off.width), sh = Math.min(6, off.height);
+        const tl = sampleBlock(0,0,sw,sh);
+        const tr = sampleBlock(off.width-sw,0,sw,sh);
+        const bl = sampleBlock(0,off.height-sh,sw,sh);
+        const br = sampleBlock(off.width-sw,off.height-sh,sw,sh);
+        const bgR = Math.round((tl[0]+tr[0]+bl[0]+br[0]) / 4);
+        const bgG = Math.round((tl[1]+tr[1]+bl[1]+br[1]) / 4);
+        const bgB = Math.round((tl[2]+tr[2]+bl[2]+br[2]) / 4);
+
+        const mask = document.createElement('canvas'); mask.width = off.width; mask.height = off.height;
+        const mctx = mask.getContext('2d'); if (!mctx) return;
+        const mdata = mctx.createImageData(off.width, off.height);
+
+        const THRESH = 60;
+        for (let y=0, di=0; y<off.height; y++){
+          for (let x=0; x<off.width; x++, di+=4){
+            const r = data[di], g = data[di+1], b = data[di+2], a = data[di+3];
+            const dr = r - bgR, dg = g - bgG, db = b - bgB;
+            const dist = Math.sqrt(dr*dr + dg*dg + db*db);
+            if (a > 10 && dist > THRESH) {
+              mdata.data[di] = 255; mdata.data[di+1] = 255; mdata.data[di+2] = 255; mdata.data[di+3] = 255;
+            } else {
+              mdata.data[di] = 0; mdata.data[di+1] = 0; mdata.data[di+2] = 0; mdata.data[di+3] = 0;
+            }
+          }
+        }
+
+        mctx.putImageData(mdata, 0, 0);
+        const generated = new Image(); generated.src = mask.toDataURL('image/png');
+        generated.onload = () => { maskRef.current = generated; scheduleRender(); };
+      } catch (e) {
+        // silent
+      }
+    };
+
+    // If an admin-provided template image is supplied, use it directly and also try to load a dedicated mask asset
+    if (templateImage) {
+      const cleanupImg = loadInto(templateImage, tshirtRef, 'admin template image');
+      // try mask asset based on provided template name (non-critical; fail silently)
+      const maskPath = `/templates/${template}-mask.png`;
+      const cleanupMask = loadInto(maskPath, maskRef, 'template mask');
+      // schedule auto-mask generation if no mask asset exists after load
+      setTimeout(tryAutoMaskFromTshirt, 80);
+      return () => { cleanupImg(); cleanupMask(); };
     }
 
-    // If no admin template image is provided, don't load built-in templates — leave shirt blank
-    tshirtRef.current = null;
-    render();
-    return; 
+    // No explicit image provided — try to use a product template asset and optional mask
+    const defaultSrc = `/templates/${template}.png`;
+    const defaultMask = `/templates/${template}-mask.png`;
+    const cleanupDefault = loadInto(defaultSrc, tshirtRef, 'default template image');
+    const cleanupDefaultMask = loadInto(defaultMask, maskRef, 'default template mask');
+    // attempt auto-mask when using default template as well
+    setTimeout(tryAutoMaskFromTshirt, 120);
+    return () => { cleanupDefault(); cleanupDefaultMask(); };
   }, [template, side, showTemplate, templateImage]);
+
+  // debounced render trigger to avoid excessive synchronous work
+  useEffect(() => {
+    scheduleRender();
+  }, [slogan, color, template, templateColor, imageTintColor, textSize, textRotation, textPosition, image, imageScale, imageRotation, imagePosition, width, height, backgroundImage]);
 
   // Load user image
   useEffect(() => {
@@ -105,11 +177,11 @@ export function DesignCanvas({
       img.onload = () => {
         userImageRef.current = img;
         try { console.debug('DesignCanvas: loaded user image', img.src, img.width, img.height); } catch(e) {}
-        render();
+        scheduleRender();
       };
     } else {
       userImageRef.current = null;
-      render();
+      scheduleRender();
     }
   }, [image]);
 
@@ -117,7 +189,7 @@ export function DesignCanvas({
   useEffect(() => {
     if (!backgroundImage) {
       backgroundRef.current = null;
-      render();
+      scheduleRender();
       return;
     }
 
@@ -125,7 +197,7 @@ export function DesignCanvas({
     if (image && backgroundImage === image) {
       try { console.debug('DesignCanvas: skipping background load because it matches user image', backgroundImage); } catch (e) {}
       backgroundRef.current = null;
-      render();
+      scheduleRender();
       return;
     }
 
@@ -134,519 +206,78 @@ export function DesignCanvas({
     img.onload = () => {
       backgroundRef.current = img;
       try { console.debug('DesignCanvas: loaded background image', img.src, img.width, img.height); } catch(e) {}
-      render();
+      scheduleRender();
     };
   }, [backgroundImage, image]);
 
-  const render = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+  // Use requestAnimationFrame to batch frequent render calls and avoid blocking the main thread
+  let renderScheduled = false;
+  const scheduleRender = () => {
+    if (renderScheduled) return;
+    renderScheduled = true;
+    window.requestAnimationFrame(() => {
+      renderScheduled = false;
+      doRender();
+    });
+  };
 
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
+  const doRender = () => {
+    const canvas = canvasRef.current; if (!canvas) return;
+    const ctx = canvas.getContext('2d'); if (!ctx) return;
     const scale = width / 400;
 
     ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, width, height);
 
-    // Default to plain white background to avoid texture images showing through
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, width, height);
-
-    // Draw background image (cover) if provided (kept for compatibility, but UI removed by admin)
     if (backgroundRef.current) {
-      const bg = backgroundRef.current;
-      const canvasW = width;
-      const canvasH = height;
-      // cover-fit the image similar to CSS background-size: cover
-      const ratio = Math.max(canvasW / bg.width, canvasH / bg.height);
-      const bgW = bg.width * ratio;
-      const bgH = bg.height * ratio;
-      const bgX = (canvasW - bgW) / 2;
-      const bgY = (canvasH - bgH) / 2;
+      const bg = backgroundRef.current; const ratio = Math.max(width / bg.width, height / bg.height);
+      const bgW = bg.width * ratio; const bgH = bg.height * ratio; const bgX = (width - bgW) / 2; const bgY = (height - bgH) / 2;
       ctx.drawImage(bg, bgX, bgY, bgW, bgH);
     }
 
-    // Draw template only if showTemplate is true AND template image has been loaded
-    if (showTemplate && tshirtRef.current) {
-      // Fill T-shirt template color with robust masking and preserve shading
+    if (showTemplate) {
+      // Prefer a dedicated mask if available to clip templateColor only to the garment silhouette (avoids coloring card/background art that may exist inside template images)
       if (templateColor) {
-        const off = document.createElement('canvas');
-        off.width = width;
-        off.height = height;
-        const offCtx = off.getContext('2d');
-
-        // Draw template into a mask canvas to inspect alpha at the shirt center
-        const mask = document.createElement('canvas');
-        mask.width = width;
-        mask.height = height;
-        const maskCtx = mask.getContext('2d');
-
-        if (offCtx && maskCtx) {
-          maskCtx.drawImage(tshirtRef.current, 0, 0, width, height);
-          // sample a small area around the center to decide mask polarity (more robust for back-side templates)
-          const sampleSize = 11; // 11x11 center sample
-          const sx = Math.max(0, Math.floor(width / 2 - sampleSize / 2));
-          const sy = Math.max(0, Math.floor(height / 2 - sampleSize / 2));
-          const sample = maskCtx.getImageData(sx, sy, Math.min(sampleSize, width - sx), Math.min(sampleSize, height - sy)).data;
-          let centerAlphaSum = 0;
-          for (let i = 0; i < sample.length; i += 4) centerAlphaSum += sample[i + 3];
-          const centerAlphaAvg = centerAlphaSum / (sample.length / 4);
-
-          // also sample corners to determine background opacity
-          const cornerBox = 5;
-          const cornerSamples = [];
-          const addCorner = (cx: number, cy: number) => {
-            const w = Math.min(cornerBox, width - cx);
-            const h = Math.min(cornerBox, height - cy);
-            const data = maskCtx.getImageData(cx, cy, w, h).data;
-            let s = 0;
-            for (let i = 0; i < data.length; i += 4) s += data[i + 3];
-            cornerSamples.push(s / (data.length / 4));
-          };
-          addCorner(0, 0);
-          addCorner(Math.max(0, width - cornerBox), 0);
-          addCorner(0, Math.max(0, height - cornerBox));
-          addCorner(Math.max(0, width - cornerBox), Math.max(0, height - cornerBox));
-          const cornerAlphaAvg = cornerSamples.reduce((a, b) => a + b, 0) / cornerSamples.length;
-
-          // Fill with chosen color
-          offCtx.fillStyle = templateColor;
-          offCtx.fillRect(0, 0, width, height);
-
-          // Decide polarity by comparing center vs corners: if center more opaque than corners, template likely marks shirt -> keep where opaque
-          // otherwise template is background-opaque and transparent at shirt -> remove template pixels from color (destination-out)
-          const useDestinationIn = centerAlphaAvg > cornerAlphaAvg;
-          const ambiguous = Math.abs(centerAlphaAvg - cornerAlphaAvg) < 10; // close values -> alpha ambiguous
-          try { console.debug('DesignCanvas: mask polarity', { side, centerAlphaAvg, cornerAlphaAvg, useDestinationIn, ambiguous, templateColor }); } catch(e) {}
-
-          if (!ambiguous) {
-            if (useDestinationIn) {
-              offCtx.globalCompositeOperation = 'destination-in';
-              offCtx.drawImage(tshirtRef.current, 0, 0, width, height);
-              offCtx.globalCompositeOperation = 'source-over';
-            } else {
-              offCtx.globalCompositeOperation = 'destination-out';
-              offCtx.drawImage(tshirtRef.current, 0, 0, width, height);
-              offCtx.globalCompositeOperation = 'source-over';
-            }
-          } else {
-            // Ambiguous alpha: build a color-based mask from the template image to isolate the hoodie area
-            try {
-              const tmplData = maskCtx.getImageData(0, 0, width, height);
-              // compute average corner color
-              const sampleBox = 5;
-              const cornerCoords = [
-                { x: 0, y: 0 },
-                { x: Math.max(0, width - sampleBox), y: 0 },
-                { x: 0, y: Math.max(0, height - sampleBox) },
-                { x: Math.max(0, width - sampleBox), y: Math.max(0, height - sampleBox) },
-              ];
-              let cr = 0, cg = 0, cb = 0, ca = 0, ccount = 0;
-              for (const c of cornerCoords) {
-                const w = Math.min(sampleBox, width - c.x);
-                const h = Math.min(sampleBox, height - c.y);
-                for (let yy = 0; yy < h; yy++) {
-                  for (let xx = 0; xx < w; xx++) {
-                    const idx = ((c.y + yy) * width + (c.x + xx)) * 4;
-                    cr += tmplData.data[idx];
-                    cg += tmplData.data[idx + 1];
-                    cb += tmplData.data[idx + 2];
-                    ca += tmplData.data[idx + 3];
-                    ccount++;
-                  }
-                }
-              }
-              if (ccount === 0) ccount = 1;
-              const bcR = Math.round(cr / ccount);
-              const bcG = Math.round(cg / ccount);
-              const bcB = Math.round(cb / ccount);
-              const bcA = Math.round(ca / ccount);
-
-              const colorDist = (r1: number, g1: number, b1: number, r2: number, g2: number, b2: number) => Math.sqrt(Math.pow(r1 - r2, 2) + Math.pow(g1 - g2, 2) + Math.pow(b1 - b2, 2));
-
-              const maskArr = new Uint8ClampedArray(width * height * 4);
-              const threshold = 30;
-              for (let y = 0; y < height; y++) {
-                for (let x = 0; x < width; x++) {
-                  const idx = (y * width + x) * 4;
-                  const r = tmplData.data[idx];
-                  const g = tmplData.data[idx + 1];
-                  const b = tmplData.data[idx + 2];
-                  const a = tmplData.data[idx + 3];
-                  // require some visibility
-                  if (a < 8) {
-                    maskArr[idx] = maskArr[idx + 1] = maskArr[idx + 2] = 0;
-                    maskArr[idx + 3] = 0;
-                    continue;
-                  }
-
-                  const d = colorDist(r, g, b, bcR, bcG, bcB);
-                  if (d > threshold) {
-                    maskArr[idx] = maskArr[idx + 1] = maskArr[idx + 2] = 255;
-                    maskArr[idx + 3] = 255;
-                  } else {
-                    maskArr[idx] = maskArr[idx + 1] = maskArr[idx + 2] = 0;
-                    maskArr[idx + 3] = 0;
-                  }
-                }
-              }
-
-              // Put mask into a canvas and use destination-in with it to apply the color only where mask exists
-              const maskImg = new ImageData(maskArr, width, height);
-              const maskCanvas2 = document.createElement('canvas');
-              maskCanvas2.width = width; maskCanvas2.height = height;
-              const mctx = maskCanvas2.getContext('2d');
-              if (mctx) {
-                mctx.putImageData(maskImg, 0, 0);
-                // Smooth the mask by downscaling then upscaling (imageSmoothing) to anti-alias edges
-                try {
-                  // Prefer using canvas filter blur if available (smoother, non-pixelated)
-                  const tmp = document.createElement('canvas');
-                  tmp.width = width; tmp.height = height;
-                  const tctx = tmp.getContext('2d');
-                  if (tctx) {
-                    tctx.putImageData(maskImg, 0, 0);
-                    // apply blur on draw if supported
-                    if ('filter' in mctx) {
-                      mctx.clearRect(0, 0, width, height);
-                      (mctx as any).filter = 'blur(1.5px)';
-                      mctx.drawImage(tmp, 0, 0);
-                      (mctx as any).filter = 'none';
-                    } else {
-                      // fallback: gentle downscale/upscale (less aggressive than before)
-                      const small = document.createElement('canvas');
-                      small.width = Math.max(2, Math.floor(width / 4));
-                      small.height = Math.max(2, Math.floor(height / 4));
-                      const sctx = small.getContext('2d');
-                      if (sctx) {
-                        sctx.imageSmoothingEnabled = true;
-                        sctx.imageSmoothingQuality = 'high';
-                        sctx.drawImage(tmp, 0, 0, small.width, small.height);
-                        mctx.clearRect(0, 0, width, height);
-                        mctx.imageSmoothingEnabled = true;
-                        mctx.imageSmoothingQuality = 'high';
-                        mctx.drawImage(small, 0, 0, width, height);
-                      } else {
-                        mctx.putImageData(maskImg, 0, 0);
-                      }
-                    }
-                  } else {
-                    mctx.putImageData(maskImg, 0, 0);
-                  }
-                } catch (e) {
-                  // ignore smoothing failures and continue
-                }
-
-                offCtx.globalCompositeOperation = 'destination-in';
-                offCtx.drawImage(maskCanvas2, 0, 0);
-                offCtx.globalCompositeOperation = 'source-over';
-              } else {
-                // fallback to drawing template directly
-                offCtx.globalCompositeOperation = 'destination-in';
-                offCtx.drawImage(tshirtRef.current, 0, 0, width, height);
-                offCtx.globalCompositeOperation = 'source-over';
-              }
-            } catch (err) {
-              // on any error, fallback to previous alpha-based approach
-              offCtx.globalCompositeOperation = 'destination-in';
-              offCtx.drawImage(tshirtRef.current, 0, 0, width, height);
-              offCtx.globalCompositeOperation = 'source-over';
-            }
-          }
-
-          // Draw the colored masked result onto the main canvas
-          ctx.drawImage(off, 0, 0);
-
-          // Now draw the template image on top in 'multiply' mode to apply shading/highlights
-          ctx.save();
-          ctx.globalCompositeOperation = 'multiply';
-          ctx.drawImage(tshirtRef.current, 0, 0, width, height);
-          ctx.globalCompositeOperation = 'source-over';
-          ctx.restore();
-        } else {
-          // Fallback: just draw the template image if offscreen context not available
-          ctx.drawImage(tshirtRef.current, 0, 0, width, height);
-        }
-      } else {
-        // Default behavior: draw template image
-        ctx.drawImage(tshirtRef.current, 0, 0, width, height);
-      }
-    } else if (showTemplate && !tshirtRef.current) {
-      // No admin template assigned -> draw a subtle placeholder to indicate missing admin image
-      ctx.save();
-      ctx.fillStyle = '#f3f4f6';
-      const pad = 20 * (width / 400);
-      ctx.fillRect(pad, pad, width - pad*2, height - pad*2);
-      ctx.fillStyle = '#9ca3af';
-      ctx.font = `${14 * (width/400)}px 'Outfit', sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('No admin image assigned', width/2, height/2);
-      ctx.restore();
-    } // else skip drawing template entirely
-
-
-    // Draw Image first (behind text). Only draw if image is explicitly provided (admin-assigned). If tintImage is true, fill the image's alpha with `imageTintColor` (or `color`) so logos follow selected color.
-    if (userImageRef.current && image && !forceTemplateFill) {
-      const imgScale = (imageScale / 100) * scale;
-      const imgWidth = Math.max(1, Math.floor(userImageRef.current.width * imgScale));
-      const imgHeight = Math.max(1, Math.floor(userImageRef.current.height * imgScale));
-
-      // prepare an offscreen canvas to draw a colorized image when requested
-      const coversMostOfCanvas = imgWidth >= (width * 0.9) && imgHeight >= (height * 0.9);
-      const tintColor = imageTintColor || color;
-      if (tintImage && tintColor) {
-        const off = document.createElement('canvas');
-        off.width = imgWidth;
-        off.height = imgHeight;
-        const offCtx = off.getContext('2d');
-        if (offCtx) {
-          offCtx.drawImage(userImageRef.current, 0, 0, imgWidth, imgHeight);
-
-          try {
-            const srcData = offCtx.getImageData(0, 0, imgWidth, imgHeight);
-
-            // Quick alpha coverage test: if a large portion of the image has alpha > 10, treat as full-shirt photo and use template mask instead
-            let alphaCount = 0;
-            for (let i = 0; i < imgWidth * imgHeight; i++) { if (srcData.data[i*4 + 3] > 10) alphaCount++; }
-            const alphaRatio = alphaCount / (imgWidth * imgHeight);
-            if (alphaRatio > 0.6 && tshirtRef.current) {
-              // template-based fill for full-shirt photo
-              const fillCanvas = document.createElement('canvas');
-              fillCanvas.width = width; fillCanvas.height = height;
-              const fctx = fillCanvas.getContext('2d');
-              if (fctx) {
-                fctx.fillStyle = tintColor;
-                fctx.fillRect(0,0,width,height);
-                fctx.globalCompositeOperation = 'destination-in';
-                fctx.drawImage(tshirtRef.current, 0, 0, width, height);
-                fctx.globalCompositeOperation = 'source-over';
-
-                ctx.save(); ctx.globalAlpha = 0.95; ctx.drawImage(fillCanvas, 0, 0); ctx.restore();
-                ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.drawImage(tshirtRef.current, 0, 0, width, height); ctx.globalCompositeOperation='source-over'; ctx.restore();
-                return;
-              }
-            }
-
-            // detect background color by sampling the four corners (5x5 area) and averaging
-            const sampleBox = 5;
-            const cornerSamples: number[][] = [];
-            const addCorner = (sx: number, sy: number) => {
-              let r = 0, g = 0, b = 0, a = 0, count = 0;
-              for (let y = sy; y < Math.min(imgHeight, sy + sampleBox); y++) {
-                for (let x = sx; x < Math.min(imgWidth, sx + sampleBox); x++) {
-                  const idx = (y * imgWidth + x) * 4;
-                  r += srcData.data[idx];
-                  g += srcData.data[idx + 1];
-                  b += srcData.data[idx + 2];
-                  a += srcData.data[idx + 3];
-                  count++;
-                }
-              }
-              if (count === 0) return [0,0,0,0];
-              return [Math.round(r/count), Math.round(g/count), Math.round(b/count), Math.round(a/count)];
-            };
-
-            cornerSamples.push(addCorner(0,0));
-            cornerSamples.push(addCorner(imgWidth - sampleBox, 0));
-            cornerSamples.push(addCorner(0, imgHeight - sampleBox));
-            cornerSamples.push(addCorner(imgWidth - sampleBox, imgHeight - sampleBox));
-
-            // average corners
-            let br = 0, bg = 0, bb = 0, ba = 0;
-            for (const c of cornerSamples) { br += c[0]; bg += c[1]; bb += c[2]; ba += c[3]; }
-            const bcR = Math.round(br / cornerSamples.length);
-            const bcG = Math.round(bg / cornerSamples.length);
-            const bcB = Math.round(bb / cornerSamples.length);
-            const bcA = Math.round(ba / cornerSamples.length);
-
-            const colorDist = (r1:number,g1:number,b1:number, r2:number,g2:number,b2:number) => Math.sqrt(Math.pow(r1-r2,2)+Math.pow(g1-g2,2)+Math.pow(b1-b2,2));
-
-            // build mask where pixels are considered 'design' if they are not close to background color and not transparent
-            const mask = new Uint8ClampedArray(imgWidth * imgHeight * 4);
-            const threshold = 40; // color distance threshold to treat as background
-            for (let i = 0; i < imgWidth * imgHeight; i++) {
-              const idx = i * 4;
-              const r = srcData.data[idx];
-              const g = srcData.data[idx + 1];
-              const b = srcData.data[idx + 2];
-              const a = srcData.data[idx + 3];
-
-              if (a < 10) {
-                mask[idx] = mask[idx+1] = mask[idx+2] = 0; mask[idx+3] = 0; // transparent
-                continue;
-              }
-
-              const d = colorDist(r,g,b, bcR, bcG, bcB);
-              if (d < threshold) {
-                // pixel similar to corner background -> treat as background (mask alpha 0)
-                mask[idx] = mask[idx+1] = mask[idx+2] = 0; mask[idx+3] = 0;
-              } else {
-                // keep pixel
-                mask[idx] = mask[idx+1] = mask[idx+2] = 255; mask[idx+3] = 255;
-              }
-            }
-
-            // create color canvas filled with selected color and mask it
-            const colorCanvas = document.createElement('canvas');
-            colorCanvas.width = imgWidth;
-            colorCanvas.height = imgHeight;
-            const cctx = colorCanvas.getContext('2d');
-            if (cctx) {
-              cctx.fillStyle = tintColor;
-              cctx.fillRect(0,0,imgWidth,imgHeight);
-
-              // Improve mask quality: perform a closing (dilate then erode) to fill holes and smooth edges
-              const processMask = (m: Uint8ClampedArray, w: number, h: number) => {
-                const copy = new Uint8ClampedArray(m);
-                const dilate = (src: Uint8ClampedArray) => {
-                  const out = new Uint8ClampedArray(src.length);
-                  for (let y = 0; y < h; y++) {
-                    for (let x = 0; x < w; x++) {
-                      let any = false;
-                      for (let yy = Math.max(0, y-1); yy <= Math.min(h-1, y+1); yy++) {
-                        for (let xx = Math.max(0, x-1); xx <= Math.min(w-1, x+1); xx++) {
-                          const idx = (yy * w + xx) * 4 + 3;
-                          if (src[idx] > 0) { any = true; break; }
-                        }
-                        if (any) break;
-                      }
-                      const idx0 = (y * w + x) * 4;
-                      out[idx0] = out[idx0+1] = out[idx0+2] = any ? 255 : 0;
-                      out[idx0+3] = any ? 255 : 0;
-                    }
-                  }
-                  return out;
-                };
-                const erode = (src: Uint8ClampedArray) => {
-                  const out = new Uint8ClampedArray(src.length);
-                  for (let y = 0; y < h; y++) {
-                    for (let x = 0; x < w; x++) {
-                      let all = true;
-                      for (let yy = Math.max(0, y-1); yy <= Math.min(h-1, y+1); yy++) {
-                        for (let xx = Math.max(0, x-1); xx <= Math.min(w-1, x+1); xx++) {
-                          const idx = (yy * w + xx) * 4 + 3;
-                          if (src[idx] === 0) { all = false; break; }
-                        }
-                        if (!all) break;
-                      }
-                      const idx0 = (y * w + x) * 4;
-                      out[idx0] = out[idx0+1] = out[idx0+2] = all ? 255 : 0;
-                      out[idx0+3] = all ? 255 : 0;
-                    }
-                  }
-                  return out;
-                };
-                // closing: dilate twice, then erode twice
-                let tmp = dilate(copy);
-                tmp = dilate(tmp);
-                tmp = erode(tmp);
-                tmp = erode(tmp);
-                return tmp;
-              };
-
-              const processed = processMask(mask, imgWidth, imgHeight);
-
-              // if processed mask covers almost entire image, fallback to drawing original image (avoid full recolor)
-              let nonZero = 0;
-              for (let i = 0; i < imgWidth * imgHeight; i++) { if (processed[i*4+3] > 0) nonZero++; }
-              const areaRatio = nonZero / (imgWidth * imgHeight);
-              if (areaRatio > 0.95) {
-                // too much of image considered design — likely full-photo; draw original
-                ctx.save();
-                ctx.translate(imagePosition.x * scale, imagePosition.y * scale);
-                ctx.rotate((imageRotation * Math.PI) / 180);
-                ctx.globalAlpha = 0.95;
-                ctx.drawImage(userImageRef.current, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
-                ctx.restore();
-              } else {
-                const maskImg = new ImageData(processed, imgWidth, imgHeight);
-                const maskCanvas = document.createElement('canvas');
-                maskCanvas.width = imgWidth;
-                maskCanvas.height = imgHeight;
-                const mctx = maskCanvas.getContext('2d');
-                if (mctx) {
-                  mctx.putImageData(maskImg, 0, 0);
-                  cctx.globalCompositeOperation = 'destination-in';
-                  cctx.drawImage(maskCanvas, 0, 0);
-                  cctx.globalCompositeOperation = 'source-over';
-
-                  ctx.save();
-                  ctx.translate(imagePosition.x * scale, imagePosition.y * scale);
-                  ctx.rotate((imageRotation * Math.PI) / 180);
-                  ctx.globalAlpha = 0.95;
-                  ctx.drawImage(colorCanvas, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
-                  ctx.restore();
-                } else {
-                  // fallback: draw original image
-                  ctx.save();
-                  ctx.translate(imagePosition.x * scale, imagePosition.y * scale);
-                  ctx.rotate((imageRotation * Math.PI) / 180);
-                  ctx.globalAlpha = 0.95;
-                  ctx.drawImage(userImageRef.current, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
-                  ctx.restore();
-                }
-              }
-            } else {
-              ctx.save();
-              ctx.translate(imagePosition.x * scale, imagePosition.y * scale);
-              ctx.rotate((imageRotation * Math.PI) / 180);
-              ctx.globalAlpha = 0.95;
-              ctx.drawImage(userImageRef.current, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
-              ctx.restore();
-            }
-          } catch (e) {
-            // security error or failure; fallback to original draw
-            ctx.save();
-            ctx.translate(imagePosition.x * scale, imagePosition.y * scale);
-            ctx.rotate((imageRotation * Math.PI) / 180);
-            ctx.globalAlpha = 0.95;
-            ctx.drawImage(userImageRef.current, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
-            ctx.restore();
-          }
-        } else {
-          ctx.save();
-          ctx.translate(imagePosition.x * scale, imagePosition.y * scale);
-          ctx.rotate((imageRotation * Math.PI) / 180);
-          ctx.globalAlpha = 0.95;
-          ctx.drawImage(userImageRef.current, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
-          ctx.restore();
-        }
-      } else {
-        // either tinting disabled or the image is effectively a full-canvas asset (background/template)
-        // in which case draw the image normally without tinting
         ctx.save();
-        ctx.translate(imagePosition.x * scale, imagePosition.y * scale);
-        ctx.rotate((imageRotation * Math.PI) / 180);
-        ctx.globalAlpha = 0.95;
-        ctx.drawImage(userImageRef.current, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
+        ctx.fillStyle = templateColor;
+        ctx.fillRect(0,0,width,height);
+
+        const mask = maskRef.current || tshirtRef.current;
+        if (mask) {
+          // Use mask to keep only garment pixels
+          ctx.globalCompositeOperation = 'destination-in';
+          ctx.drawImage(mask, 0, 0, width, height);
+          ctx.globalCompositeOperation = 'source-over';
+        }
+
+        // Draw the visual template on top with multiply (adds shading/texture)
+        if (tshirtRef.current) {
+          ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.drawImage(tshirtRef.current, 0, 0, width, height); ctx.restore();
+        }
         ctx.restore();
+      } else {
+        if (tshirtRef.current) ctx.drawImage(tshirtRef.current, 0, 0, width, height);
       }
     }
 
-    // Draw Slogan
-    if (slogan) {
-      ctx.save();
-      ctx.translate(textPosition.x * scale, textPosition.y * scale);
-      ctx.rotate((textRotation * Math.PI) / 180);
-      
-      ctx.font = `bold ${textSize * scale}px 'Outfit', sans-serif`;
-      ctx.fillStyle = color;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
+    if (userImageRef.current && image && !forceTemplateFill) {
+      const src = userImageRef.current; const intrinsicW = src.naturalWidth || src.width; const intrinsicH = src.naturalHeight || src.height;
+      const imgScaleFactor = (imageScale / 100) * scale; const imgW = Math.max(1, Math.round(intrinsicW * imgScaleFactor)); const imgH = Math.max(1, Math.round(intrinsicH * imgScaleFactor));
+      ctx.save(); ctx.translate(imagePosition.x * scale, imagePosition.y * scale); ctx.rotate((imageRotation * Math.PI) / 180); ctx.globalAlpha = 0.95;
+      if (tintImage) {
+        const off = document.createElement('canvas'); off.width = imgW; off.height = imgH; const octx = off.getContext('2d');
+        if (octx) { octx.drawImage(src, 0, 0, imgW, imgH); octx.globalCompositeOperation = 'source-in'; octx.fillStyle = imageTintColor || color; octx.fillRect(0,0,imgW,imgH); ctx.drawImage(off, -imgW/2, -imgH/2, imgW, imgH); }
+        else { ctx.drawImage(src, -imgW/2, -imgH/2, imgW, imgH); }
+      } else {
+        ctx.drawImage(src, -imgW/2, -imgH/2, imgW, imgH);
+      }
+      ctx.restore();
+    }
 
-      const maxWidth = width * 0.6;
-      const lineHeight = (textSize + 6) * scale;
-      
-      wrapText(
-        ctx, 
-        slogan, 
-        0, 
-        0, 
-        maxWidth, 
-        lineHeight
-      );
+    if (slogan) {
+      ctx.save(); ctx.translate(textPosition.x * scale, textPosition.y * scale); ctx.rotate((textRotation * Math.PI) / 180);
+      ctx.font = `bold ${textSize * scale}px 'Outfit', sans-serif`; ctx.fillStyle = color; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      wrapText(ctx, slogan, 0, 0, width * 0.6, (textSize + 6) * scale);
       ctx.restore();
     }
   };
@@ -685,7 +316,7 @@ export function DesignCanvas({
   };
 
   useEffect(() => {
-    render();
+    scheduleRender();
   }, [slogan, color, template, templateColor, imageTintColor, textSize, textRotation, textPosition, image, imageScale, imageRotation, imagePosition, width, height, backgroundImage]);
 
   const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {

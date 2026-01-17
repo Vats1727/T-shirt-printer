@@ -20,7 +20,7 @@ import SupplierRoute from '@/components/SupplierRoute';
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Home} />
+      <Route path="/" component={Login} />
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
       <Route path="/admin/login" component={Login} />

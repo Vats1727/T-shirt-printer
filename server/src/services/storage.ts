@@ -13,21 +13,33 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export class JsonStorage implements IStorage {
   private filePath = path.join(__dirname, "../../designs.json");
 
+  private cache: { data: Design[]; ts: number } | null = null;
+  private CACHE_TTL_MS = 2500; // small TTL for dev responsiveness
+
   private async readData(): Promise<Design[]> {
+    const now = Date.now();
+    if (this.cache && (now - this.cache.ts) < this.CACHE_TTL_MS) {
+      return this.cache.data;
+    }
+
     try {
       const data = await fs.readFile(this.filePath, "utf-8");
       try {
         const parsed = JSON.parse(data);
-        return parsed.map((d: any) => ({ ...d, createdAt: new Date(d.createdAt) }));
+        const mapped = parsed.map((d: any) => ({ ...d, createdAt: new Date(d.createdAt) }));
+        this.cache = { data: mapped, ts: now };
+        return mapped;
       } catch (parseErr) {
         const corruptPath = `${this.filePath}.corrupt-${Date.now()}`;
         console.error("Storage: corrupted JSON detected, backing up to", corruptPath);
         await fs.rename(this.filePath, corruptPath);
         await fs.writeFile(this.filePath, "[]");
+        this.cache = { data: [], ts: now };
         return [];
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        this.cache = { data: [], ts: now };
         return [];
       }
       throw error;
@@ -38,6 +50,8 @@ export class JsonStorage implements IStorage {
     const tmpPath = `${this.filePath}.tmp`;
     await fs.writeFile(tmpPath, JSON.stringify(designs, null, 2));
     await fs.rename(tmpPath, this.filePath);
+    // Update cache immediately to avoid read-after-write file hits
+    this.cache = { data: designs, ts: Date.now() };
   }
 
   async createDesign(insertDesign: InsertDesign): Promise<Design> {
@@ -57,20 +71,39 @@ export class JsonStorage implements IStorage {
     try {
       const { generateMaskFromBase64 } = await import('./maskGenerator');
       let updated = false;
+      const MAX_INLINE_IMAGE_BYTES = 300 * 1024; // 300KB
       if (newDesign.image && typeof newDesign.image === 'string' && newDesign.image.startsWith('data:')) {
-        const r = await generateMaskFromBase64(newDesign.image, `design-${newDesign.id}-front`);
-        if (r) {
-          if (r.composite) newDesign.image = r.composite;
-          (newDesign as any).image_mask = r.mask;
-          updated = true;
+        try {
+          const sizeBytes = Buffer.byteLength(newDesign.image, 'utf8');
+          if (sizeBytes <= MAX_INLINE_IMAGE_BYTES) {
+            const r = await generateMaskFromBase64(newDesign.image, `design-${newDesign.id}-front`);
+            if (r) {
+              if (r.composite) newDesign.image = r.composite;
+              (newDesign as any).image_mask = r.mask;
+              updated = true;
+            }
+          } else {
+            console.warn('Skipping mask generation for front image because it is too large');
+          }
+        } catch(e) {
+          // ignore
         }
       }
       if ((newDesign as any).back_image && typeof (newDesign as any).back_image === 'string' && (newDesign as any).back_image.startsWith('data:')) {
-        const r = await generateMaskFromBase64((newDesign as any).back_image, `design-${newDesign.id}-back`);
-        if (r) {
-          if (r.composite) (newDesign as any).back_image = r.composite;
-          (newDesign as any).back_image_mask = r.mask;
-          updated = true;
+        try {
+          const sizeBytes = Buffer.byteLength((newDesign as any).back_image, 'utf8');
+          if (sizeBytes <= MAX_INLINE_IMAGE_BYTES) {
+            const r = await generateMaskFromBase64((newDesign as any).back_image, `design-${newDesign.id}-back`);
+            if (r) {
+              if (r.composite) (newDesign as any).back_image = r.composite;
+              (newDesign as any).back_image_mask = r.mask;
+              updated = true;
+            }
+          } else {
+            console.warn('Skipping mask generation for back image because it is too large');
+          }
+        } catch(e) {
+          // ignore
         }
       }
       if (updated) {
@@ -112,21 +145,40 @@ export class JsonStorage implements IStorage {
       const { generateMaskFromBase64 } = await import('./maskGenerator');
       let changed = false;
 
+      const MAX_INLINE_IMAGE_BYTES = 300 * 1024; // 300KB
       if (changes.image && typeof changes.image === 'string' && changes.image.startsWith('data:')) {
-        const r = await generateMaskFromBase64(changes.image, `design-${id}-front`);
-        if (r) {
-          if (r.composite) updated.image = r.composite as any;
-          (updated as any).image_mask = r.mask;
-          changed = true;
+        try {
+          const sizeBytes = Buffer.byteLength(changes.image, 'utf8');
+          if (sizeBytes <= MAX_INLINE_IMAGE_BYTES) {
+            const r = await generateMaskFromBase64(changes.image, `design-${id}-front`);
+            if (r) {
+              if (r.composite) updated.image = r.composite as any;
+              (updated as any).image_mask = r.mask;
+              changed = true;
+            }
+          } else {
+            console.warn('Skipping mask generation for front image because it is too large');
+          }
+        } catch(e) {
+          // ignore
         }
       }
 
       if ((changes as any).back_image && typeof (changes as any).back_image === 'string' && (changes as any).back_image.startsWith('data:')) {
-        const r = await generateMaskFromBase64((changes as any).back_image, `design-${id}-back`);
-        if (r) {
-          if (r.composite) (updated as any).back_image = r.composite as any;
-          (updated as any).back_image_mask = r.mask;
-          changed = true;
+        try {
+          const sizeBytes = Buffer.byteLength((changes as any).back_image, 'utf8');
+          if (sizeBytes <= MAX_INLINE_IMAGE_BYTES) {
+            const r = await generateMaskFromBase64((changes as any).back_image, `design-${id}-back`);
+            if (r) {
+              if (r.composite) (updated as any).back_image = r.composite as any;
+              (updated as any).back_image_mask = r.mask;
+              changed = true;
+            }
+          } else {
+            console.warn('Skipping mask generation for back image because it is too large');
+          }
+        } catch(e) {
+          // ignore
         }
       }
 

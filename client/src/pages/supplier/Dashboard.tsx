@@ -83,7 +83,7 @@ export default function SupplierDashboard() {
               </details>
 
               <div className="mt-4 flex gap-2">
-                <button onClick={() => setLocation('/supplier/product/' + p.id)} className="px-3 py-1 bg-sky-600 text-white rounded text-sm">Place order</button>
+                <button onClick={() => setLocation('/supplier/product/' + p.id)} className="px-3 py-1 bg-sky-600 text-white rounded text-sm">Design</button>
                 <button onClick={() => { navigator.clipboard?.writeText(location.origin + '/product/' + p.slug); }} className="px-3 py-1 bg-gray-100 rounded text-sm">Copy URL</button>
               </div>
               </CardContent>

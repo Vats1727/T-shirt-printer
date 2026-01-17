@@ -16,11 +16,19 @@ export type UserRecord = {
   createdAt?: string;
 };
 
+let usersCache: { ts: number; data: UserRecord[] } | null = null;
+const USERS_CACHE_TTL = 2000;
+
 async function readUsers(): Promise<UserRecord[]> {
+  const now = Date.now();
+  if (usersCache && (now - usersCache.ts) < USERS_CACHE_TTL) return usersCache.data;
   try {
     const raw = await fs.readFile(usersFile, 'utf8');
-    return JSON.parse(raw) as UserRecord[];
+    const parsed = JSON.parse(raw) as UserRecord[];
+    usersCache = { ts: now, data: parsed };
+    return parsed;
   } catch (e) {
+    usersCache = { ts: now, data: [] };
     return [];
   }
 }
@@ -30,7 +38,9 @@ async function writeUsers(users: UserRecord[]) {
   const dir = path.dirname(usersFile);
   await fs.mkdir(dir, { recursive: true });
   await fs.writeFile(usersFile, JSON.stringify(users, null, 2), 'utf8');
+  usersCache = { ts: Date.now(), data: users };
 }
+
 
 // Helper to get a usable PG pool. If the central pool isn't available but env vars exist,
 // create a local pool lazily (handles cases where dotenv wasn't loaded earlier or password

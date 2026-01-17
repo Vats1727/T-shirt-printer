@@ -66,8 +66,9 @@ export async function registerRoutes(
 
   // Supplier endpoints
   const supplierCtrl = await import('./src/controllers/supplierController');
-  app.get('/api/supplier/catalog', requireAuth, requireRole('supplier'), safe(supplierCtrl.getCatalog));
-  app.post('/api/supplier/order', requireAuth, requireRole('supplier'), safe(supplierCtrl.placeOrder));
+  app.get('/api/supplier/catalog', requireAuth, requireRole('supplier'), (req,res,next) => { res.set('Cache-Control','public, max-age=5'); return next(); }, safe(supplierCtrl.getCatalog));
+  // Order creation temporarily disabled for suppliers. Re-enable when supplier ordering workflow is ready.
+  // app.post('/api/supplier/order', requireAuth, requireRole('supplier'), safe(supplierCtrl.placeOrder));
   app.get('/api/supplier/orders', requireAuth, requireRole('supplier'), safe(supplierCtrl.listOrders));
   app.get('/api/supplier/orders/:id', requireAuth, requireRole('supplier'), safe(supplierCtrl.getOrder));
 

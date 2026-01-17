@@ -6,7 +6,7 @@ Quick start
   - `npm start` (runs server with SKIP_VITE=1 in development)
 - Start full dev environment (server then client):
   - `npm run dev` (starts server, waits for http://localhost:5000, then starts Vite client)
-- Start client only:
+- Start client only: 
   - `npm --prefix client run dev`
 
 Project structure

@@ -30,16 +30,18 @@ declare module "http" {
   }
 }
 
+// Configure conservative body limits to avoid huge request bodies causing OOM or high memory usage.
+// Accept larger uploads via dedicated upload endpoints or pre-signed S3 uploads instead.
 app.use(
   express.json({
-    limit: '50mb',
+    limit: '10mb',
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
   }),
 );
 
-app.use(express.urlencoded({ limit: '50mb', extended: false }));
+app.use(express.urlencoded({ limit: '10mb', extended: false }));
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -312,13 +314,36 @@ export const _internal = {
 
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
+  // Basic guard to detect repeated crashes and avoid tight crash/restart loops.
+  const recentFatalErrors: number[] = [];
+  function registerFatalError() {
+    const now = Date.now();
+    recentFatalErrors.push(now);
+    // keep only last 60 seconds
+    while (recentFatalErrors.length && recentFatalErrors[0] < now - 60_000) recentFatalErrors.shift();
+    return recentFatalErrors.length;
+  }
+
   process.on('uncaughtException', (err) => {
     console.error('UNCaught Exception:', err);
+    const count = registerFatalError();
+    if (count > 3) {
+      console.error('Too many fatal errors in short period, exiting to avoid crash loop');
+      // give logger a moment to flush then exit with non-zero
+      setTimeout(() => process.exit(1), 1000);
+      return;
+    }
     // If an uncaught exception occurs, attempt a graceful shutdown and exit.
     shutdown('uncaughtException');
   });
   process.on('unhandledRejection', (reason) => {
     console.error('UNHANDLED REJECTION:', reason);
+    const count = registerFatalError();
+    if (count > 3) {
+      console.error('Too many fatal errors in short period, exiting to avoid crash loop');
+      setTimeout(() => process.exit(1), 1000);
+      return;
+    }
     // Attempt graceful shutdown but don't rethrow synchronously.
     shutdown('unhandledRejection');
   });

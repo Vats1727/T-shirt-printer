@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useLocation } from 'wouter';
+import { useLocation, Link } from 'wouter';
+import { Card, CardHeader, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 
 export default function Login() {
   const { loginWithCredentials } = useAuth();
@@ -16,11 +19,6 @@ export default function Login() {
     setError(null);
     try {
       await loginWithCredentials(email, password);
-      // Redirect based on role if logging in from admin/supplier path
-      const curUser = ( (window as any).__USER_OVERRIDE__ ) || null;
-      // Use user from context
-      const u = await new Promise(resolve => setTimeout(resolve, 50)).then(() => null);
-      // Read stored user
       const stored = localStorage.getItem('user');
       const parsed = stored ? JSON.parse(stored) : null;
       if (parsed?.role === 'admin') setLocation('/admin/dashboard');
@@ -34,46 +32,43 @@ export default function Login() {
   };
 
   return (
-    <div className="max-w-md mx-auto mt-16">
-      <h1 className="text-2xl font-bold mb-4">Sign in</h1>
-      <form onSubmit={submit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700">Email</label>
-          <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 block w-full rounded-md border px-3 py-2"
-            placeholder="you@example.com"
-            type="email"
-            required
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700">Password</label>
-          <input
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="mt-1 block w-full rounded-md border px-3 py-2"
-            placeholder="Password"
-            type="password"
-            required
-          />
-        </div>
-        {error && <div className="text-sm text-red-600">{error}</div>}
-        <div>
-          <button
-            type="submit"
-            className="inline-flex items-center px-4 py-2 rounded bg-blue-600 text-white"
-            disabled={loading}
-          >
-            {loading ? 'Signing in...' : 'Sign in'}
-          </button>
-        </div>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="w-full max-w-4xl">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="hidden md:flex items-center justify-center rounded-lg bg-gradient-to-br from-sky-600 to-indigo-600 text-white p-8">
+            <div>
+              <h2 className="text-3xl font-bold mb-2">Welcome back</h2>
+              <p className="opacity-90">Sign in to manage products, orders and suppliers.</p>
+            </div>
+          </div>
 
-        <div className="pt-4 text-sm">
-          Don't have an account? <a href="/register" className="text-primary underline">Register</a>
+          <Card>
+            <CardHeader>
+              <h1 className="text-2xl font-bold">Sign in</h1>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={submit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Email</label>
+                  <Input value={email} onChange={(e:any) => setEmail(e.target.value)} placeholder="you@example.com" type="email" required />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Password</label>
+                  <Input value={password} onChange={(e:any) => setPassword(e.target.value)} placeholder="Password" type="password" required />
+                </div>
+
+                {error && <div className="text-sm text-red-600">{error}</div>}
+
+                <div className="flex items-center justify-between">
+                  <Button type="submit" className="px-4 py-2" disabled={loading}>{loading ? 'Signing in...' : 'Sign in'}</Button>
+                  <Link href="/register"><a className="text-sm text-sky-600">Register</a></Link>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
         </div>
-      </form>
+      </div>
     </div>
   );
-}
+} 

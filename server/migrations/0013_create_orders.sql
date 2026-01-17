@@ -34,7 +34,7 @@ CREATE INDEX IF NOT EXISTS idx_supplier_orders_status ON supplier_orders (status
 CREATE TABLE IF NOT EXISTS supplier_order_lines (
   id serial PRIMARY KEY,
   order_id integer NOT NULL REFERENCES supplier_orders(id) ON DELETE CASCADE,
-  design_id integer REFERENCES designs_full(id) ON DELETE SET NULL,
+  design_id integer REFERENCES designs(id) ON DELETE SET NULL,
   design_snapshot jsonb, -- store the design payload (or minimal snapshot) at order time
 
   product_sku text, -- optional product/variant identifier

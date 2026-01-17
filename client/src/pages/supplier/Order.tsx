@@ -16,6 +16,9 @@ export default function SupplierOrder() {
     setItems([...items, { product: 'tshirt', color_id: 0, size_id: 0, quantity: 1, price: 0 }]);
   }
 
+  // Placing orders is disabled for now. The submit handler is intentionally
+  // disabled and can be re-enabled later.
+  /*
   async function submit(e: any) {
     e.preventDefault();
     setMessage('');
@@ -23,13 +26,14 @@ export default function SupplierOrder() {
     if (!res.ok) setMessage('Failed to place order');
     else setMessage('Order placed');
   }
+  */
 
   if (!catalog) return <div className="p-6">Loading...</div>;
 
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold mb-4">Place Order</h1>
-      <form onSubmit={submit} className="space-y-3">
+      <form onSubmit={(e) => { e.preventDefault(); }} className="space-y-3">
         {items.map((it, idx) => (
           <div key={idx} className="flex gap-2">
             <select value={it.product} onChange={e => { const v=e.target.value; const c=[...items]; c[idx].product = v; setItems(c); }}>
@@ -53,7 +57,7 @@ export default function SupplierOrder() {
           <button type="button" onClick={addRow} className="px-3 py-1 bg-gray-200">Add item</button>
         </div>
         <div>
-          <button type="submit" className="px-3 py-1 bg-blue-600 text-white">Place Order</button>
+          <button type="button" disabled className="px-3 py-1 bg-gray-300 text-gray-600">Place Order (disabled)</button>
         </div>
       </form>
       {message && <div className="mt-3">{message}</div>}

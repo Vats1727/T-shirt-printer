@@ -21,15 +21,62 @@ export async function placeOrder(req: Request, res: Response) {
   if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ message: 'items are required' });
 
   // Validate and normalize items; accept optional design_id and design_snapshot
-  const itemsValidated = items.map((it: any) => ({
-    product: it.product || 'tshirt',
-    color_id: Number(it.color_id),
-    size_id: Number(it.size_id),
-    quantity: Number(it.quantity),
-    price: Number(it.price || 0),
-    design_id: it.design_id ? Number(it.design_id) : undefined,
-    design_snapshot: it.design_snapshot ? it.design_snapshot : undefined,
-  }));
+  const MAX_ITEMS = 50;
+  const MAX_QUANTITY = 1000;
+  const MAX_SNAPSHOT_BYTES = 500 * 1024; // 500 KB per snapshot (approx)
+
+  if (items.length > MAX_ITEMS) return res.status(400).json({ message: `Too many items (max ${MAX_ITEMS})` });
+
+  const sanitizeSnapshot = (snap: any) => {
+    if (!snap || typeof snap !== 'object') return null;
+    // Deep clone without IDs and remove large data URLs
+    const clone = JSON.parse(JSON.stringify(snap));
+
+    const stripLargeImages = (obj: any) => {
+      if (!obj || typeof obj !== 'object') return;
+      for (const k of Object.keys(obj)) {
+        const v = obj[k];
+        if (typeof v === 'string' && (v.startsWith('data:') || v.length > 200 * 1024)) {
+          // Replace large inline images with null to avoid DB bloat
+          obj[k] = null;
+        } else if (typeof v === 'object') {
+          stripLargeImages(v);
+        }
+      }
+    };
+
+    stripLargeImages(clone);
+    return clone;
+  };
+
+  const itemsValidated = [] as any[];
+  for (const it of items) {
+    const quantity = Number(it.quantity || 0);
+    if (!Number.isFinite(quantity) || quantity <= 0) return res.status(400).json({ message: 'Invalid quantity' });
+    if (quantity > MAX_QUANTITY) return res.status(400).json({ message: `Quantity exceeds maximum of ${MAX_QUANTITY}` });
+
+    const validated: any = {
+      product: it.product || 'tshirt',
+      color_id: Number(it.color_id),
+      size_id: Number(it.size_id),
+      quantity,
+      price: Number(it.price || 0),
+      design_id: it.design_id ? Number(it.design_id) : undefined,
+    };
+
+    if (it.design_snapshot) {
+      const sanitized = sanitizeSnapshot(it.design_snapshot);
+      try {
+        const bytes = Buffer.byteLength(JSON.stringify(sanitized || {}), 'utf8');
+        if (bytes > MAX_SNAPSHOT_BYTES) return res.status(400).json({ message: 'Design snapshot too large' });
+      } catch (e) {
+        return res.status(400).json({ message: 'Invalid design snapshot' });
+      }
+      validated.design_snapshot = sanitized;
+    }
+
+    itemsValidated.push(validated);
+  }
 
   // Prefer to use supplier-specific table if available
   let orderId;
@@ -37,7 +84,7 @@ export async function placeOrder(req: Request, res: Response) {
     orderId = await catalog.createSupplierOrder(user.sub || user.sub, user.sub || null, itemsValidated, shipping);
   } catch (e) {
     // fallback to legacy orders if supplier tables aren't present
-    orderId = await catalog.createOrder(user.sub || user.sub, itemsValidated.map(it=>({ product: it.product, color_id: it.color_id, size_id: it.size_id, quantity: it.quantity, price: it.price })) as any);
+    orderId = await catalog.createOrder(user.sub || user.sub, itemsValidated.map((it: any) => ({ product: it.product, color_id: it.color_id, size_id: it.size_id, quantity: it.quantity, price: it.price })) as any);
   }
   return res.status(201).json({ id: orderId });
 }

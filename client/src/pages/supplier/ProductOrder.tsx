@@ -22,6 +22,7 @@ export default function SupplierProductOrder() {
 
   // design state (per-side similar to Home)
   const [side, setSide] = useState<'front'|'back'>('front');
+  const [activeTab, setActiveTab] = useState<'colors'|'slogan'|'logo'|'price'>('colors');
 
   const baseState = {
     slogan: '',
@@ -32,7 +33,7 @@ export default function SupplierProductOrder() {
     textRotation: 0,
     textPosition: { x: 180, y: 180 },
     image: null as string | null,
-    imageScale: 3,
+    imageScale: 10,
     imageRotation: 0,
     imagePosition: { x: 180, y: 180 },
     template: product?.template || 'tshirt',
@@ -64,6 +65,7 @@ export default function SupplierProductOrder() {
   const template = activeState.template;
 
   const [orderType, setOrderType] = useState<'single'|'bulk'>('single');
+  const [priceInput, setPriceInput] = useState<number>(0);
 
   useEffect(()=>{
     // log resolved template and image for debugging when product / active side changes
@@ -100,10 +102,11 @@ export default function SupplierProductOrder() {
       const prod = data.products?.find((p:any) => Number(p.id) === Number(id));
       console.debug('SupplierProductOrder: loaded product from catalog', prod);
       setProduct(prod || null);
+      // initialize price input from product if available
+      try { setPriceInput(Number(prod?.single_price || 0)); } catch(e) { setPriceInput(0); }
       if (!prod) return;
 
-      // default select first available color/size
-      if (prod.colors && prod.colors.length) setSelectedColor(Number(prod.colors[0]));
+      // Do NOT auto-select a color — supplier must choose a base color first
       if (prod.sizes && prod.sizes.length) {
         setSelectedSize(Number(prod.sizes[0]));
         // initialize per-size quantities to zero
@@ -246,6 +249,9 @@ export default function SupplierProductOrder() {
   };
   const getColorObj = (cid: number) => (catalog && catalog.colors ? catalog.colors.find((c:any)=> Number(c.id) === Number(cid)) : null) || {name: 'Unknown', hex: '#ccc'};
 
+  // Placing orders is disabled for now. The implementation below is commented
+  // out so it can be re-enabled later.
+  /*
   async function placeOrder() {
     if (!selectedColor) return alert('Choose a color');
     // gather items from sizeQuantities
@@ -316,6 +322,52 @@ export default function SupplierProductOrder() {
     setMessage('Order placed: ' + js.id);
     setTimeout(()=> setLocation('/supplier/dashboard'), 1200);
   }
+  */
+
+  // Save design for later. This posts to the existing /api/designs endpoint and
+  // stores the supplier-entered price locally (localStorage) until a server-side
+  // supplier-price API is available.
+  async function saveDesign() {
+    setError(null);
+    const payload: any = {
+      slogan: frontState.slogan || '',
+      color: frontState.color || '#000000',
+      textSize: frontState.textSize || 24,
+      textRotation: frontState.textRotation || 0,
+      textPosition: frontState.textPosition || { x: 150, y: 135 },
+      image: frontState.image || null,
+      imageScale: frontState.imageScale || 100,
+      imageRotation: frontState.imageRotation || 0,
+      imagePosition: frontState.imagePosition || { x: 150, y: 150 },
+      template: frontState.template || (product?.template) || 'tshirt',
+      templateColor: frontState.templateColor || '#ffffff',
+      // back side fields
+      back_slogan: backState.slogan || '',
+      back_image: backState.image || null,
+      back_image_scale: backState.imageScale || 100,
+      back_image_rotation: backState.imageRotation || 0,
+      back_image_position: backState.imagePosition || { x: 150, y: 150 },
+      back_text_size: backState.textSize || 24,
+      back_text_rotation: backState.textRotation || 0,
+      back_text_position: backState.textPosition || { x: 150, y: 135 },
+      product: product?.slug || String(product?.id || 'tshirt')
+    };
+
+    try {
+      const res = await fetch('/api/designs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!res.ok) {
+        const txt = await res.text().catch(()=>'');
+        setError('Failed to save design: ' + (txt || res.status));
+        return;
+      }
+      const js = await res.json();
+      // persist price locally for now
+      try { localStorage.setItem(`supplier:product:${product?.id}:price`, String(priceInput || 0)); } catch(e) {}
+      setMessage('Design saved (id: ' + (js.id || 'unknown') + '). Price stored locally.');
+    } catch (e:any) {
+      setError('Failed to save design');
+    }
+  }
 
 
 
@@ -329,7 +381,7 @@ export default function SupplierProductOrder() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-3">
           <Card className="mb-6">
             <CardHeader>
               <CardTitle>Design</CardTitle>
@@ -343,103 +395,185 @@ export default function SupplierProductOrder() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Left: Tabs & Controls */}
                 <div>
                   <div className="space-y-4">
-                    <div className="p-3 border rounded bg-white">
-                      <label className="block text-sm font-medium mb-2">Slogan</label>
-                      <Input value={slogan} onChange={e=>{ setActiveState({ slogan: e.target.value }); }} placeholder="Add optional slogan" />
+                    <div className="flex items-center gap-2 mb-4">
+                      <button type="button" onClick={()=>setActiveTab('colors')} className={`px-3 py-1 rounded ${activeTab==='colors' ? 'bg-primary text-white' : 'bg-gray-100'}`}>Colors</button>
+                      <button type="button" onClick={()=>setActiveTab('slogan')} disabled={!selectedColor} className={`px-3 py-1 rounded ${activeTab==='slogan' ? 'bg-primary text-white' : 'bg-gray-100'} ${!selectedColor ? 'opacity-50 cursor-not-allowed' : ''}`}>Slogan</button>
+                      <button type="button" onClick={()=>setActiveTab('logo')} disabled={!selectedColor} className={`px-3 py-1 rounded ${activeTab==='logo' ? 'bg-primary text-white' : 'bg-gray-100'} ${!selectedColor ? 'opacity-50 cursor-not-allowed' : ''}`}>Logo / Image</button>
+                      <button type="button" onClick={()=>setActiveTab('price')} disabled={!selectedColor} className={`px-3 py-1 rounded ${activeTab==='price' ? 'bg-primary text-white' : 'bg-gray-100'} ${!selectedColor ? 'opacity-50 cursor-not-allowed' : ''}`}>Price</button>
+                    </div>
 
-                      <div className="mt-3">
-                        <label className="block text-sm font-medium mb-2">Slogan color</label>
-                        <div className="flex items-center gap-3">
+                    {activeTab === 'colors' && (
+                      <div className="p-4 rounded-lg bg-white shadow-sm border">
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="block text-sm font-medium">Available colors</label>
+                          <div className="text-xs text-muted-foreground">Pick a base color first</div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {product.colors?.map((cid:number)=>{
+                            const c = getColorObj(Number(cid));
+                            return (
+                              <button key={cid} onClick={()=>{ 
+                                setSelectedColor(Number(cid));
+                                setFrontState(prev=>({...prev, templateColor: c.hex || prev.templateColor, imageTintColor: c.hex || prev.imageTintColor }));
+                                setBackState(prev=>({...prev, templateColor: c.hex || prev.templateColor, imageTintColor: c.hex || prev.imageTintColor }));
+                                setActiveTab('slogan');
+                              }} className={`p-2 rounded border ${selectedColor===Number(cid)?'ring-2 ring-indigo-400':''}`} title={c.name}>
+                                <span className="w-6 h-6 rounded-full block" style={{background:c.hex}} />
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {activeTab === 'slogan' && (
+                      <div className="p-4 rounded-lg bg-white shadow-sm border">
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-sm font-semibold">Slogan</h3>
+                          <div className="text-xs text-muted-foreground">Design text settings</div>
+                        </div>
+
+                        <div className="space-y-3">
                           <input
-                            type="color"
-                            value={color}
-                            onChange={e=>setActiveState({ color: e.target.value })}
-                            className="w-10 h-8 p-0 rounded border"
-                            aria-label="Slogan color"
+                            className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                            placeholder="Add optional slogan"
+                            value={slogan}
+                            onChange={e => setActiveState({ slogan: e.target.value })}
                           />
-                          <div className="text-sm text-muted-foreground">{color}</div>
-                        </div>
-                      </div>
 
-                      {slogan && (
-                        <div className="space-y-3 pl-2 mt-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-muted-foreground">Font size</span>
-                            <span className="text-xs font-bold text-primary">{textSize}px</span>
+                          <div className="flex items-center gap-3">
+                            <label className="text-sm font-medium">Color</label>
+                            <input type="color" value={color} onChange={e=>setActiveState({ color: e.target.value })} className="w-9 h-9 p-0 rounded border" aria-label="Slogan color" />
+                            <div className="text-sm text-muted-foreground">{color}</div>
+                            <div className="ml-auto flex items-center gap-2">
+                              <button type="button" onClick={()=>setActiveState({ slogan: '' })} className="px-2 py-1 text-xs rounded border hover:bg-gray-50">Clear</button>
+                            </div>
                           </div>
-                          <input type="range" min={12} max={64} value={textSize} onChange={e=>setActiveState({ textSize: Number(e.target.value) })} />
 
-                          <div className="flex items-center justify-between pt-2">
-                            <span className="text-sm font-medium text-muted-foreground">Rotation</span>
-                            <span className="text-xs font-bold text-primary">{textRotation}°</span>
+                          {slogan && (
+                            <div className="space-y-3">
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <div className="text-sm font-medium">Font size</div>
+                                  <div className="text-xs font-medium">{textSize}px</div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <button type="button" onClick={()=>setActiveState({ textSize: Math.max(8, textSize - 1) })} className="px-2 py-1 rounded border">-</button>
+                                  <input type="number" min={8} max={200} value={textSize} onChange={e=>setActiveState({ textSize: Number(e.target.value) || 8 })} className="w-20 text-center border rounded p-1" />
+                                  <button type="button" onClick={()=>setActiveState({ textSize: Math.min(200, textSize + 1) })} className="px-2 py-1 rounded border">+</button>
+                                  <input type="range" min={8} max={200} value={textSize} onChange={e=>setActiveState({ textSize: Number(e.target.value) })} className="flex-1" />
+                                </div>
+                              </div>
+
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <div className="text-sm font-medium">Rotation</div>
+                                  <div className="text-xs font-medium">{textRotation}°</div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <button type="button" onClick={()=>setActiveState({ textRotation: (textRotation - 1 + 360) % 360 })} className="px-2 py-1 rounded border">-</button>
+                                  <input type="number" min={0} max={360} value={textRotation} onChange={e=>setActiveState({ textRotation: Number(e.target.value) || 0 })} className="w-20 text-center border rounded p-1" />
+                                  <button type="button" onClick={()=>setActiveState({ textRotation: (textRotation + 1) % 360 })} className="px-2 py-1 rounded border">+</button>
+                                  <input type="range" min={0} max={360} value={textRotation} onChange={e=>setActiveState({ textRotation: Number(e.target.value) })} className="flex-1" />
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {activeTab === 'logo' && (
+                      <div className="p-4 rounded-lg bg-white shadow-sm border">
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-sm font-semibold">Logo / Image</h3>
+                          <div className="text-xs text-muted-foreground">Front and back independent</div>
+                        </div>
+
+                        <div className="flex items-start gap-4">
+                          <div className="flex-shrink-0">
+                            <label className="cursor-pointer inline-flex items-center justify-center w-24 h-24 rounded border bg-gray-50 hover:bg-gray-100">
+                              <input type="file" accept="image/*" onChange={async (e) => {
+                                  const f = e.target.files?.[0];
+                                  if (!f) return;
+                                  const reader = new FileReader();
+                                  reader.onload = () => {
+                                    const result = reader.result as string | null;
+                                    if (result) setActiveState({ image: result });
+                                  };
+                                  reader.readAsDataURL(f);
+                                }} className="hidden" />
+                              <div className="text-sm text-muted-foreground">Choose Image</div>
+                            </label>
                           </div>
-                          <input type="range" min={0} max={360} value={textRotation} onChange={e=>setActiveState({ textRotation: Number(e.target.value) })} />
-                        </div>
-                      )}
-                    </div>
 
-                    <div className="p-3 border rounded bg-white">
-                      <div className="flex items-center justify-between mb-2">
-                        <label className="block text-sm font-medium">Logo / Image</label>
-                        <div className="text-xs text-muted-foreground">Front and back independent</div>
-                      </div>
+                          <div className="flex-1">
+                            {image ? (
+                              <div className="flex items-start gap-4">
+                                <img src={image} alt="logo preview" className="w-24 h-24 object-contain border rounded" />
+                                <div className="w-full">
+                                  <div className="grid grid-cols-1 gap-3">
+                                    <div>
+                                      <div className="flex items-center justify-between mb-1">
+                                        <div className="text-sm font-medium">Scale</div>
+                                        <div className="text-xs text-muted-foreground">{imageScale}%</div>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <button type="button" onClick={()=>setActiveState({ imageScale: Math.max(1, imageScale - 1) })} className="px-2 py-1 rounded border">-</button>
+                                        <input type="number" min={1} max={20} value={imageScale} onChange={e=>setActiveState({ imageScale: Math.max(1, Number(e.target.value) || 1) })} className="w-20 text-center border rounded p-1" />
+                                        <button type="button" onClick={()=>setActiveState({ imageScale: Math.min(20, imageScale + 1) })} className="px-2 py-1 rounded border">+</button>
+                                        <input type="range" min={1} max={20} step={1} value={imageScale} onChange={e=>setActiveState({ imageScale: Number(e.target.value) })} className="flex-1" />
+                                      </div>
+                                    </div>
 
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={async (e) => {
-                            const f = e.target.files?.[0];
-                            if (!f) return;
-                            const reader = new FileReader();
-                            reader.onload = () => {
-                              const result = reader.result as string | null;
-                              if (result) {
-                                setActiveState({ image: result });
-                              }
-                            };
-                            reader.readAsDataURL(f);
-                          }}
-                          className="block"
-                        />
+                                    <div>
+                                      <div className="flex items-center justify-between mb-1">
+                                        <div className="text-sm font-medium">Rotation</div>
+                                        <div className="text-xs text-muted-foreground">{imageRotation}°</div>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <button type="button" onClick={()=>setActiveState({ imageRotation: (imageRotation - 1 + 360) % 360 })} className="px-2 py-1 rounded border">-</button>
+                                        <input type="number" min={-360} max={360} value={imageRotation} onChange={e=>setActiveState({ imageRotation: Number(e.target.value) || 0 })} className="w-20 text-center border rounded p-1" />
+                                        <button type="button" onClick={()=>setActiveState({ imageRotation: (imageRotation + 1) % 360 })} className="px-2 py-1 rounded border">+</button>
+                                        <input type="range" min={-360} max={360} value={imageRotation} onChange={e=>setActiveState({ imageRotation: Number(e.target.value) })} className="flex-1" />
+                                      </div>
+                                    </div>
 
-                        {image && (
-                          <div className="ml-2">
-                            <img src={image} alt="logo preview" className="w-20 h-20 object-contain border rounded" />
+                                    <div className="flex items-center gap-2">
+                                      <button type="button" onClick={()=>setActiveState({ image: null })} className="px-3 py-1 rounded border text-sm">Remove image</button>
+                                      <button type="button" onClick={()=>{ setActiveState({ imageScale: 10, imageRotation: 0, imagePosition: { x: 180, y: 180 } }); }} className="px-3 py-1 rounded border text-sm">Reset</button>
+                                      <div className="text-xs text-muted-foreground ml-auto">Tip: drag image on preview to reposition</div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-sm text-muted-foreground">No image selected</div>
+                            )}
                           </div>
-                        )}
-                      </div>
-
-                      <div className="mt-3 grid grid-cols-1 gap-3">
-                        <div>
-                          <label className="block text-sm font-medium">Scale</label>
-                          <input type="range" min={1} max={10} value={imageScale} onChange={e=>setActiveState({ imageScale: Number(e.target.value) })} />
-                          <div className="text-xs text-muted-foreground">{imageScale}%</div>
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium">Rotation</label>
-                          <input type="range" min={-360} max={360} value={imageRotation} onChange={e=>setActiveState({ imageRotation: Number(e.target.value) })} />
-                          <div className="text-xs text-muted-foreground">{imageRotation}°</div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <button type="button" onClick={()=>setActiveState({ image: null })} className="px-2 py-1 rounded border text-sm">Remove image</button>
-                          <div className="text-xs text-muted-foreground">Tip: drag image on preview to reposition</div>
                         </div>
                       </div>
-                    </div>
+                    )}
+
+                    {activeTab === 'price' && (
+                      <div className="p-4 rounded-lg bg-white shadow-sm border">
+                        <label className="block text-sm font-medium mb-2">Set price (for this design)</label>
+                        <div className="flex gap-2 items-center">
+                          <input type="number" step="0.01" value={priceInput} onChange={e=>setPriceInput(Number(e.target.value) || 0)} className="flex-1 border rounded p-1" />
+                          <button onClick={saveDesign} className="px-4 py-2 bg-blue-600 text-white rounded">Save Design</button>
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-2">Saved price is stored locally for now. Saving stores the design to your account.</div>
+                      </div>
+                    )}
                   </div>
-
-                  {/* Image upload and image controls are disabled for supplier preview (design-only). */}
-
-                  {/* Color picker moved to Order panel on the right — removed duplicate here. */}
                 </div>
 
+                {/* Right: Preview */}
                 <div className="flex items-center justify-center">
-                  <div className="w-80 h-80 bg-gray-50 rounded p-4 flex items-center justify-center">
+                  <div className="w-[520px] h-[520px] bg-gray-50 rounded p-4 flex items-center justify-center">
                     <DesignCanvas
                       side={side}
                       slogan={slogan}
@@ -450,7 +584,6 @@ export default function SupplierProductOrder() {
                       templateColor={templateColor}
                       imageTintColor={imageTintColor}
                       tintImage={false}
-                      // Allow uploaded images to render on top of the template for supplier preview
                       forceTemplateFill={false}
                       textSize={textSize}
                       textRotation={textRotation}
@@ -461,8 +594,8 @@ export default function SupplierProductOrder() {
                       imageRotation={imageRotation}
                       imagePosition={imagePosition}
                       onImageMove={(pos)=>setActiveState({ imagePosition: pos })}
-                      width={320}
-                      height={320}
+                      width={520}
+                      height={520}
                     />
                   </div>
                 </div>
@@ -471,98 +604,7 @@ export default function SupplierProductOrder() {
           </Card>
         </div>
 
-        <aside>
-          <Card>
-            <CardHeader>
-              <CardTitle>Order</CardTitle>
-              <CardDescription>Choose size, color and quantity</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="mb-3">
-                <div className="text-sm mb-1">Single unit</div>
-                <div className="text-lg font-semibold">${Number(product.single_price || 0).toFixed(2)}</div>
-                <div className="text-sm text-muted-foreground mt-2">Bulk minimum qty: <strong>{product.bulk_min || 0}</strong></div>
-                <div className="text-sm text-muted-foreground">Bulk price: <strong>${Number(product.bulk_price || 0).toFixed(2)}</strong></div>
-              </div>
-
-              <div className="mb-3">
-                <div className="text-sm mb-1">Available colors</div>
-                <div className="flex flex-wrap gap-2">
-                  {product.colors?.map((cid:number)=>{
-                    const c = getColorObj(Number(cid));
-                      return <button key={cid} onClick={()=>{ 
-                        setSelectedColor(Number(cid));
-                        // Apply selected color to both sides' template fill and image tint only (leave slogan/text color per-side)
-                        setFrontState(prev=>({...prev, templateColor: c.hex || prev.templateColor, imageTintColor: c.hex || prev.imageTintColor }));
-                        setBackState(prev=>({...prev, templateColor: c.hex || prev.templateColor, imageTintColor: c.hex || prev.imageTintColor }));
-                      }} className={`p-2 rounded border ${selectedColor===Number(cid)?'ring-2 ring-indigo-400':''}`} title={c.name}><span className="w-6 h-6 rounded-full block" style={{background:c.hex}} /></button>
-                  })}
-                </div>
-              </div>
-
-              <div className="mb-3">
-                <div className="text-sm mb-1">Sizes</div>
-                <div className="space-y-2">
-                  {product.sizes?.map((sid:number)=>{
-                    const sidNum = Number(sid);
-                    const qty = sizeQuantities[sidNum] || 0;
-                    return (
-                      <div key={sid} className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <button type="button" onClick={()=>{
-                              setSelectedSize(sidNum);
-                              setSizeQuantities(prev => ({ ...prev, [sidNum]: prev[sidNum] && prev[sidNum] > 0 ? 0 : 1 }));
-                            }} className={`px-3 py-1 rounded border ${selectedSize===sidNum? 'bg-indigo-50':''}`}>
-                            {getSizeLabel(sidNum)}
-                          </button>
-                          <div className="text-xs text-muted-foreground">{sidNum}</div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <button type="button" onClick={()=>setSizeQuantities(prev=>({ ...prev, [sidNum]: Math.max(0, (prev[sidNum]||0) - 1) }))} className="px-2 py-1 rounded border">-</button>
-                          <input type="number" min={0} value={qty} onChange={e=>setSizeQuantities(prev=>({ ...prev, [sidNum]: Math.max(0, Number(e.target.value) || 0) }))} className="w-16 text-center border rounded p-1" />
-                          <button type="button" onClick={()=>setSizeQuantities(prev=>({ ...prev, [sidNum]: (prev[sidNum]||0) + 1 }))} className="px-2 py-1 rounded border">+</button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="mb-3">
-                <div className="text-sm mb-1">Size chart</div>
-                <div className="text-sm text-muted-foreground">
-                  {product.sizeChart?.length ? (
-                    product.sizeChart.map((sc:any)=> (<div key={sc.size_id} className="border-b py-1">{(catalog.sizes.find((s:any)=>s.id===sc.size_id)?.label) || sc.size_id}: chest {sc.chest}, length {sc.length}, shoulder {sc.shoulder}</div>))
-                  ) : 'No size chart available'}
-                </div>
-              </div>
-
-              <div className="mb-3">
-                <div className="text-sm mb-1">Order type</div>
-                <div className="flex gap-2 mb-2">
-                  <button type="button" onClick={() => setOrderType('single')} className={`px-3 py-1 rounded border ${orderType==='single' ? 'bg-indigo-50' : ''}`}>Single unit</button>
-                  <button type="button" onClick={() => setOrderType('bulk')} className={`px-3 py-1 rounded border ${orderType==='bulk' ? 'bg-indigo-50' : ''}`}>Bulk (min {product.bulk_min || 1})</button>
-                </div>
-              </div>
-            </CardContent>
-            <CardFooter>
-              <div className="w-full space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-muted-foreground">Total items</div>
-                  <div className="text-lg font-semibold">{totalQty}</div>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-muted-foreground">Estimated total</div>
-                  <div className="text-lg font-semibold">${totalPrice.toFixed(2)}</div>
-                </div>
-                <div className="w-full flex gap-2">
-                  <button onClick={placeOrder} className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded">Place Order</button>
-                </div>
-              </div>
-            </CardFooter>
-          </Card>
-        </aside>
+        {/* Order panel hidden for suppliers while ordering is disabled. */}
       </div>
     </div>
   );
