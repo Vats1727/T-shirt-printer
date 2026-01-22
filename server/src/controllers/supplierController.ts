@@ -1,6 +1,10 @@
 import { Request, Response } from 'express';
 import * as catalog from '../services/catalogStore';
 import * as productsStore from '../services/productsStore';
+import { db } from '../../db';
+import { assets as assetsTable } from '@shared/schema';
+import fs from 'fs/promises';
+import path from 'path';
 
 export async function getCatalog(req: Request, res: Response) {
   const data = await catalog.listCatalog();
@@ -113,5 +117,67 @@ export async function getOrder(req: Request, res: Response) {
     return res.json({ order: ord });
   } catch (e) {
     return res.status(500).json({ message: 'Failed to fetch order' });
+  }
+}
+
+export async function listSavedDesigns(req: Request, res: Response) {
+  const user = (req as any).user;
+  // Diagnostic logging: help trace why this route may return 401/404 during development
+  try {
+    console.log('DEBUG: listSavedDesigns hit', { path: req.path, headers: req.headers, user: (req as any).user });
+  } catch (e) {
+    // ignore logging errors
+  }
+  if (!user) return res.status(401).json({ message: 'Not authenticated' });
+  try {
+    if (!db) return res.status(500).json({ message: 'DB not configured' });
+    const rows = await db.select().from(assetsTable).orderBy(assetsTable.id);
+    const previews = (rows as any[]).filter(r => r && r.metadata && (r.metadata.preview === true || r.metadata.preview === 'true'));
+    const mapped: any[] = [];
+    for (const p of previews) {
+      const filename = p.filename;
+      // Prefer to serve the client/attached_assets copy when present (faster for dev/static files)
+      const clientPath = path.join(process.cwd(), 'client', 'attached_assets', filename || '');
+      let url = `/api/assets/${p.id}`;
+      try {
+        if (filename) {
+          await fs.access(clientPath);
+          url = `/attached_assets/${filename}`;
+        }
+      } catch (e) {
+        // file not accessible — keep api assets url
+      }
+      mapped.push({ id: p.id, filename: filename, mime: p.mime, size: p.size, storage_key: p.storage_key, metadata: p.metadata, url });
+    }
+    return res.json({ designs: mapped });
+  } catch (e:any) {
+    console.error('listSavedDesigns error', e?.message || e);
+    return res.status(500).json({ message: 'Failed to list saved designs' });
+  }
+}
+
+// Temporary public listing for development/debugging — does not require auth.
+export async function listSavedDesignsPublic(_req: Request, res: Response) {
+  try {
+    if (!db) return res.status(500).json({ message: 'DB not configured' });
+    const rows = await db.select().from(assetsTable).orderBy(assetsTable.id);
+    const previews = (rows as any[]).filter(r => r && r.metadata && (r.metadata.preview === true || r.metadata.preview === 'true'));
+    const mapped: any[] = [];
+    for (const p of previews) {
+      const filename = p.filename;
+      const clientPath = path.join(process.cwd(), 'client', 'attached_assets', filename || '');
+      let url = `/api/assets/${p.id}`;
+      try {
+        if (filename) {
+          await fs.access(clientPath);
+          url = `/attached_assets/${filename}`;
+        }
+      } catch (e) {}
+      mapped.push({ id: p.id, filename: filename, mime: p.mime, size: p.size, storage_key: p.storage_key, metadata: p.metadata, url });
+    }
+    return res.json({ designs: mapped });
+  } catch (e:any) {
+    console.error('listSavedDesignsPublic error', e?.message || e);
+    return res.status(500).json({ message: 'Failed to list saved designs' });
   }
 }

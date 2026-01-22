@@ -106,6 +106,77 @@ export const supplier_order_lines = pgTable('supplier_order_lines', {
   created_at: timestamp('created_at').defaultNow(),
 });
 
+export const assets = pgTable('assets', {
+  id: serial('id').primaryKey(),
+  filename: text('filename'),
+  mime: text('mime'),
+  size: integer('size'),
+  storage_key: text('storage_key'),
+  metadata: jsonb('metadata'),
+  created_at: timestamp('created_at').defaultNow(),
+});
+
+export const design_versions = pgTable('design_versions', {
+  id: serial('id').primaryKey(),
+  design_id: integer('design_id'),
+  version_name: text('version_name'),
+  payload: jsonb('payload').notNull(),
+  price_cents: integer('price_cents'),
+  currency: text('currency').default('USD'),
+  processing_state: text('processing_state').default('pending'),
+  created_at: timestamp('created_at').defaultNow(),
+});
+
 export type Design = typeof designs.$inferSelect;
 export type InsertDesign = z.infer<typeof insertDesignSchema>;
 export type UserRow = typeof users.$inferSelect;
+export type AssetRow = typeof assets.$inferSelect;
+export type DesignVersionRow = typeof design_versions.$inferSelect;
+
+// New richer design insert schema (v2) supporting versions, layers, and assets.
+const assetInput = z.object({
+  id: z.number().optional(),
+  filename: z.string().optional(),
+  mime: z.string().optional(),
+  dataUrl: z.string().optional(), // optional inlined data URL for upload
+  width: z.number().optional(),
+  height: z.number().optional(),
+});
+
+const position = z.object({ x: z.number(), y: z.number() });
+
+const layer = z.object({
+  id: z.string().optional(),
+  type: z.enum(['text', 'image']),
+  text: z.string().optional(),
+  font: z.string().optional(),
+  size: z.number().optional(),
+  color: z.string().optional(),
+  rotation: z.number().optional(),
+  position: position.optional(),
+  asset: assetInput.optional(),
+  scale: z.number().optional(),
+});
+
+const side = z.object({
+  name: z.enum(['front', 'back']),
+  layers: z.array(layer),
+});
+
+const designVersion = z.object({
+  versionName: z.string().optional(),
+  sides: z.array(side),
+  metadata: z.record(z.any()).optional(),
+});
+
+export const insertDesignV2Schema = z.object({
+  product: z.string().default('T-shirt'),
+  template: z.string().default('tshirt'),
+  templateColor: z.string().default('#ffffff'),
+  price_cents: z.number().optional(),
+  currency: z.string().default('USD'),
+  supplier_id: z.number().optional(),
+  version: designVersion,
+});
+
+export type InsertDesignV2 = z.infer<typeof insertDesignV2Schema>;

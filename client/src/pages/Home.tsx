@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { motion } from "framer-motion";
 import { Palette, PenTool, Sparkles, Loader2, Save, Image as ImageIcon, Move, Type, Trash2, RotateCcw } from "lucide-react";
 
-import { insertDesignSchema } from "@shared/schema";
+import { insertDesignV2Schema } from "@shared/schema";
 import type { DesignResponse } from "@shared/routes";
 import { useCreateDesign, useDesigns } from "@/hooks/use-designs";
 import { DesignCanvas } from "@/components/design/DesignCanvas";
@@ -100,7 +100,7 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm({
-    resolver: zodResolver(insertDesignSchema),
+    resolver: zodResolver(insertDesignV2Schema),
     defaultValues: {
       slogan: "",
       color: "#7c3aed",
@@ -113,43 +113,53 @@ export default function Home() {
       imageScale: 50,
       imageRotation: 0,
       imagePosition: { x: 200, y: 200 },
+      version: { versionName: 'initial', sides: [ { name: 'front', layers: [] }, { name: 'back', layers: [] } ] },
     },
   });
 
   const onSubmit = form.handleSubmit((data) => {
-    createDesign({
-      ...data,
-      // front side
-      slogan: frontState.slogan || null,
-      image: frontState.image,
-      textSize: frontState.textSize,
-      textRotation: frontState.textRotation,
-      textPosition: frontState.textPosition,
-      imageScale: frontState.imageScale,
-      imageRotation: frontState.imageRotation,
-      imagePosition: frontState.imagePosition,
-      templateColor: frontState.templateColor,
-      // back side
-      back_slogan: backState.slogan || null,
-      back_image: backState.image,
-      back_text_size: backState.textSize,
-      back_text_rotation: backState.textRotation,
-      back_text_position: backState.textPosition,
-      back_image_scale: backState.imageScale,
-      back_image_rotation: backState.imageRotation,
-      back_image_position: backState.imagePosition,
-      template,
+    const buildSide = (state: typeof baseState, name: 'front' | 'back') => ({
+      name,
+      layers: [
+        ...(state.slogan ? [{ type: 'text', text: state.slogan, size: state.textSize, rotation: state.textRotation, position: state.textPosition, color: state.color }] : []),
+        ...(state.image ? [{ type: 'image', asset: { dataUrl: state.image }, scale: state.imageScale / 100, rotation: state.imageRotation, position: state.imagePosition }] : []),
+      ],
     });
+
+    const payload = {
+      product: template,
+      template,
+      templateColor: frontState.templateColor,
+      version: {
+        versionName: 'initial',
+        sides: [buildSide(frontState, 'front'), buildSide(backState, 'back')],
+      },
+    };
+
+    createDesign(payload as any);
   });
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
         const base64String = reader.result as string;
+        try {
+          const res = await fetch('/api/assets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dataUrl: base64String, filename: file.name }) });
+          if (res.ok) {
+            const js = await res.json();
+            const url = js?.url || `/attached_assets/${js?.filename}`;
+            setActiveState({ image: url });
+            form.setValue('image', url);
+            return;
+          }
+        } catch (err) {
+          // ignore and fall back to embedding data URL
+        }
+        // fallback to inline data URL if upload failed
         setActiveState({ image: base64String });
-        form.setValue("image", base64String);
+        form.setValue('image', base64String);
       };
       reader.readAsDataURL(file);
     }

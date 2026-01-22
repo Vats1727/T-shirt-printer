@@ -62,7 +62,7 @@ export default function Login() {
 
                 <div className="flex items-center justify-between">
                   <Button type="submit" className="px-4 py-2" disabled={loading}>{loading ? 'Signing in...' : 'Sign in'}</Button>
-                  <Link href="/register"><a className="text-sm text-sky-600">Register</a></Link>
+                  <Link href="/register" className="text-sm text-sky-600">Register</Link>
                 </div>
               </form>
             </CardContent>

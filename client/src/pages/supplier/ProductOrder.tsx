@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useRoute, useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { DesignCanvas } from '@/components/design/DesignCanvas';
@@ -19,6 +19,10 @@ export default function SupplierProductOrder() {
   const [sizeQuantities, setSizeQuantities] = useState<Record<number, number>>({});
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [savedDesignId, setSavedDesignId] = useState<number | null>(null);
+  const [versions, setVersions] = useState<any[] | null>(null);
+  const frontExportRef = useRef<HTMLCanvasElement | null>(null);
+  const backExportRef = useRef<HTMLCanvasElement | null>(null);
 
   // design state (per-side similar to Home)
   const [side, setSide] = useState<'front'|'back'>('front');
@@ -233,6 +237,34 @@ export default function SupplierProductOrder() {
 
   if (!product) return <div className="p-6">Product not found</div>;
 
+  // show any error or success messages to the user
+  const Banner = () => (
+    <div className="mb-4">
+      {error && <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded">{error}</div>}
+      {message && <div className="p-3 bg-green-50 border border-green-200 text-green-800 rounded">{message} {savedDesignId && (
+        <button className="underline ml-2 text-primary" onClick={async ()=>{
+          try {
+            setError(null);
+            setMessage('Fetching versions...');
+            const res = await fetch(`/api/designs/${savedDesignId}/versions`);
+            if (!res.ok) {
+              const txt = await res.text().catch(()=>res.statusText);
+              setError('Failed to fetch versions: ' + (txt || res.status));
+              setMessage(null);
+              return;
+            }
+            const js = await res.json();
+            setVersions(js);
+            setMessage('Versions loaded.');
+          } catch (e:any) {
+            setError('Failed to fetch versions: ' + (e?.message || e));
+            setMessage(null);
+          }
+        }}>View versions</button>
+      )}</div>}
+    </div>
+  );
+
   const totalQty = Object.values(sizeQuantities || {}).reduce((s, v) => s + Number(v || 0), 0);
   const unitPriceForDisplay = (orderType === 'bulk' && product.bulk_min && totalQty >= Number(product.bulk_min) && product.bulk_price) ? Number(product.bulk_price) : Number(product.single_price || 0);
   const totalPrice = totalQty > 0 ? unitPriceForDisplay * totalQty : 0;
@@ -329,28 +361,33 @@ export default function SupplierProductOrder() {
   // supplier-price API is available.
   async function saveDesign() {
     setError(null);
-    const payload: any = {
-      slogan: frontState.slogan || '',
-      color: frontState.color || '#000000',
-      textSize: frontState.textSize || 24,
-      textRotation: frontState.textRotation || 0,
-      textPosition: frontState.textPosition || { x: 150, y: 135 },
-      image: frontState.image || null,
-      imageScale: frontState.imageScale || 100,
-      imageRotation: frontState.imageRotation || 0,
-      imagePosition: frontState.imagePosition || { x: 150, y: 150 },
-      template: frontState.template || (product?.template) || 'tshirt',
+    const buildSide = (state: typeof baseState, name: 'front'|'back') => ({
+      name,
+      layers: [
+        ...(state.slogan ? [{ type: 'text', text: state.slogan, size: state.textSize, rotation: state.textRotation, position: state.textPosition, color: state.color }] : []),
+        ...(state.image ? [{ type: 'image', asset: { dataUrl: state.image }, scale: state.imageScale / 100, rotation: state.imageRotation, position: state.imagePosition }] : []),
+      ],
+    });
+
+      // capture front/back preview images from hidden canvases (if available)
+      const frontPreview = frontExportRef.current?.toDataURL?.('image/png') || null;
+      const backPreview = backExportRef.current?.toDataURL?.('image/png') || null;
+
+      const payload: any = {
+      product: product?.slug || String(product?.id || 'tshirt'),
+      template: frontState.template || product?.template || 'tshirt',
       templateColor: frontState.templateColor || '#ffffff',
-      // back side fields
-      back_slogan: backState.slogan || '',
-      back_image: backState.image || null,
-      back_image_scale: backState.imageScale || 100,
-      back_image_rotation: backState.imageRotation || 0,
-      back_image_position: backState.imagePosition || { x: 150, y: 150 },
-      back_text_size: backState.textSize || 24,
-      back_text_rotation: backState.textRotation || 0,
-      back_text_position: backState.textPosition || { x: 150, y: 135 },
-      product: product?.slug || String(product?.id || 'tshirt')
+      // convert dollars to integer cents
+      price_cents: Math.round(Number(priceInput || 0) * 100),
+      currency: 'USD',
+      version: {
+        versionName: 'supplier-save',
+        sides: [buildSide(frontState, 'front'), buildSide(backState, 'back')],
+        metadata: {
+          preview_front: frontPreview,
+          preview_back: backPreview,
+        }
+      },
     };
 
     try {
@@ -363,7 +400,15 @@ export default function SupplierProductOrder() {
       const js = await res.json();
       // persist price locally for now
       try { localStorage.setItem(`supplier:product:${product?.id}:price`, String(priceInput || 0)); } catch(e) {}
-      setMessage('Design saved (id: ' + (js.id || 'unknown') + '). Price stored locally.');
+      // If server returned design object or version list, use them immediately
+      const did = Number(js.id || js.designId || js.design?.id || null) || null;
+      setSavedDesignId(did);
+      if (js.versions && Array.isArray(js.versions)) {
+        setVersions(js.versions);
+      } else if (js.design && js.design.version) {
+        setVersions([js.design.version]);
+      }
+      setMessage('Design saved (id: ' + (did || 'unknown') + '). Price stored locally.');
     } catch (e:any) {
       setError('Failed to save design');
     }
@@ -379,6 +424,13 @@ export default function SupplierProductOrder() {
           <p className="text-sm text-muted-foreground mt-1">Place an order for this product — choose size, color and quantity.</p>
         </div>
       </div>
+      <Banner />
+      {versions && (
+        <div className="my-4 p-4 border rounded bg-white">
+          <h3 className="font-semibold mb-2">Design Versions (JSON)</h3>
+          <pre style={{ maxHeight: 400, overflow: 'auto' }} className="text-xs">{JSON.stringify(versions, null, 2)}</pre>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-3">
@@ -500,9 +552,21 @@ export default function SupplierProductOrder() {
                                   const f = e.target.files?.[0];
                                   if (!f) return;
                                   const reader = new FileReader();
-                                  reader.onload = () => {
+                                  reader.onload = async () => {
                                     const result = reader.result as string | null;
-                                    if (result) setActiveState({ image: result });
+                                    if (!result) return;
+                                    try {
+                                      const res = await fetch('/api/assets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dataUrl: result, filename: f.name }) });
+                                      if (res.ok) {
+                                        const js = await res.json();
+                                        const url = js?.url || `/attached_assets/${js?.filename}`;
+                                        setActiveState({ image: url });
+                                        return;
+                                      }
+                                    } catch (err) {
+                                      // ignore and fallback
+                                    }
+                                    setActiveState({ image: result });
                                   };
                                   reader.readAsDataURL(f);
                                 }} className="hidden" />
@@ -598,6 +662,53 @@ export default function SupplierProductOrder() {
                       height={520}
                     />
                   </div>
+                </div>
+                {/* Hidden canvases for exporting front/back previews */}
+                <div aria-hidden style={{ height: 0, width: 0, overflow: 'hidden', position: 'absolute' }}>
+                  <DesignCanvas
+                    side={'front'}
+                    slogan={frontState.slogan}
+                    color={frontState.color}
+                    template={frontState.template || product.template}
+                    templateImage={frontState.templateImage}
+                    showTemplate={true}
+                    templateColor={frontState.templateColor}
+                    imageTintColor={frontState.imageTintColor}
+                    tintImage={false}
+                    forceTemplateFill={false}
+                    textSize={frontState.textSize}
+                    textRotation={frontState.textRotation}
+                    textPosition={frontState.textPosition}
+                    image={frontState.image}
+                    imageScale={frontState.imageScale}
+                    imageRotation={frontState.imageRotation}
+                    imagePosition={frontState.imagePosition}
+                    width={520}
+                    height={520}
+                    exportCanvasRef={frontExportRef}
+                  />
+                  <DesignCanvas
+                    side={'back'}
+                    slogan={backState.slogan}
+                    color={backState.color}
+                    template={backState.template || product.template}
+                    templateImage={backState.templateImage}
+                    showTemplate={true}
+                    templateColor={backState.templateColor}
+                    imageTintColor={backState.imageTintColor}
+                    tintImage={false}
+                    forceTemplateFill={false}
+                    textSize={backState.textSize}
+                    textRotation={backState.textRotation}
+                    textPosition={backState.textPosition}
+                    image={backState.image}
+                    imageScale={backState.imageScale}
+                    imageRotation={backState.imageRotation}
+                    imagePosition={backState.imagePosition}
+                    width={520}
+                    height={520}
+                    exportCanvasRef={backExportRef}
+                  />
                 </div>
               </div>
             </CardContent>

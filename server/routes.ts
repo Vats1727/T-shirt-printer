@@ -21,18 +21,31 @@ export async function registerRoutes(
   app.get(api.designs.list.path, safe(designsController.listDesigns));
 
   app.get(`${api.designs.list.path}/:id`, safe(designsController.getDesign));
+  app.get(`${api.designs.list.path}/:id/versions`, safe(designsController.listDesignVersions));
 
   app.put(`${api.designs.list.path}/:id`, safe(designsController.updateDesign));
 
   app.delete(`${api.designs.list.path}/:id`, safe(designsController.deleteDesign));
 
+  // Serve stored asset files by id
+  app.get('/api/assets/:id', safe(designsController.getAsset));
+
+  // Quick unauthenticated test endpoint to verify proxy/routing in development
+  app.get('/api/_test', safe(async (_req, res) => {
+    return res.json({ ok: true, time: Date.now() });
+  }));
   // Auth
   const auth = await import('./src/controllers/authController');
   const adminCtrl = await import('./src/controllers/adminController');
   const { requireAuth, requireRole } = await import('./src/middleware/auth');
 
+  const assetsCtrl = await import('./src/controllers/assetsController');
+
   app.post('/api/auth/register', safe(auth.register));
   app.post('/api/auth/login', safe(auth.login));
+
+  // Public upload endpoint that accepts JSON { dataUrl, filename } and returns { id, url }
+  app.post('/api/assets', safe(assetsCtrl.uploadAsset));
 
   // Admin endpoints (protected)
   app.get('/api/admin/colors', requireAuth, requireRole('admin'), safe(adminCtrl.listColors));
@@ -71,6 +84,14 @@ export async function registerRoutes(
   // app.post('/api/supplier/order', requireAuth, requireRole('supplier'), safe(supplierCtrl.placeOrder));
   app.get('/api/supplier/orders', requireAuth, requireRole('supplier'), safe(supplierCtrl.listOrders));
   app.get('/api/supplier/orders/:id', requireAuth, requireRole('supplier'), safe(supplierCtrl.getOrder));
+  app.get('/api/supplier/saved-designs', requireAuth, requireRole('supplier'), safe(supplierCtrl.listSavedDesigns));
+
+  // Unauthenticated quick check for the supplier saved-designs path to validate routing/proxy
+  app.get('/api/supplier/saved-designs/_test', safe(async (_req, res) => {
+    return res.json({ ok: true, path: '/api/supplier/saved-designs/_test' });
+  }));
+  // Development-only public listing (no auth) for quick debugging
+  app.get('/api/supplier/saved-designs/public', safe(supplierCtrl.listSavedDesignsPublic));
 
   app.get('/api/storage-type', async (_req, res) => {
     try {

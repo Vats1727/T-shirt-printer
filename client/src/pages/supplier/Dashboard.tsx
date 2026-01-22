@@ -2,12 +2,23 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { useLocation } from 'wouter';
+import SavedDesignCard from '@/components/supplier/SavedDesignCard';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { DesignCanvas } from '@/components/design/DesignCanvas';
 
 export default function SupplierDashboard() {
   const { token } = useAuth();
   const [, setLocation] = useLocation();
   const [catalog, setCatalog] = useState<any>(null);
   const [orders, setOrders] = useState<any[]>([]);
+  const [savedDesigns, setSavedDesigns] = useState<Array<any>>([]);
+
+  // Modal state (declare hooks before any early returns)
+  const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [activePreview, setActivePreview] = React.useState<{ design:any, version:any } | null>(null);
+  const [previewSide, setPreviewSide] = React.useState<'front'|'back'>('front');
+  const [listDialogOpen, setListDialogOpen] = React.useState(false);
 
   useEffect(() => { (async () => {
     const res = await fetch('/api/supplier/catalog', { headers: { Authorization: token ? `Bearer ${token}` : '' } });
@@ -18,6 +29,31 @@ export default function SupplierDashboard() {
     if (res2.ok) {
       const js = await res2.json();
       setOrders(js.orders || []);
+    }
+    // fetch saved designs (public API)
+    try {
+      const designsRes = await fetch('/api/designs');
+      if (designsRes.ok) {
+        const designsList = await designsRes.json();
+        // For each design, fetch its latest version (if any)
+        const enriched: Array<any> = [];
+        for (const d of (designsList || [])) {
+          try {
+            const vres = await fetch(`/api/designs/${d.id}/versions`);
+            if (vres.ok) {
+              const versions = await vres.json();
+              if (Array.isArray(versions) && versions.length) {
+                enriched.push({ design: d, version: versions[0] });
+              }
+            }
+          } catch (e) {
+            // ignore per-design errors
+          }
+        }
+        setSavedDesigns(enriched);
+      }
+    } catch (e) {
+      // ignore
     }
   })(); }, [token]);
 
@@ -31,6 +67,15 @@ export default function SupplierDashboard() {
     if (img.startsWith('data:') || img.startsWith('http') || img.startsWith('/')) return img;
     return `/attached_assets/${img}`;
   };
+
+  const formatPrice = (v: number | null | undefined) => {
+    if (v === null || v === undefined) return '—';
+    const num = Number(v) || 0;
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(num);
+  };
+
+
+  
 
   return (
     <div className="p-6">
@@ -91,36 +136,89 @@ export default function SupplierDashboard() {
           ))}
         </div>
       </div>
+      {/* Dialog that lists saved designs */}
+      <Dialog open={listDialogOpen} onOpenChange={setListDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Saved designs</DialogTitle>
+          </DialogHeader>
+          <div className="p-4">
+            {(!savedDesigns || savedDesigns.length === 0) && <div className="text-sm text-muted-foreground">No saved designs</div>}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {savedDesigns.map((sd:any) => (
+                <SavedDesignCard key={sd.design.id} sd={sd} onView={(s)=>{ setActivePreview(s); setDialogOpen(true); }} onUse={(s)=>{ setListDialogOpen(false); setLocation('/supplier/product/' + s.design.id); }} />
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button>Close</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Preview dialog for saved designs */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Saved design preview</DialogTitle>
+          </DialogHeader>
+          <div className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <button className={`px-3 py-1 rounded ${previewSide==='front' ? 'bg-sky-600 text-white' : 'bg-gray-100'}`} onClick={() => setPreviewSide('front')}>Front</button>
+              <button className={`px-3 py-1 rounded ${previewSide==='back' ? 'bg-sky-600 text-white' : 'bg-gray-100'}`} onClick={() => setPreviewSide('back')}>Back</button>
+              <div className="ml-auto text-sm text-muted-foreground">Design #{activePreview?.design?.id}</div>
+            </div>
+            {activePreview ? (
+              <div className="mx-auto w-[520px]">
+                {(() => {
+                  const raw = (activePreview && activePreview.version) ? (activePreview.version.payload || activePreview.version) : {};
+                  const payload = { ...raw } as any;
+                  if (payload.image && typeof payload.image === 'string' && !payload.image.startsWith('data:') && !payload.image.startsWith('http') && !payload.image.startsWith('/')) {
+                    payload.image = `/attached_assets/${payload.image}`;
+                  }
+                  if (payload.back_image && typeof payload.back_image === 'string' && !payload.back_image.startsWith('data:') && !payload.back_image.startsWith('http') && !payload.back_image.startsWith('/')) {
+                    payload.back_image = `/attached_assets/${payload.back_image}`;
+                  }
+                  return (
+                    <DesignCanvas
+                      width={520}
+                      height={520}
+                      readonly
+                      showTemplate
+                      {...payload}
+                    />
+                  );
+                })()}
+              </div>
+            ) : <div className="text-sm text-muted-foreground">No preview available</div>}
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button>Close</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      <div className="mt-8">
-        <h2 className="font-semibold mb-3">Recent Orders</h2>
-        {orders.length === 0 && <div className="text-sm text-muted-foreground">No recent orders</div>}
-        <div className="space-y-3">
-          {orders.map((o:any) => (
-            <div key={o.id} className="p-3 border rounded bg-white">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-semibold">Order #{o.id}</div>
-                  <div className="text-xs text-muted-foreground">Placed: {new Date(o.created_at).toLocaleString()}</div>
-                </div>
-                <div className="text-sm">
-                  <div>Total: <strong>${((o.total_cents||0)/100).toFixed(2)}</strong></div>
-                  <div className="text-xs text-muted-foreground">Status: {o.status || 'pending'}</div>
-                </div>
-              </div>
-              <div className="mt-2 text-sm">
-                {o.items && o.items.length ? o.items.slice(0,3).map((it:any, idx:number)=> (
-                  <div key={idx} className="flex items-center gap-3 py-1 border-t pt-2">
-                    <div>Qty: <strong>{it.quantity}</strong></div>
-                    <div>Size: <strong>{it.size}</strong></div>
-                    <div>Color: <strong>{it.color}</strong></div>
-                  </div>
-                )) : <div className="text-sm text-muted-foreground">No items</div>}
-              </div>
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold">Saved Designs</h2>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setListDialogOpen(true)} className="px-3 py-1 bg-sky-600 text-white rounded text-sm">View Saved designs</button>
+            <button onClick={() => setLocation('/supplier/saved-designs')} className="px-3 py-1 bg-gray-100 rounded text-sm">Saved designs page</button>
+          </div>
+        </div>
+        {(!savedDesigns || savedDesigns.length === 0) && <div className="text-sm text-muted-foreground">No saved designs</div>}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {savedDesigns.map((sd:any) => (
+            <div key={sd.design.id}>
+              <SavedDesignCard sd={sd} onView={(s)=>{ setActivePreview(s); setDialogOpen(true); }} onUse={(s)=>setLocation('/supplier/product/' + s.design.id)} />
             </div>
           ))}
         </div>
       </div>
+      
     </div>
   );
 }

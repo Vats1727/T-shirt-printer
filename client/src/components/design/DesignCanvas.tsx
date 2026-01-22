@@ -55,7 +55,8 @@ export function DesignCanvas({
   readonly = false,
   backgroundImage = undefined,
   showTemplate = false,
-}: DesignCanvasProps & { showTemplate?: boolean }) {
+  exportCanvasRef,
+}: DesignCanvasProps & { showTemplate?: boolean, exportCanvasRef?: React.RefObject<HTMLCanvasElement> }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const tshirtRef = useRef<HTMLImageElement | null>(null);
   // Optional separate mask image (silhouette only) used to clip templateColor so card/background art isn't colored
@@ -378,7 +379,7 @@ export function DesignCanvas({
   return (
     <Card className={`overflow-hidden border-2 border-border/50 shadow-xl shadow-black/5 bg-white ${readonly ? '' : 'cursor-move'}`}>
       <canvas
-        ref={canvasRef}
+        ref={(el) => { canvasRef.current = el; if (exportCanvasRef && typeof exportCanvasRef === 'object') { try { (exportCanvasRef as any).current = el; } catch(e) {} } }}
         width={width}
         height={height}
         className="w-full h-auto block touch-none"

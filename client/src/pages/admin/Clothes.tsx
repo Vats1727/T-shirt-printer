@@ -321,7 +321,24 @@ export default function AdminClothes() {
                           setFrontFilename(f.name);
                           setDesignSide('front');
                           const reader = new FileReader();
-                          reader.onload = () => { const dataUrl = reader.result as string; const img = new Image(); img.onload = () => { const maxDim = 360 * 0.7; const scalePct = Math.max(10, Math.min(200, Math.round((maxDim / Math.max(img.width, img.height)) * 100))); setDesigns((d: any) => ({ ...d, front: { ...d.front, image: dataUrl, imageScale: scalePct, imagePosition: { x: 180, y: 180 } } })); }; img.src = dataUrl; }; reader.readAsDataURL(f);
+                          reader.onload = async () => {
+                            const dataUrl = reader.result as string;
+                            // try upload to server
+                            try {
+                              const res = await fetch('/api/assets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dataUrl, filename: f.name }) });
+                              if (res.ok) {
+                                const js = await res.json();
+                                const url = js?.url || `/attached_assets/${js?.filename}`;
+                                const img = new Image(); img.onload = () => { const maxDim = 360 * 0.7; const scalePct = Math.max(10, Math.min(200, Math.round((maxDim / Math.max(img.width, img.height)) * 100))); setDesigns((d: any) => ({ ...d, front: { ...d.front, image: url, imageScale: scalePct, imagePosition: { x: 180, y: 180 } } })); }; img.src = url;
+                                return;
+                              }
+                            } catch (err) {
+                              // ignore
+                            }
+                            // fallback to inline dataUrl
+                            const img = new Image(); img.onload = () => { const maxDim = 360 * 0.7; const scalePct = Math.max(10, Math.min(200, Math.round((maxDim / Math.max(img.width, img.height)) * 100))); setDesigns((d: any) => ({ ...d, front: { ...d.front, image: dataUrl, imageScale: scalePct, imagePosition: { x: 180, y: 180 } } })); }; img.src = dataUrl;
+                          };
+                          reader.readAsDataURL(f);
                         }} />
                         {frontFilename && <div className="text-sm text-muted-foreground">{frontFilename}</div>}
 
@@ -332,7 +349,20 @@ export default function AdminClothes() {
                           setBackFilename(f.name);
                           setDesignSide('back');
                           const reader = new FileReader();
-                          reader.onload = () => { const dataUrl = reader.result as string; const img = new Image(); img.onload = () => { const maxDim = 360 * 0.7; const scalePct = Math.max(10, Math.min(200, Math.round((maxDim / Math.max(img.width, img.height)) * 100))); setDesigns((d: any) => ({ ...d, back: { ...d.back, image: dataUrl, imageScale: scalePct, imagePosition: { x: 180, y: 180 } } })); }; img.src = dataUrl; }; reader.readAsDataURL(f);
+                          reader.onload = async () => {
+                            const dataUrl = reader.result as string;
+                            try {
+                              const res = await fetch('/api/assets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dataUrl, filename: f.name }) });
+                              if (res.ok) {
+                                const js = await res.json();
+                                const url = js?.url || `/attached_assets/${js?.filename}`;
+                                const img = new Image(); img.onload = () => { const maxDim = 360 * 0.7; const scalePct = Math.max(10, Math.min(200, Math.round((maxDim / Math.max(img.width, img.height)) * 100))); setDesigns((d: any) => ({ ...d, back: { ...d.back, image: url, imageScale: scalePct, imagePosition: { x: 180, y: 180 } } })); }; img.src = url;
+                                return;
+                              }
+                            } catch (err) {}
+                            const img = new Image(); img.onload = () => { const maxDim = 360 * 0.7; const scalePct = Math.max(10, Math.min(200, Math.round((maxDim / Math.max(img.width, img.height)) * 100))); setDesigns((d: any) => ({ ...d, back: { ...d.back, image: dataUrl, imageScale: scalePct, imagePosition: { x: 180, y: 180 } } })); }; img.src = dataUrl;
+                          };
+                          reader.readAsDataURL(f);
                         }} />
                         {backFilename && <div className="text-sm text-muted-foreground">{backFilename}</div>}
 
