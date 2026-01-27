@@ -34,14 +34,15 @@ declare module "http" {
 // Accept larger uploads via dedicated upload endpoints or pre-signed S3 uploads instead.
 app.use(
   express.json({
-    limit: '10mb',
+    // Increase JSON body limit to allow uploading preview images via /api/assets (data URLs)
+    limit: '50mb',
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
   }),
 );
 
-app.use(express.urlencoded({ limit: '10mb', extended: false }));
+app.use(express.urlencoded({ limit: '50mb', extended: false }));
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -196,6 +197,16 @@ export const _internal = {
     console.log('DEBUG: compression middleware enabled');
   } catch (e) {
     console.log('DEBUG: compression not available');
+  }
+
+  // Enable CORS in development so the client (Vite) can call the API at a different port.
+  try {
+    const corsMod = await import('cors');
+    // Allow the Vite dev server origin and allow credentials for auth bearer header usage.
+    app.use((corsMod as any)({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173', credentials: true }));
+    console.log('DEBUG: CORS middleware enabled');
+  } catch (e) {
+    console.log('DEBUG: cors module not available, skipping CORS middleware');
   }
 
   await registerRoutes(httpServer, app);

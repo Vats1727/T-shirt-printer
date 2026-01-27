@@ -46,6 +46,7 @@ export async function registerRoutes(
 
   // Public upload endpoint that accepts JSON { dataUrl, filename } and returns { id, url }
   app.post('/api/assets', safe(assetsCtrl.uploadAsset));
+  app.delete('/api/assets/:id', requireAuth, requireRole('supplier'), safe(assetsCtrl.deleteAsset));
 
   // Admin endpoints (protected)
   app.get('/api/admin/colors', requireAuth, requireRole('admin'), safe(adminCtrl.listColors));

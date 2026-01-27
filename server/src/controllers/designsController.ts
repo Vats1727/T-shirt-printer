@@ -25,6 +25,7 @@ export async function createDesign(req: Request, res: Response) {
       console.log('createDesign: unable to determine storage type');
     }
 
+    console.log('createDesign: preview_variants present?', !!(input as any).version?.metadata?.preview_variants, 'selected_colors present?', !!(input as any).version?.metadata?.selected_colors);
     const result = await storage.createDesign(input as any);
 
     // If storage returned extra metadata (e.g., design_versions id), include it
@@ -247,7 +248,76 @@ export async function updateDesign(req: Request, res: Response) {
 export async function deleteDesign(req: Request, res: Response) {
   const id = parseInt(req.params.id, 10);
   if (Number.isNaN(id)) return res.status(400).json({ message: 'Invalid id' });
-  const ok = await storage.deleteDesign(id);
-  if (!ok) return res.status(404).json({ message: 'Not found' });
-  res.status(204).end();
+  try {
+    const ok = await storage.deleteDesign(id);
+
+    // Attempt to remove any preview asset rows and files associated with this design id
+    try {
+      // delete matching assets in DB if configured
+      if (db) {
+        const rows = await db.select().from(assetsTable).orderBy(assetsTable.id);
+        const matches = (rows as any[]).filter(r => {
+          try {
+            if (!r) return false;
+            const fn = String(r.filename || '');
+            const sk = String(r.storage_key || '');
+            if (fn.includes(`design-${id}-`)) return true;
+            if (sk.includes(`design-${id}-`)) return true;
+            // some assets may have randomized prefixes (e.g. <hex>-design-<id>-front.png)
+            if (fn.includes(`design-${id}`)) return true;
+            if (sk.includes(`design-${id}`)) return true;
+            // fallback: check metadata serialized content for a design marker
+            if (r.metadata) {
+              try {
+                const mstr = typeof r.metadata === 'string' ? r.metadata : JSON.stringify(r.metadata || {});
+                if (mstr.includes(`design-${id}-`) || mstr.includes(`design-${id}`)) return true;
+              } catch (e) {}
+            }
+            return false;
+          } catch (e) { return false; }
+        });
+        for (const a of matches) {
+          try {
+            // remove client attached file if exists
+            if (a.filename) {
+              const clientPath = path.join(process.cwd(), 'client', 'attached_assets', a.filename || '');
+              try { await fs.unlink(clientPath); } catch (e) {}
+            }
+            // remove storage_key candidate files
+            if (a.storage_key) {
+              const cand = [path.join(process.cwd(), a.storage_key), path.join(process.cwd(), 'server', a.storage_key), path.resolve(a.storage_key)];
+              for (const p of cand) {
+                try { await fs.unlink(p); } catch (e) {}
+              }
+            }
+            // delete DB row
+            await db.delete(assetsTable).where(eq(assetsTable.id, a.id));
+          } catch (e:any) {
+            console.warn('deleteDesign: failed to remove asset', a.id, e?.message || e);
+          }
+        }
+      } else {
+        // no DB: attempt to delete files in client attached_assets
+        try {
+          const dir = path.join(process.cwd(), 'client', 'attached_assets');
+          const files = await fs.readdir(dir).catch(()=>[] as string[]);
+          for (const f of files) {
+            if (f.startsWith(`design-${id}-`)) {
+              try { await fs.unlink(path.join(dir, f)); } catch (e) {}
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    } catch (e:any) {
+      console.warn('deleteDesign: asset cleanup error', e?.message || e);
+    }
+
+    if (!ok) return res.status(404).json({ message: 'Not found' });
+    return res.status(204).end();
+  } catch (e:any) {
+    console.error('deleteDesign error', e?.message || e);
+    return res.status(500).json({ message: 'Failed to delete design' });
+  }
 }

@@ -14,6 +14,8 @@ export default function SupplierProductOrder() {
   const [catalog, setCatalog] = useState<any | null>(null);
   const [product, setProduct] = useState<any | null>(null);
   const [selectedColor, setSelectedColor] = useState<number | null>(null);
+  const [selectedColors, setSelectedColors] = useState<number[]>([]);
+  const [featuredColor, setFeaturedColor] = useState<number | null>(null);
   const [selectedSize, setSelectedSize] = useState<number | null>(null);
   // per-size quantities for multi-size orders: { [sizeId]: quantity }
   const [sizeQuantities, setSizeQuantities] = useState<Record<number, number>>({});
@@ -37,7 +39,7 @@ export default function SupplierProductOrder() {
     textRotation: 0,
     textPosition: { x: 180, y: 180 },
     image: null as string | null,
-    imageScale: 10,
+    imageScale: 100,
     imageRotation: 0,
     imagePosition: { x: 180, y: 180 },
     template: product?.template || 'tshirt',
@@ -386,11 +388,92 @@ export default function SupplierProductOrder() {
         metadata: {
           preview_front: frontPreview,
           preview_back: backPreview,
+          selected_colors: selectedColors.map((cid)=>{
+            const c = getColorObj(Number(cid));
+            return { id: Number(cid), hex: c?.hex || null, name: c?.name || null };
+          }),
+          featured_color: (featuredColor ? ((): any => { const c = getColorObj(Number(featuredColor)); if (!c) return null; return { id: Number(featuredColor), hex: c.hex, name: c.name }; })() : (selectedColors && selectedColors.length ? ((): any => { const c = getColorObj(Number(selectedColors[0])); if (!c) return null; return { id: Number(selectedColors[0]), hex: c.hex, name: c.name }; })() : null))
         }
       },
     };
 
     try {
+      // If multiple colors were selected, create a separate design record per color.
+      const createdIds: number[] = [];
+      const originalFrontColor = frontState.templateColor;
+      const originalBackColor = backState.templateColor;
+
+      const capturePreviewsFor = async (hex: string | null) => {
+        // apply temp colors
+        if (hex) {
+          setFrontState(prev => ({ ...prev, templateColor: hex }));
+          setBackState(prev => ({ ...prev, templateColor: hex }));
+        }
+        // wait a frame for canvas to re-render
+        await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 60)));
+        const f = frontExportRef.current?.toDataURL?.('image/png') || null;
+        const b = backExportRef.current?.toDataURL?.('image/png') || null;
+        return { front: f, back: b };
+      };
+
+      // Helper to post a design payload (cloned with single selected color)
+      const postDesign = async (payloadToSend:any) => {
+        const res = await fetch('/api/designs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payloadToSend) });
+        if (!res.ok) {
+          const txt = await res.text().catch(()=>'');
+          throw new Error('Failed to save design: ' + (txt || res.status));
+        }
+        return await res.json();
+      };
+
+      // If multiple selected colors, create a single design with metadata for all colors
+      if (selectedColors && Array.isArray(selectedColors) && selectedColors.length > 1) {
+        // choose featured color (explicit or first selected)
+        const featuredCid = featuredColor ? Number(featuredColor) : Number(selectedColors[0]);
+        const featuredObj = getColorObj(featuredCid) || null;
+        const previewByColor: Array<any> = [];
+        for (const cid of selectedColors) {
+          const cobj = getColorObj(Number(cid));
+          const hex = cobj?.hex || null;
+          const previews = await capturePreviewsFor(hex);
+          previewByColor.push({ id: Number(cid), hex, name: cobj?.name || null, preview_front: previews.front, preview_back: previews.back });
+        }
+
+        // Also ensure preview_front/preview_back for featured color is attached (used for card preview asset)
+        const featuredPreview = previewByColor.find(p => Number(p.id) === Number(featuredCid)) || previewByColor[0];
+
+        const multiPayload = {
+          ...payload,
+          version: {
+            ...payload.version,
+            metadata: {
+              ...(payload.version?.metadata || {}),
+              preview_front: featuredPreview?.preview_front || null,
+              preview_back: featuredPreview?.preview_back || null,
+              selected_colors: previewByColor.map(p => ({ id: p.id, hex: p.hex, name: p.name })),
+              featured_color: featuredObj ? { id: Number(featuredObj.id), hex: featuredObj.hex, name: featuredObj.name } : null,
+              preview_by_color: previewByColor,
+            }
+          }
+        };
+
+        const js = await postDesign(multiPayload);
+        const did = Number(js.id || js.designId || js.design?.id || null) || null;
+        if (did) createdIds.push(did);
+
+        // restore original template colors
+        setFrontState(prev => ({ ...prev, templateColor: originalFrontColor }));
+        setBackState(prev => ({ ...prev, templateColor: originalBackColor }));
+
+        // persist price locally for now
+        try { localStorage.setItem(`supplier:product:${product?.id}:price`, String(priceInput || 0)); } catch(e) {}
+
+        setMessage('Design saved for ' + createdIds.length + ' colors. IDs: ' + createdIds.join(', '));
+        if (createdIds.length) setSavedDesignId(createdIds[0]);
+        return;
+      }
+
+      // single save (fallback)
       const res = await fetch('/api/designs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (!res.ok) {
         const txt = await res.text().catch(()=>'');
@@ -410,7 +493,7 @@ export default function SupplierProductOrder() {
       }
       setMessage('Design saved (id: ' + (did || 'unknown') + '). Price stored locally.');
     } catch (e:any) {
-      setError('Failed to save design');
+      setError(e?.message || 'Failed to save design');
     }
   }
 
@@ -452,9 +535,9 @@ export default function SupplierProductOrder() {
                   <div className="space-y-4">
                     <div className="flex items-center gap-2 mb-4">
                       <button type="button" onClick={()=>setActiveTab('colors')} className={`px-3 py-1 rounded ${activeTab==='colors' ? 'bg-primary text-white' : 'bg-gray-100'}`}>Colors</button>
-                      <button type="button" onClick={()=>setActiveTab('slogan')} disabled={!selectedColor} className={`px-3 py-1 rounded ${activeTab==='slogan' ? 'bg-primary text-white' : 'bg-gray-100'} ${!selectedColor ? 'opacity-50 cursor-not-allowed' : ''}`}>Slogan</button>
-                      <button type="button" onClick={()=>setActiveTab('logo')} disabled={!selectedColor} className={`px-3 py-1 rounded ${activeTab==='logo' ? 'bg-primary text-white' : 'bg-gray-100'} ${!selectedColor ? 'opacity-50 cursor-not-allowed' : ''}`}>Logo / Image</button>
-                      <button type="button" onClick={()=>setActiveTab('price')} disabled={!selectedColor} className={`px-3 py-1 rounded ${activeTab==='price' ? 'bg-primary text-white' : 'bg-gray-100'} ${!selectedColor ? 'opacity-50 cursor-not-allowed' : ''}`}>Price</button>
+                      <button type="button" onClick={()=>setActiveTab('slogan')} disabled={selectedColors.length===0} className={`px-3 py-1 rounded ${activeTab==='slogan' ? 'bg-primary text-white' : 'bg-gray-100'} ${selectedColors.length===0 ? 'opacity-50 cursor-not-allowed' : ''}`}>Slogan</button>
+                      <button type="button" onClick={()=>setActiveTab('logo')} disabled={selectedColors.length===0} className={`px-3 py-1 rounded ${activeTab==='logo' ? 'bg-primary text-white' : 'bg-gray-100'} ${selectedColors.length===0 ? 'opacity-50 cursor-not-allowed' : ''}`}>Logo / Image</button>
+                      <button type="button" onClick={()=>setActiveTab('price')} disabled={selectedColors.length===0} className={`px-3 py-1 rounded ${activeTab==='price' ? 'bg-primary text-white' : 'bg-gray-100'} ${selectedColors.length===0 ? 'opacity-50 cursor-not-allowed' : ''}`}>Price</button>
                     </div>
 
                     {activeTab === 'colors' && (
@@ -466,15 +549,34 @@ export default function SupplierProductOrder() {
                         <div className="flex flex-wrap gap-2">
                           {product.colors?.map((cid:number)=>{
                             const c = getColorObj(Number(cid));
+                            const selected = selectedColors.includes(Number(cid));
+                            const isFeatured = featuredColor === Number(cid);
                             return (
-                              <button key={cid} onClick={()=>{ 
-                                setSelectedColor(Number(cid));
-                                setFrontState(prev=>({...prev, templateColor: c.hex || prev.templateColor, imageTintColor: c.hex || prev.imageTintColor }));
-                                setBackState(prev=>({...prev, templateColor: c.hex || prev.templateColor, imageTintColor: c.hex || prev.imageTintColor }));
-                                setActiveTab('slogan');
-                              }} className={`p-2 rounded border ${selectedColor===Number(cid)?'ring-2 ring-indigo-400':''}`} title={c.name}>
-                                <span className="w-6 h-6 rounded-full block" style={{background:c.hex}} />
-                              </button>
+                              <div key={cid} className="relative">
+                                <button onClick={()=>{ 
+                                  setSelectedColors(prev => {
+                                    if (prev.includes(Number(cid))) {
+                                      const filtered = prev.filter(x=>x!==Number(cid));
+                                      // if removed color was featured, clear featured or pick another
+                                      if (featuredColor === Number(cid)) {
+                                        setFeaturedColor(filtered.length ? filtered[0] : null);
+                                      }
+                                      return filtered;
+                                    }
+                                    // add and set as featured if none chosen yet
+                                    const next = [...prev, Number(cid)];
+                                    if (!featuredColor) setFeaturedColor(Number(cid));
+                                    return next;
+                                  });
+                                  // apply color as preview tint
+                                  setFrontState(prev=>({...prev, templateColor: c.hex || prev.templateColor, imageTintColor: c.hex || prev.imageTintColor }));
+                                  setBackState(prev=>({...prev, templateColor: c.hex || prev.templateColor, imageTintColor: c.hex || prev.imageTintColor }));
+                                }} className={`p-2 rounded border ${selected ? 'ring-2 ring-indigo-400' : ''}`} title={c.name}>
+                                  <span className="w-6 h-6 rounded-full block" style={{background:c.hex}} />
+                                </button>
+                                {/* small featured toggle */}
+                                <button title={isFeatured ? 'Featured color' : 'Mark as featured'} onClick={(e)=>{e.stopPropagation(); setFeaturedColor(Number(cid));}} className={`absolute -top-1 -right-1 w-4 h-4 rounded-full border flex items-center justify-center text-xs ${isFeatured ? 'bg-indigo-600 text-white' : 'bg-white text-muted-foreground'}`}>{isFeatured ? '★' : ''}</button>
+                              </div>
                             );
                           })}
                         </div>
@@ -586,11 +688,11 @@ export default function SupplierProductOrder() {
                                         <div className="text-xs text-muted-foreground">{imageScale}%</div>
                                       </div>
                                       <div className="flex items-center gap-2">
-                                        <button type="button" onClick={()=>setActiveState({ imageScale: Math.max(1, imageScale - 1) })} className="px-2 py-1 rounded border">-</button>
-                                        <input type="number" min={1} max={20} value={imageScale} onChange={e=>setActiveState({ imageScale: Math.max(1, Number(e.target.value) || 1) })} className="w-20 text-center border rounded p-1" />
-                                        <button type="button" onClick={()=>setActiveState({ imageScale: Math.min(20, imageScale + 1) })} className="px-2 py-1 rounded border">+</button>
-                                        <input type="range" min={1} max={20} step={1} value={imageScale} onChange={e=>setActiveState({ imageScale: Number(e.target.value) })} className="flex-1" />
-                                      </div>
+                                              <button type="button" onClick={()=>setActiveState({ imageScale: Math.max(1, imageScale - 5) })} className="px-2 py-1 rounded border">-</button>
+                                              <input type="number" min={1} max={500} value={imageScale} onChange={e=>setActiveState({ imageScale: Math.max(1, Number(e.target.value) || 1) })} className="w-24 text-center border rounded p-1" />
+                                              <button type="button" onClick={()=>setActiveState({ imageScale: Math.min(500, imageScale + 5) })} className="px-2 py-1 rounded border">+</button>
+                                              <input type="range" min={1} max={500} step={1} value={imageScale} onChange={e=>setActiveState({ imageScale: Number(e.target.value) })} className="flex-1" />
+                                            </div>
                                     </div>
 
                                     <div>

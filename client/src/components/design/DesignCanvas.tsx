@@ -7,6 +7,8 @@ interface DesignCanvasProps {
   color: string;
   template?: string;
   templateColor?: string;
+  /** When provided, draw a horizontal gradient using these colors instead of a single `templateColor` */
+  templateColors?: string[];
   /** Optional override image to use as the shirt/template for this canvas (admin-provided full-shirt image) */
   templateImage?: string;
   /** An optional tint color to apply only to user images; if unset `color` is used instead */
@@ -35,7 +37,7 @@ export function DesignCanvas({
   side = 'front',
   slogan,
   color,
-  templateColor,  template = 'tshirt',  textSize = 24,
+  templateColor, templateColors, template = 'tshirt',  textSize = 24,
   textRotation = 0,
   textPosition = { x: 150, y: 135 },
   onTextMove,
@@ -237,11 +239,27 @@ export function DesignCanvas({
     }
 
     if (showTemplate) {
-      // Prefer a dedicated mask if available to clip templateColor only to the garment silhouette (avoids coloring card/background art that may exist inside template images)
-      if (templateColor) {
+      // Prefer a dedicated mask if available to clip templateColor(s) only to the garment silhouette
+      const fillWithTemplate = () => {
         ctx.save();
-        ctx.fillStyle = templateColor;
-        ctx.fillRect(0,0,width,height);
+
+        // If multiple template colors provided, create a horizontal gradient
+        if (templateColors && Array.isArray(templateColors) && templateColors.length > 0) {
+          const grad = ctx.createLinearGradient(0, 0, width, 0);
+          const n = templateColors.length;
+          for (let i = 0; i < n; i++) {
+            const stop = i / Math.max(1, n - 1);
+            grad.addColorStop(stop, templateColors[i] || '#ffffff');
+          }
+          ctx.fillStyle = grad;
+        } else if (templateColor) {
+          ctx.fillStyle = templateColor;
+        } else {
+          ctx.restore();
+          return;
+        }
+
+        ctx.fillRect(0, 0, width, height);
 
         const mask = maskRef.current || tshirtRef.current;
         if (mask) {
@@ -256,9 +274,9 @@ export function DesignCanvas({
           ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.drawImage(tshirtRef.current, 0, 0, width, height); ctx.restore();
         }
         ctx.restore();
-      } else {
-        if (tshirtRef.current) ctx.drawImage(tshirtRef.current, 0, 0, width, height);
-      }
+      };
+
+      fillWithTemplate();
     }
 
     if (userImageRef.current && image && !forceTemplateFill) {

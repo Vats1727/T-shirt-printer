@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { db } from '../../db';
 import { assets as assetsTable } from '@shared/schema';
+import * as assetStore from './assetStore';
 
 export interface IStorage {
   createDesign(design: InsertDesign | InsertDesignV2): Promise<Design>;
@@ -161,9 +162,10 @@ export class JsonStorage implements IStorage {
         console.log('storage: wrote preview file', outPath);
         // If DB is available, insert an asset row so supplier listing can find it
         try {
-          if (db) {
+        if (db) {
             const storageKey = `client/attached_assets/${filename}`;
-            const res = await db.insert(assetsTable).values({ filename, mime, size: buf.length, storage_key: storageKey, metadata: { preview: true } }).returning();
+            const previewMeta = { preview: true, selected_colors: (insertDesign as any)?.version?.metadata?.selected_colors || null, featured_color: (insertDesign as any)?.version?.metadata?.featured_color || null };
+            const res = await db.insert(assetsTable).values({ filename, mime, size: buf.length, storage_key: storageKey, metadata: previewMeta }).returning();
             console.log('storage: inserted asset row', res?.[0]?.id);
           }
         } catch (ee) {
@@ -179,6 +181,51 @@ export class JsonStorage implements IStorage {
     // push to list early so id is stable for filenames
     designs.push(newDesign);
     console.log('json.createDesign: stored design id=', newDesign.id, 'hasVersion=', !!(insertDesign as any).version);
+    // Sanitize any inline data: URLs inside the `version` payload by storing them
+    // via the asset store and replacing with an asset reference (prefer /api/assets/:id).
+    async function replaceDataUrlsInObject(obj: any, idPrefix: string) {
+      if (!obj || typeof obj !== 'object') return;
+      if (Array.isArray(obj)) {
+        for (let i = 0; i < obj.length; i++) {
+          const v = obj[i];
+          if (typeof v === 'string' && v.startsWith('data:')) {
+            try {
+              const res = await assetStore.storeDataUrl(v, `${idPrefix}-${i}`);
+              if (res && (res as any).id) obj[i] = `/api/assets/${(res as any).id}`;
+              else if (res && (res as any).filename) obj[i] = `/attached_assets/${res.filename}`;
+            } catch (e) {
+              // ignore store errors — leave original data URL if storing fails
+            }
+          } else if (typeof v === 'object') {
+            await replaceDataUrlsInObject(v, `${idPrefix}-${i}`);
+          }
+        }
+        return;
+      }
+
+      for (const k of Object.keys(obj)) {
+        const v = obj[k];
+        if (typeof v === 'string' && v.startsWith('data:')) {
+          try {
+            const res = await assetStore.storeDataUrl(v, `${idPrefix}-${k}`);
+            if (res && (res as any).id) obj[k] = `/api/assets/${(res as any).id}`;
+            else if (res && (res as any).filename) obj[k] = `/attached_assets/${res.filename}`;
+          } catch (e) {
+            // ignore
+          }
+        } else if (typeof v === 'object') {
+          await replaceDataUrlsInObject(v, `${idPrefix}-${k}`);
+        }
+      }
+    }
+
+    try {
+      if ((newDesign as any).version) {
+        await replaceDataUrlsInObject((newDesign as any).version, `design-${newDesign.id}-version`);
+      }
+    } catch (e) {
+      console.error('storage: failed to sanitize version images', e && (e.stack || e.message) ? (e.stack || e.message) : e);
+    }
     // write previews (if provided) and update newDesign fields to reference filenames
     try {
       if (newDesign.image && typeof newDesign.image === 'string' && newDesign.image.startsWith('data:')) {
@@ -286,7 +333,8 @@ export class JsonStorage implements IStorage {
         try {
           if (db) {
             const storageKey = `client/attached_assets/${filename}`;
-            const res = await db.insert(assetsTable).values({ filename, mime, size: buf.length, storage_key: storageKey, metadata: { preview: true } }).returning();
+            const previewMeta = { preview: true, selected_colors: (changes as any)?.version?.metadata?.selected_colors || null, featured_color: (changes as any)?.version?.metadata?.featured_color || null };
+            const res = await db.insert(assetsTable).values({ filename, mime, size: buf.length, storage_key: storageKey, metadata: previewMeta }).returning();
             console.log('storage:update: inserted asset row', res?.[0]?.id);
           }
         } catch (ee) {
@@ -312,6 +360,51 @@ export class JsonStorage implements IStorage {
       }
     } catch (e) {
       // ignore file write errors
+    }
+
+    // Sanitize inline data: URLs in version or other nested fields by storing them
+    // via the asset store and replacing with asset references.
+    async function replaceDataUrlsInObject_update(obj: any, idPrefix: string) {
+      if (!obj || typeof obj !== 'object') return;
+      if (Array.isArray(obj)) {
+        for (let i = 0; i < obj.length; i++) {
+          const v = obj[i];
+          if (typeof v === 'string' && v.startsWith('data:')) {
+            try {
+              const res = await assetStore.storeDataUrl(v, `${idPrefix}-${i}`);
+              if (res && (res as any).id) obj[i] = `/api/assets/${(res as any).id}`;
+              else if (res && (res as any).filename) obj[i] = `/attached_assets/${res.filename}`;
+            } catch (e) {
+              // ignore
+            }
+          } else if (typeof v === 'object') {
+            await replaceDataUrlsInObject_update(v, `${idPrefix}-${i}`);
+          }
+        }
+        return;
+      }
+      for (const k of Object.keys(obj)) {
+        const v = obj[k];
+        if (typeof v === 'string' && v.startsWith('data:')) {
+          try {
+            const res = await assetStore.storeDataUrl(v, `${idPrefix}-${k}`);
+            if (res && (res as any).id) obj[k] = `/api/assets/${(res as any).id}`;
+            else if (res && (res as any).filename) obj[k] = `/attached_assets/${res.filename}`;
+          } catch (e) {
+            // ignore
+          }
+        } else if (typeof v === 'object') {
+          await replaceDataUrlsInObject_update(v, `${idPrefix}-${k}`);
+        }
+      }
+    }
+
+    try {
+      if ((updated as any).version) {
+        await replaceDataUrlsInObject_update((updated as any).version, `design-${id}-version`);
+      }
+    } catch (e) {
+      console.error('storage:update: failed to sanitize version images', e && (e.stack || e.message) ? (e.stack || e.message) : e);
     }
 
     designs[idx] = updated;

@@ -16,6 +16,8 @@ export default function SavedDesignCard({ sd, onView, onUse }: Props) {
     try {
       const front = Array.isArray(payload.sides) ? payload.sides.find((s:any)=>s.name==='front') || payload.sides[0] : null;
       const template = payload.template || payload.product || undefined;
+      // If version metadata contains a featured color, use it for tinting the preview image
+      const featured = payload?.version?.metadata?.featured_color || (sd?.design?.templateColor ? { hex: sd.design.templateColor } : null);
       const templateColor = payload.templateColor || payload.template_color || payload.color || undefined;
       let slogan = '';
       let imageUrl: string | null = null;
@@ -42,6 +44,10 @@ export default function SavedDesignCard({ sd, onView, onUse }: Props) {
         }
       }
 
+      // If top-level legacy image fields exist (normalized v2 payload), prefer them for preview
+      if (!imageUrl && payload.image) {
+        imageUrl = (typeof payload.image === 'string' && payload.image.startsWith('/api/assets/')) ? payload.image : (typeof payload.image === 'string' && payload.image.startsWith('/attached_assets/')) ? payload.image : payload.image;
+      }
       // Render a small DesignCanvas to show the composed design
       return (
         <div className="w-full h-full">
@@ -64,7 +70,9 @@ export default function SavedDesignCard({ sd, onView, onUse }: Props) {
             imageScale={Number(imageScale) || 100}
             imageRotation={Number(imageRotation) || 0}
             imagePosition={imagePosition}
-            tintImage={false}
+            // If there is a featured color, tint the image only (do not change template color)
+            imageTintColor={featured?.hex || null}
+            tintImage={!!featured}
           />
         </div>
       );

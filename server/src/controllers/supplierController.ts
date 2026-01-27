@@ -130,26 +130,73 @@ export async function listSavedDesigns(req: Request, res: Response) {
   }
   if (!user) return res.status(401).json({ message: 'Not authenticated' });
   try {
-    if (!db) return res.status(500).json({ message: 'DB not configured' });
-    const rows = await db.select().from(assetsTable).orderBy(assetsTable.id);
-    const previews = (rows as any[]).filter(r => r && r.metadata && (r.metadata.preview === true || r.metadata.preview === 'true'));
-    const mapped: any[] = [];
-    for (const p of previews) {
-      const filename = p.filename;
-      // Prefer to serve the client/attached_assets copy when present (faster for dev/static files)
-      const clientPath = path.join(process.cwd(), 'client', 'attached_assets', filename || '');
-      let url = `/api/assets/${p.id}`;
+    // If DB not configured, try to read client/attached_assets for design preview files as a fallback
+    if (!db) {
       try {
-        if (filename) {
-          await fs.access(clientPath);
-          url = `/attached_assets/${filename}`;
+        const dir = path.join(process.cwd(), 'client', 'attached_assets');
+        const files = await fs.readdir(dir);
+        const groupsMap: Record<string, any> = {};
+        for (const fname of files) {
+          const m = fname.match(/^design-(\d+)-(front|back)\.(png|jpg|jpeg)$/i);
+          if (!m) continue;
+          const key = `design-${m[1]}`;
+          const side = m[2] === 'back' ? 'back' : 'front';
+          if (!groupsMap[key]) groupsMap[key] = { key, front: null, back: null, any: null };
+          const url = `/attached_assets/${fname}`;
+          groupsMap[key][side] = { id: null, filename: fname, url, mime: `image/${m[3]}`, metadata: { preview: true } };
         }
+        const groups = Object.keys(groupsMap).map(k => ({ key: k, ...groupsMap[k] }));
+        return res.json({ designs: groups });
       } catch (e) {
-        // file not accessible — keep api assets url
+        return res.status(500).json({ message: 'DB not configured and failed to read attached_assets' });
       }
-      mapped.push({ id: p.id, filename: filename, mime: p.mime, size: p.size, storage_key: p.storage_key, metadata: p.metadata, url });
     }
-    return res.json({ designs: mapped });
+
+    const rows = await db.select().from(assetsTable).orderBy(assetsTable.id);
+
+    // Build groups by design id (preferred) or by filename pattern 'design-<id>-front/back'. This is robust to mixed workflows.
+    const groupsMap: Record<string, any> = {};
+
+    for (const p of (rows as any[])) {
+      let meta = p.metadata;
+      try { if (meta && typeof meta === 'string') meta = JSON.parse(meta); } catch (e) { /* ignore */ }
+
+      const previewFlag = meta && (meta.preview === true || meta.preview === 'true');
+      const designIdFromMeta = meta && (meta.designId || meta.design_id || meta.design);
+
+      const filename = p.filename || '';
+      // determine key & side
+      let key: string | null = null;
+      let side: 'front'|'back'|null = null;
+
+      if (designIdFromMeta) {
+        key = `design-${designIdFromMeta}`;
+      } else {
+        const m = String(filename || '').match(/^design-(\d+)-(front|back)\.(png|jpg|jpeg)$/i);
+        if (m) { key = `design-${m[1]}`; side = m[2] === 'back' ? 'back' : 'front'; }
+      }
+
+      // If asset isn't preview-marked and doesn't seem related to a design, skip it
+      if (!previewFlag && !key) continue;
+
+      if (!groupsMap[key || `asset-${p.id}`]) groupsMap[key || `asset-${p.id}`] = { key: key || `asset-${p.id}`, front: null, back: null, any: null };
+      const entry = { id: p.id, filename: p.filename, url: `/api/assets/${p.id}`, mime: p.mime, size: p.size, storage_key: p.storage_key, metadata: meta };
+      // Prefer client attached copy for URL if present
+      try {
+        if (p.filename) {
+          const clientPath = path.join(process.cwd(), 'client', 'attached_assets', p.filename);
+          await fs.access(clientPath);
+          entry.url = `/attached_assets/${p.filename}`;
+        }
+      } catch (e) { /* ignore */ }
+
+      if (side === 'front') groupsMap[key || `asset-${p.id}`].front = entry;
+      else if (side === 'back') groupsMap[key || `asset-${p.id}`].back = entry;
+      else groupsMap[key || `asset-${p.id}`].any = entry;
+    }
+
+    const groups = Object.keys(groupsMap).map(k => ({ key: k, ...groupsMap[k] }));
+    return res.json({ designs: groups });
   } catch (e:any) {
     console.error('listSavedDesigns error', e?.message || e);
     return res.status(500).json({ message: 'Failed to list saved designs' });
@@ -159,7 +206,28 @@ export async function listSavedDesigns(req: Request, res: Response) {
 // Temporary public listing for development/debugging — does not require auth.
 export async function listSavedDesignsPublic(_req: Request, res: Response) {
   try {
-    if (!db) return res.status(500).json({ message: 'DB not configured' });
+    // DB not configured fallback: read client/attached_assets for files matching design-<id>-front/back
+    if (!db) {
+      try {
+        const dir = path.join(process.cwd(), 'client', 'attached_assets');
+        const files = await fs.readdir(dir);
+        const groupsMap: Record<string, any> = {};
+        for (const fname of files) {
+          const m = fname.match(/^design-(\d+)-(front|back)\.(png|jpg|jpeg)$/i);
+          if (!m) continue;
+          const key = `design-${m[1]}`;
+          const side = m[2] === 'back' ? 'back' : 'front';
+          if (!groupsMap[key]) groupsMap[key] = { key, front: null, back: null, any: null };
+          const url = `/attached_assets/${fname}`;
+          groupsMap[key][side] = { id: null, filename: fname, url, mime: `image/${m[3]}`, metadata: { preview: true } };
+        }
+        const groups = Object.keys(groupsMap).map(k => ({ key: k, ...groupsMap[k] }));
+        return res.json({ designs: groups });
+      } catch (e) {
+        return res.status(500).json({ message: 'DB not configured and failed to read attached_assets' });
+      }
+    }
+
     const rows = await db.select().from(assetsTable).orderBy(assetsTable.id);
     const previews = (rows as any[]).filter(r => r && r.metadata && (r.metadata.preview === true || r.metadata.preview === 'true'));
     const mapped: any[] = [];

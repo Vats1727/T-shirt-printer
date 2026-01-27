@@ -13,7 +13,7 @@ import { storage } from './storage';
       imageRotation: 0,
       imagePosition: { x: 150, y: 150 },
     } as any);
-    console.log('created:', d);
+    console.log('created: id=', (d && (d as any).id) || null);
   } catch (e) {
     console.error('error creating design', e);
     process.exit(1);

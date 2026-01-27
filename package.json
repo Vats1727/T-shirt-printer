@@ -7,6 +7,9 @@
     "dev:client": "npm --prefix client run dev"
   },
   "devDependencies": {
-    "start-server-and-test": "^1.14.0"
+    "@types/node": "^25.0.10",
+    "start-server-and-test": "^1.14.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
   }
 }
