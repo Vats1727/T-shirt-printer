@@ -2,7 +2,6 @@ import type { Express } from "express";
 import type { Server } from "http";
 import { api } from "@shared/routes";
 import * as designsController from "./src/controllers/designsController";
-import { authFromHeader, requireRole } from "./src/middleware/auth";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -17,23 +16,173 @@ export async function registerRoutes(
   // Cached for short duration (1s) to keep data fresh while reducing frequent repeated queries.
   let designsCache: { ts: number; data: any } = { ts: 0, data: null };
 
-  // auth middleware
-  import('./src/middleware/auth').then(m => {
-    // attach user-required routes dynamically
-  }).catch(() => {});
-
-  // Protected create route: suppliers and admins can create designs
-  app.post(api.designs.create.path, authFromHeader, requireRole(['supplier', 'admin']), safe(designsController.createDesign));
+  app.post(api.designs.create.path, safe(designsController.createDesign));
 
   app.get(api.designs.list.path, safe(designsController.listDesigns));
 
   app.get(`${api.designs.list.path}/:id`, safe(designsController.getDesign));
+  app.get(`${api.designs.list.path}/:id/versions`, safe(designsController.listDesignVersions));
 
-  // Update requires supplier or admin
-  app.put(`${api.designs.list.path}/:id`, authFromHeader, requireRole(['supplier', 'admin']), safe(designsController.updateDesign));
+  app.put(`${api.designs.list.path}/:id`, safe(designsController.updateDesign));
 
-  // Delete requires admin
-  app.delete(`${api.designs.list.path}/:id`, authFromHeader, requireRole('admin'), safe(designsController.deleteDesign));
+  app.delete(`${api.designs.list.path}/:id`, safe(designsController.deleteDesign));
+
+  // Serve stored asset files by id
+  app.get('/api/assets/:id', safe(designsController.getAsset));
+
+  // Quick unauthenticated test endpoint to verify proxy/routing in development
+  app.get('/api/_test', safe(async (_req, res) => {
+    return res.json({ ok: true, time: Date.now() });
+  }));
+  // Auth
+  const auth = await import('./src/controllers/authController');
+  const adminCtrl = await import('./src/controllers/adminController');
+  const { requireAuth, requireRole } = await import('./src/middleware/auth');
+
+  const assetsCtrl = await import('./src/controllers/assetsController');
+
+  app.post('/api/auth/register', safe(auth.register));
+  app.post('/api/auth/login', safe(auth.login));
+
+  // Public upload endpoint that accepts JSON { dataUrl, filename } and returns { id, url }
+  app.post('/api/assets', safe(assetsCtrl.uploadAsset));
+  app.delete('/api/assets/:id', requireAuth, requireRole('supplier'), safe(assetsCtrl.deleteAsset));
+
+  // Admin endpoints (protected)
+  app.get('/api/admin/colors', requireAuth, requireRole('admin'), safe(adminCtrl.listColors));
+  app.post('/api/admin/colors', requireAuth, requireRole('admin'), safe(adminCtrl.createColor));
+
+  app.get('/api/admin/sizes', requireAuth, requireRole('admin'), safe(adminCtrl.listSizes));
+  app.post('/api/admin/sizes', requireAuth, requireRole('admin'), safe(adminCtrl.createSize));
+
+  app.post('/api/admin/inventory', requireAuth, requireRole('admin'), safe(adminCtrl.upsertInventory));
+  app.get('/api/admin/inventory', requireAuth, requireRole('admin'), safe(async (req, res) => {
+    const c = await import('./src/services/catalogStore');
+    const data = await c.listCatalog();
+    return res.json({ inventory: data.inventory });
+  }));
+  // Admin orders
+  app.get('/api/admin/orders', requireAuth, requireRole('admin'), safe(adminCtrl.listOrders));
+  app.get('/api/admin/orders/:id', requireAuth, requireRole('admin'), safe(adminCtrl.getOrder));
+  app.get('/api/admin/size-chart', requireAuth, requireRole('admin'), safe(adminCtrl.listSizeChart));
+  app.post('/api/admin/size-chart', requireAuth, requireRole('admin'), safe(adminCtrl.upsertSizeChart));
+  app.delete('/api/admin/size-chart', requireAuth, requireRole('admin'), safe(adminCtrl.deleteSizeChart));
+
+  app.post('/api/admin/sizes', requireAuth, requireRole('admin'), safe(adminCtrl.createSize));
+  app.delete('/api/admin/sizes/:id', requireAuth, requireRole('admin'), safe(adminCtrl.deleteSize));
+
+  const productsCtrl = await import('./src/controllers/productsController');
+  app.post('/api/admin/products', requireAuth, requireRole('admin'), safe(productsCtrl.createProduct));
+  app.get('/api/admin/products', requireAuth, requireRole('admin'), safe(productsCtrl.listProducts));
+  app.get('/api/admin/products/:id', requireAuth, requireRole('admin'), safe(productsCtrl.getProduct));
+  app.put('/api/admin/products/:id', requireAuth, requireRole('admin'), safe(productsCtrl.updateProduct));
+  app.delete('/api/admin/products/:id', requireAuth, requireRole('admin'), safe(productsCtrl.deleteProduct));
+
+  // Supplier endpoints
+  const supplierCtrl = await import('./src/controllers/supplierController');
+  const supplierListingsCtrl = await import('./src/controllers/supplierListingsController');
+  app.get('/api/supplier/catalog', requireAuth, requireRole('supplier'), (req,res,next) => { res.set('Cache-Control','public, max-age=5'); return next(); }, safe(supplierCtrl.getCatalog));
+  // Order creation temporarily disabled for suppliers. Re-enable when supplier ordering workflow is ready.
+  // app.post('/api/supplier/order', requireAuth, requireRole('supplier'), safe(supplierCtrl.placeOrder));
+  app.get('/api/supplier/orders', requireAuth, requireRole('supplier'), safe(supplierCtrl.listOrders));
+  app.get('/api/supplier/orders/:id', requireAuth, requireRole('supplier'), safe(supplierCtrl.getOrder));
+  app.get('/api/supplier/saved-designs', requireAuth, requireRole('supplier'), safe(supplierCtrl.listSavedDesigns));
+
+  // Supplier listing management (create and list)
+  app.post('/api/supplier/listings', requireAuth, requireRole('supplier'), safe(supplierListingsCtrl.createListing));
+  app.get('/api/supplier/listings', requireAuth, requireRole('supplier'), safe(supplierListingsCtrl.listListings));
+  app.delete('/api/supplier/listings/:id', requireAuth, requireRole('supplier'), safe(supplierListingsCtrl.deleteListing));
+
+  // Unauthenticated quick check for the supplier saved-designs path to validate routing/proxy
+  app.get('/api/supplier/saved-designs/_test', safe(async (_req, res) => {
+    return res.json({ ok: true, path: '/api/supplier/saved-designs/_test' });
+  }));
+  // Development-only public listing (no auth) for quick debugging
+  app.get('/api/supplier/saved-designs/public', safe(supplierCtrl.listSavedDesignsPublic));
+
+  // Public listing page (simple renderer)
+  app.get('/listing/:slug', safe((await import('./src/controllers/supplierListingsController')).getPublicListing));
+  // NOTE: client SPA now renders the store; server no longer exposes HTML /store/:supplierId to avoid conflicts
+
+  // Debug JSON endpoint to fetch listings for a supplier (useful to verify server and DB)
+  app.get('/api/store/:supplierId', safe(async (req, res) => {
+    const listings = await (await import('./src/services/listingsStore')).listListingsBySupplier(req.params.supplierId);
+    // enhance listings with preview_url where possible
+    const enhanced: any[] = [];
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    const clientPath = path.join(process.cwd(), 'client', 'attached_assets');
+    const clientBase = process.env.CLIENT_BASE_URL ? String(process.env.CLIENT_BASE_URL).replace(/\/$/, '') : `http://localhost:5173`;
+    const { pool } = await import('./src/services/listingsStore');
+    for (const l of (listings || [])) {
+      let preview_url: string | null = null;
+      let preview_asset_id: number | null = null;
+      let preview_group: any = null;
+      const designKey = String(l.design_key || '');
+      if (designKey) {
+        try {
+          const files = await fs.readdir(clientPath);
+          const found = files.find((f: string) => f.toLowerCase().startsWith(designKey.toLowerCase()));
+          if (found) preview_url = `/attached_assets/${found}`;
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      // Build preview group from matching assets when available
+      if (designKey) {
+        try {
+          const db = await import('../db');
+          if (db.pool) {
+            const clientDb = await db.pool.connect();
+            try {
+              const likePattern = `%${designKey}%`;
+              const r = await clientDb.query('SELECT id, filename, mime, metadata FROM assets WHERE filename ILIKE $1 OR filename ILIKE $2 ORDER BY id', [likePattern, `${designKey}%`]);
+              if (r && r.rows && r.rows.length) {
+                const groupsMap: Record<string, any> = {};
+                for (const a of r.rows) {
+                  const fn = a.filename || '';
+                  const m = String(fn || '').match(/^design-(\d+)-(front|back)\.(png|jpg|jpeg)$/i);
+                  const key = m ? `design-${m[1]}` : `asset-${a.id}`;
+                  const side = m ? (m[2] === 'back' ? 'back' : 'front') : null;
+                  if (!groupsMap[key]) groupsMap[key] = { key, front: null, back: null, any: null };
+                  let url = `${clientBase}/api/assets/${a.id}`;
+                  try { if (fn) { await fs.access(path.join(clientPath, fn)); url = `${clientBase}/attached_assets/${fn}`; } } catch (e) { /* ignore */ }
+                  let meta: any = a.metadata || null;
+                  try { if (meta && typeof meta === 'string') meta = JSON.parse(meta); } catch (e) { /* ignore */ }
+                  const entry = { id: a.id, filename: fn, url, mime: a.mime, metadata: meta };
+                  if (side === 'front') groupsMap[key].front = entry;
+                  else if (side === 'back') groupsMap[key].back = entry;
+                  else groupsMap[key].any = entry;
+                }
+                const keys = Object.keys(groupsMap);
+                if (keys.length) preview_group = groupsMap[keys[0]];
+                const firstRow = r.rows[0];
+                if (firstRow) preview_asset_id = firstRow.id;
+                if (!preview_url && preview_group) preview_url = (preview_group.front?.url || preview_group.any?.url || preview_group.back?.url) || null;
+              }
+            } finally { clientDb.release(); }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      enhanced.push({ ...l, preview_url, preview_asset_id, preview_group });
+    }
+    return res.json({ supplierId: req.params.supplierId, count: enhanced.length, listings: enhanced });
+  }));
+
+  // JSON endpoint to fetch a single listing by slug (used by client storefront)
+  app.get('/api/listing/:slug', safe(async (req, res) => {
+    const ctrl = await import('./src/controllers/supplierListingsController');
+    return ctrl.getListingJson(req, res);
+  }));
+  // JSON endpoint to fetch a single listing by id
+  app.get('/api/listing/id/:id', safe(async (req, res) => {
+    const ctrl = await import('./src/controllers/supplierListingsController');
+    return ctrl.getListingByIdJson(req, res);
+  }));
 
   app.get('/api/storage-type', async (_req, res) => {
     try {
@@ -44,108 +193,6 @@ export async function registerRoutes(
       return res.json({ type: 'json' });
     }
   });
-
-  // Users endpoints
-  app.post('/api/users/login', safe(async (req, res) => {
-    const { username, password } = req.body || {};
-    if (!username || !password) return res.status(400).json({ message: 'username and password required' });
-
-    try {
-      const usersSvc = (await import('./src/services/users')).usersService;
-      const user = await usersSvc.getByUsername(username);
-      console.debug('DEBUG login attempt for user:', username, 'found user:', !!user);
-      if (!user) return res.status(401).json({ message: 'Invalid credentials' });
-      if (!(user as any).password) return res.status(401).json({ message: 'Invalid credentials' });
-
-      const bcryptMod = await import('bcryptjs');
-      const bcrypt = (bcryptMod as any).default ?? bcryptMod;
-      console.debug('DEBUG bcrypt has compareSync:', typeof bcrypt.compareSync, 'and compare:', typeof bcrypt.compare);
-
-      const ok = typeof bcrypt.compareSync === 'function'
-        ? bcrypt.compareSync(password, (user as any).password)
-        : await bcrypt.compare(password, (user as any).password);
-
-      console.debug('DEBUG password compare result:', ok);
-      if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
-
-      const jwt = (await import('jsonwebtoken')) as typeof import('jsonwebtoken');
-      const secret = process.env.JWT_SECRET || 'dev-secret';
-      const token = jwt.sign({ id: (user as any).id, username: user.username, role: user.role }, secret, { expiresIn: '7d' });
-      return res.json({ token, user: { id: (user as any).id, username: user.username, role: user.role } });
-    } catch (err) {
-      console.error('ERROR in /api/users/login handler:', err);
-      return res.status(500).json({ message: String(err) });
-    }
-  }));
-
-  app.post('/api/users', authFromHeader, requireRole('admin'), safe(async (req, res) => {
-    const { username, role } = req.body || {};
-    if (!username || !role) return res.status(400).json({ message: 'username and role required' });
-    const usersSvc = (await import('./src/services/users')).usersService;
-    const created = await usersSvc.createUser(username, role);
-    res.status(201).json(created);
-  }));
-
-  app.get('/api/users', authFromHeader, requireRole('admin'), safe(async (_req, res) => {
-    const usersSvc = (await import('./src/services/users')).usersService;
-    const list = await usersSvc.listUsers();
-    res.json(list);
-  }));
-
-  // Development-only debug: list users without auth so we can verify seeding/passwords
-  if (process.env.NODE_ENV === 'development') {
-    app.get('/api/debug/users', safe(async (_req, res) => {
-      const usersSvc = (await import('./src/services/users')).usersService;
-      const list = await usersSvc.listUsers();
-      res.json(list);
-    }));
-
-    app.post('/api/debug/set-password', safe(async (req, res) => {
-      const { username, password } = req.body || {};
-      if (!username || !password) return res.status(400).json({ message: 'username and password required' });
-      const usersSvcMod = await import('./src/services/users');
-      const usersSvc = usersSvcMod.usersService;
-      const bcryptMod = await import('bcryptjs');
-      const bcrypt = (bcryptMod as any).default ?? bcryptMod;
-      const hash = bcrypt.hashSync ? bcrypt.hashSync(password, 10) : await bcrypt.hash(password, 10);
-      // Try DB update
-      try {
-        const modDb = await import('./db');
-        const { db } = modDb as any;
-        const { users } = await import('@shared/schema');
-        const { eq } = await import('drizzle-orm');
-        // if user exists, update, else insert
-        const found = await usersSvc.getByUsername(username);
-        if (found) {
-          await db.update(users).set({ password: hash }).where(eq(users.id, (found as any).id));
-          return res.json({ message: 'password updated (db)' });
-        } else {
-          const [row] = await db.insert(users).values({ username, role: 'admin', password: hash }).returning();
-          return res.status(201).json({ message: 'user created (db)', user: row });
-        }
-      } catch (dbErr) {
-        // Fallback to JSON update
-        try {
-          const fs = await import('fs/promises');
-          const usersFile = (await import('./src/services/users')).usersFile || '../../users.json';
-          let arr = [];
-          try { arr = JSON.parse(await fs.readFile(usersFile, 'utf-8')); } catch (e) { arr = []; }
-          let found = arr.find((u: any) => u.username === username);
-          if (found) {
-            found.password = hash;
-          } else {
-            const id = (arr[arr.length-1]?.id || 0) + 1;
-            found = { id, username, role: 'admin', password: hash, createdAt: new Date() };
-            arr.push(found);
-          }
-          await fs.writeFile(usersFile, JSON.stringify(arr, null, 2));
-          return res.json({ message: 'password set (json)', user: found });
-        } catch (jsonErr) {
-          return res.status(500).json({ message: 'failed to set password', error: String(jsonErr) });
-        }
-      }
-    }));
-  }
 
   return httpServer;
 }

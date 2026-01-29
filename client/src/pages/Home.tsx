@@ -4,11 +4,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { motion } from "framer-motion";
 import { Palette, PenTool, Sparkles, Loader2, Save, Image as ImageIcon, Move, Type, Trash2, RotateCcw } from "lucide-react";
 
-import { insertDesignSchema } from "@shared/schema";
+import { insertDesignV2Schema } from "@shared/schema";
 import type { DesignResponse } from "@shared/routes";
 import { useCreateDesign, useDesigns } from "@/hooks/use-designs";
 import { DesignCanvas } from "@/components/design/DesignCanvas";
-import { useAuth } from '@/contexts/AuthContext';
 
 import {
   Form,
@@ -27,11 +26,7 @@ import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 
 export default function Home() {
-  const { user, logout } = useAuth();
-  const [slogan, setSlogan] = useState("");
-  const [color, setColor] = useState("#7c3aed");
-  const [templateColor, setTemplateColor] = useState("#ffffff");
-  const [template, setTemplate] = useState<'tshirt' | 'women_tshirt' | 'unisex-hoodie'>('tshirt');
+  const [side, setSide] = useState<'front' | 'back'>('front');
 
   const templates: Array<{ id: string; label: string }> = [
     { id: 'tshirt', label: 'T-shirt' },
@@ -45,13 +40,59 @@ export default function Home() {
     setTemplate(templates[next].id as any);
     form.setValue('template', templates[next].id);
   };
-  const [textSize, setTextSize] = useState(24);
-  const [textRotation, setTextRotation] = useState(0);
-  const [textPosition, setTextPosition] = useState({ x: 200, y: 180 });
-  const [image, setImage] = useState<string | null>(null);
-  const [imageScale, setImageScale] = useState(50);
-  const [imageRotation, setImageRotation] = useState(0);
-  const [imagePosition, setImagePosition] = useState({ x: 200, y: 200 });
+
+  const baseState = {
+    slogan: '',
+    color: '#7c3aed',
+    templateColor: '#ffffff',
+    textSize: 24,
+    textRotation: 0,
+    textPosition: { x: 200, y: 180 },
+    image: null as string | null,
+    imageScale: 50,
+    imageRotation: 0,
+    imagePosition: { x: 200, y: 200 },
+  };
+
+  const [frontState, setFrontState] = useState(() => ({ ...baseState }));
+  const [backState, setBackState] = useState(() => ({ ...baseState }));
+
+  const activeState = side === 'front' ? frontState : backState;
+  const setActiveState = (patch: Partial<typeof baseState>) => {
+    if (side === 'front') setFrontState(prev => ({ ...prev, ...patch }));
+    else setBackState(prev => ({ ...prev, ...patch }));
+  };
+
+  // Sync active side into the react-hook-form so submit validators can see current values
+  ;(function syncFormWithActive() {
+    try {
+      form.setValue('slogan', activeState.slogan);
+      form.setValue('color', activeState.color);
+      form.setValue('templateColor', activeState.templateColor);
+      form.setValue('textSize', activeState.textSize);
+      form.setValue('textRotation', activeState.textRotation);
+      form.setValue('textPosition', activeState.textPosition);
+      form.setValue('image', activeState.image);
+      form.setValue('imageScale', activeState.imageScale);
+      form.setValue('imageRotation', activeState.imageRotation);
+      form.setValue('imagePosition', activeState.imagePosition);
+    } catch (e) {
+      // ignore during initial render
+    }
+  })();
+
+  // helpers to access current values
+  const slogan = activeState.slogan;
+  const color = activeState.color;
+  const templateColor = activeState.templateColor;
+  const [template, setTemplate] = useState<'tshirt' | 'women_tshirt' | 'unisex-hoodie'>('tshirt');
+  const textSize = activeState.textSize;
+  const textRotation = activeState.textRotation;
+  const textPosition = activeState.textPosition;
+  const image = activeState.image;
+  const imageScale = activeState.imageScale;
+  const imageRotation = activeState.imageRotation;
+  const imagePosition = activeState.imagePosition;
 
   const { mutate: createDesign, isPending } = useCreateDesign();
   const { data: designs, isLoading: isLoadingDesigns } = useDesigns();
@@ -59,7 +100,7 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm({
-    resolver: zodResolver(insertDesignSchema),
+    resolver: zodResolver(insertDesignV2Schema),
     defaultValues: {
       slogan: "",
       color: "#7c3aed",
@@ -72,33 +113,53 @@ export default function Home() {
       imageScale: 50,
       imageRotation: 0,
       imagePosition: { x: 200, y: 200 },
+      version: { versionName: 'initial', sides: [ { name: 'front', layers: [] }, { name: 'back', layers: [] } ] },
     },
   });
 
   const onSubmit = form.handleSubmit((data) => {
-    createDesign({
-      ...data,
-      slogan: slogan || null,
-      image: image,
-      textSize,
-      textRotation,
-      textPosition,
-      imageScale,
-      imageRotation,
-      imagePosition,
-      templateColor,
-      template,
+    const buildSide = (state: typeof baseState, name: 'front' | 'back') => ({
+      name,
+      layers: [
+        ...(state.slogan ? [{ type: 'text', text: state.slogan, size: state.textSize, rotation: state.textRotation, position: state.textPosition, color: state.color }] : []),
+        ...(state.image ? [{ type: 'image', asset: { dataUrl: state.image }, scale: state.imageScale / 100, rotation: state.imageRotation, position: state.imagePosition }] : []),
+      ],
     });
+
+    const payload = {
+      product: template,
+      template,
+      templateColor: frontState.templateColor,
+      version: {
+        versionName: 'initial',
+        sides: [buildSide(frontState, 'front'), buildSide(backState, 'back')],
+      },
+    };
+
+    createDesign(payload as any);
   });
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
         const base64String = reader.result as string;
-        setImage(base64String);
-        form.setValue("image", base64String);
+        try {
+          const res = await fetch('/api/assets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dataUrl: base64String, filename: file.name }) });
+          if (res.ok) {
+            const js = await res.json();
+            const url = js?.url || `/attached_assets/${js?.filename}`;
+            setActiveState({ image: url });
+            form.setValue('image', url);
+            return;
+          }
+        } catch (err) {
+          // ignore and fall back to embedding data URL
+        }
+        // fallback to inline data URL if upload failed
+        setActiveState({ image: base64String });
+        form.setValue('image', base64String);
       };
       reader.readAsDataURL(file);
     }
@@ -130,19 +191,6 @@ export default function Home() {
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-20">
         <div className="text-center max-w-2xl mx-auto mb-16">
-          <div className="flex items-center justify-between mb-6">
-            <h1 className="text-2xl font-semibold">T-shirt design tool</h1>
-            <div>
-              {user ? (
-                <div className="flex items-center gap-3">
-                  <div className="text-sm">Signed in: <strong>{user.username}</strong> ({user.role})</div>
-                  <button onClick={() => logout()} className="px-3 py-1 border rounded">Sign out</button>
-                </div>
-              ) : (
-                <a href="/login" className="px-3 py-1 border rounded">Sign in</a>
-              )}
-            </div>
-          </div>
           <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
            
             <h1 className="text-5xl md:text-6xl font-bold tracking-tight text-foreground mb-6 font-display">
@@ -172,7 +220,7 @@ export default function Home() {
                         className="h-12 text-lg bg-white/50 border-2"
                         value={slogan}
                         onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                          setSlogan(e.target.value);
+                          setActiveState({ slogan: e.target.value });
                           form.setValue("slogan", e.target.value);
                         }}
                       />
@@ -190,7 +238,7 @@ export default function Home() {
                             max={64}
                             step={1}
                             onValueChange={([val]: number[]) => {
-                              setTextSize(val);
+                              setActiveState({ textSize: val });
                               form.setValue("textSize", val);
                             }}
                           />
@@ -207,7 +255,7 @@ export default function Home() {
                             max={360}
                             step={1}
                             onValueChange={([val]: number[]) => {
-                              setTextRotation(val);
+                              setActiveState({ textRotation: val });
                               form.setValue("textRotation", val);
                             }}
                           />
@@ -219,7 +267,7 @@ export default function Home() {
                               className="h-10 w-20 cursor-pointer p-1 border-2"
                               value={color}
                               onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                                setColor(e.target.value);
+                                setActiveState({ color: e.target.value });
                                 form.setValue("color", e.target.value);
                               }}
                             />
@@ -233,7 +281,7 @@ export default function Home() {
                               className="h-10 w-20 cursor-pointer p-1 border-2"
                               value={templateColor}
                               onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                                setTemplateColor(e.target.value);
+                                setActiveState({ templateColor: e.target.value });
                                 form.setValue("templateColor", e.target.value);
                               }}
                             />
@@ -294,7 +342,7 @@ export default function Home() {
                               size="icon" 
                               className="text-destructive"
                               onClick={() => {
-                                setImage(null);
+                                setActiveState({ image: null });
                                 form.setValue("image", null);
                               }}
                             >
@@ -315,7 +363,7 @@ export default function Home() {
                               max={200}
                               step={1}
                               onValueChange={([val]: number[]) => {
-                                setImageScale(val);
+                                setActiveState({ imageScale: val });
                                 form.setValue("imageScale", val);
                               }}
                             />
@@ -332,7 +380,7 @@ export default function Home() {
                               max={360}
                               step={1}
                               onValueChange={([val]: number[]) => {
-                                setImageRotation(val);
+                              setActiveState({ imageRotation: val });
                                 form.setValue("imageRotation", val);
                               }}
                             />
@@ -343,23 +391,53 @@ export default function Home() {
                     </motion.div>
 
                     <motion.div variants={itemVariants} className="pt-4">
-                      <Button 
-                        type="submit" 
-                        disabled={isPending}
-                        className="w-full h-14 text-lg font-semibold rounded-xl bg-gradient-to-r from-primary to-primary/90 hover:to-primary shadow-lg shadow-primary/25 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300"
-                      >
-                        {isPending ? (
-                          <>
-                            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                            Saving...
-                          </>
-                        ) : (
-                          <>
-                            <Save className="mr-2 h-5 w-5" />
-                            Save Design
-                          </>
-                        )}
-                      </Button>
+                      <div className="flex gap-3">
+                        <Button 
+                          type="submit" 
+                          disabled={isPending}
+                          className="flex-1 h-14 text-lg font-semibold rounded-xl bg-gradient-to-r from-primary to-primary/90 hover:to-primary shadow-lg shadow-primary/25 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300"
+                        >
+                          {isPending ? (
+                            <>
+                              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            <>
+                              <Save className="mr-2 h-5 w-5" />
+                              Save Design
+                            </>
+                          )}
+                        </Button>
+                        <Button type="button" variant="outline" onClick={async () => {
+                          // export current (active) side as PNG
+                          // ensure render completed by switching side and waiting
+                          const c = document.querySelector('canvas');
+                          if (!c) return;
+                          const url = (c as HTMLCanvasElement).toDataURL('image/png');
+                          const a = document.createElement('a'); a.href = url; a.download = `${side}-design.png`; a.click();
+                        }}>
+                          Export PNG
+                        </Button>
+                        <Button type="button" variant="outline" onClick={async () => {
+                          // Export both sides sequentially
+                          const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
+                          if (!canvas) return;
+                          // front
+                          setSide('front');
+                          await new Promise(r => setTimeout(r, 120));
+                          const frontUrl = (document.querySelector('canvas') as HTMLCanvasElement).toDataURL('image/png');
+                          // back
+                          setSide('back');
+                          await new Promise(r => setTimeout(r, 120));
+                          const backUrl = (document.querySelector('canvas') as HTMLCanvasElement).toDataURL('image/png');
+                          // download two files (optional: zip)
+                          const a1 = document.createElement('a'); a1.href = frontUrl; a1.download = `front-design.png`; a1.click();
+                          const a2 = document.createElement('a'); a2.href = backUrl; a2.download = `back-design.png`; a2.click();
+                        }}>
+                          Export Both
+                        </Button>
+                      </div>
                     </motion.div>
                   </form>
                 </Form>
@@ -373,23 +451,29 @@ export default function Home() {
                 <div className="relative z-10 flex flex-col items-center">
                   <h3 className="text-2xl font-bold font-display text-foreground mb-8 text-center">Interactive Canvas</h3>
                   <div className="transform transition-transform duration-500 hover:scale-[1.01]">
-                    <DesignCanvas
-                      slogan={slogan}
-                      color={color}
-                      template={template}
-                      templateColor={templateColor}
-                      textSize={textSize}
-                      textRotation={textRotation}
-                      textPosition={textPosition}
-                      onTextMove={setTextPosition}
-                      image={image}
-                      imageScale={imageScale}
-                      imageRotation={imageRotation}
-                      imagePosition={imagePosition}
-                      onImageMove={setImagePosition}
-                      width={400}
-                      height={400}
-                    />
+                      <div className="flex items-center gap-3 mb-4">
+                        <button type="button" onClick={() => setSide('front')} className={`px-3 py-1 rounded ${side==='front' ? 'bg-primary text-white' : 'bg-gray-100'}`}>Front Side</button>
+                        <button type="button" onClick={() => setSide('back')} className={`px-3 py-1 rounded ${side==='back' ? 'bg-primary text-white' : 'bg-gray-100'}`}>Back Side</button>
+                      </div>
+
+                      <DesignCanvas
+                        side={side}
+                        slogan={slogan}
+                        color={color}
+                        template={template}
+                        templateColor={templateColor}
+                        textSize={textSize}
+                        textRotation={textRotation}
+                        textPosition={textPosition}
+                        onTextMove={(pos) => setActiveState({ textPosition: pos })}
+                        image={image}
+                        imageScale={imageScale}
+                        imageRotation={imageRotation}
+                        imagePosition={imagePosition}
+                        onImageMove={(pos) => setActiveState({ imagePosition: pos })}
+                        width={400}
+                        height={400}
+                      />
                   </div>
                   <p className="mt-4 text-xs text-muted-foreground font-medium uppercase tracking-widest">
                     Drag elements directly on the T-shirt

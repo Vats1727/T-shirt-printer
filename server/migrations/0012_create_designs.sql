@@ -1,0 +1,5 @@
+-- Migration 0012_create_designs.sql has been retired.
+-- The `designs_full` and `design_assets` tables are not used by the
+-- current runtime code; their functionality is covered by the existing
+-- `designs` table and other storage paths. This file has been replaced
+-- by a no-op to avoid creating unused tables when running migrations.

@@ -36,8 +36,8 @@ async function main() {
 
   for (const d of designs) {
     const id = d.id;
-    const existing = await db.select().from(designsTable).where(eq(designsTable.id, id)).get();
-    if (existing) {
+    const existing = await db.select().from(designsTable).where(eq(designsTable.id, id));
+    if (existing && existing.length) {
       console.log('Skipping existing id', id);
       continue;
     }

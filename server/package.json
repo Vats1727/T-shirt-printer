@@ -13,22 +13,26 @@
     "check": "tsc",
     "db:push": "drizzle-kit push",
     "db:import-json": "tsx script/import-json-to-db.ts",
-    "db:setup": "npm run db:push && npm run db:import-json"
+    "db:import-users": "tsx script/import-users-to-db.ts",
+    "db:backfill-size-chart": "tsx script/backfill-size-chart.ts",
+    "db:setup": "npm run db:push && npm run db:import-json && npm run db:import-users && npm run db:backfill-size-chart"
   },
   "dependencies": {
-    "bcryptjs": "^2.4.3",
+    "bcrypt": "^5.1.0",
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^16.1.4",
     "drizzle-orm": "^0.39.3",
     "drizzle-zod": "^0.7.0",
-    "dotenv": "^16.1.4",
     "express": "^4.21.2",
-    "jsonwebtoken": "^9.0.0",
+    "jsonwebtoken": "^9.0.3",
     "nanoid": "^4.0.0",
     "node-fetch": "^3.3.2",
     "pg": "^8.16.3",
     "wouter": "^3.3.5",
     "ws": "^8.18.0",
     "zod": "^3.24.2",
-    "zod-validation-error": "^3.4.0"
+    "zod-validation-error": "^3.4.0",
+    "pdfkit": "^0.13.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",

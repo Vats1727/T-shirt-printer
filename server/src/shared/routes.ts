@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { insertDesignSchema, designs } from './schema';
+import { insertDesignV2Schema, designs } from './schema';
 
 export const errorSchemas = {
   validation: z.object({
@@ -16,7 +16,7 @@ export const api = {
     create: {
       method: 'POST' as const,
       path: '/api/designs',
-      input: insertDesignSchema,
+      input: insertDesignV2Schema,
       responses: {
         201: z.custom<typeof designs.$inferSelect>(),
         400: errorSchemas.validation,
@@ -31,6 +31,48 @@ export const api = {
       },
     },
   },
+  auth: {
+    register: {
+      method: 'POST' as const,
+      path: '/api/auth/register',
+      input: z.object({ name: z.string().optional(), email: z.string().email(), password: z.string().min(6), role: z.enum(['admin','supplier']) }),
+      responses: {
+        201: z.object({ id: z.number(), name: z.string().optional(), email: z.string(), role: z.string(), createdAt: z.string().optional() }),
+        400: errorSchemas.validation
+      }
+    },
+    login: {
+      method: 'POST' as const,
+      path: '/api/auth/login',
+      input: z.object({ email: z.string().email(), password: z.string().min(6) }),
+      responses: {
+        200: z.object({ token: z.string(), user: z.object({ id: z.number(), email: z.string(), name: z.string().optional(), role: z.string() }) }),
+        400: errorSchemas.validation,
+        401: errorSchemas.internal
+      }
+    }
+  },
+  admin: {
+    colors: {
+      list: { method: 'GET' as const, path: '/api/admin/colors', responses: { 200: z.array(z.object({ id: z.number(), name: z.string(), hex: z.string() })) } },
+      create: { method: 'POST' as const, path: '/api/admin/colors', input: z.object({ name: z.string(), hex: z.string() }), responses: { 201: z.object({ id: z.number(), name: z.string(), hex: z.string() }), 400: errorSchemas.validation } }
+    },
+    sizes: {
+      list: { method: 'GET' as const, path: '/api/admin/sizes', responses: { 200: z.array(z.object({ id: z.number(), label: z.string() })) } },
+      create: { method: 'POST' as const, path: '/api/admin/sizes', input: z.object({ label: z.string() }), responses: { 201: z.object({ id: z.number(), label: z.string() }), 400: errorSchemas.validation } }
+    },
+    inventory: {
+      upsert: { method: 'POST' as const, path: '/api/admin/inventory', input: z.object({ color_id: z.number(), size_id: z.number(), quantity: z.number(), price: z.number() }), responses: { 200: z.object({ id: z.number(), color_id: z.number(), size_id: z.number(), quantity: z.number(), price: z.number() }) } }
+    },
+    orders: { method: 'GET' as const, path: '/api/admin/orders', responses: { 200: z.object({ orders: z.array(z.any()) }) } },
+    order: { method: 'GET' as const, path: '/api/admin/orders/:id', responses: { 200: z.object({ order: z.any() }), 404: errorSchemas.validation } }
+  },
+  supplier: {
+    catalog: { method: 'GET' as const, path: '/api/supplier/catalog', responses: { 200: z.object({ colors: z.array(z.object({ id: z.number(), name: z.string(), hex: z.string() })), sizes: z.array(z.object({ id: z.number(), label: z.string() })), inventory: z.array(z.object({ id: z.number(), color_id: z.number(), size_id: z.number(), quantity: z.number(), price: z.number() })) }) } },
+    order: { method: 'POST' as const, path: '/api/supplier/order', input: z.object({ items: z.array(z.object({ color_id: z.number(), size_id: z.number(), quantity: z.number(), price: z.number(), design_id: z.number().optional(), design_snapshot: z.any().optional() })), shipping: z.object({ customer_name: z.string().optional(), customer_email: z.string().optional(), shipping_address: z.any().optional(), shipping_method: z.string().optional(), shipping_cost_cents: z.number().optional() }).optional() }), responses: { 201: z.object({ id: z.number() }), 400: errorSchemas.validation } },
+    ordersList: { method: 'GET' as const, path: '/api/supplier/orders', responses: { 200: z.object({ orders: z.array(z.any()) }) } },
+    ordersGet: { method: 'GET' as const, path: '/api/supplier/orders/:id', responses: { 200: z.object({ order: z.any() }), 404: errorSchemas.validation } }
+  }
 };
 
 export function buildUrl(path: string, params?: Record<string, string | number>): string {
