@@ -64,5 +64,6 @@ async function buildAll() {
 
 buildAll().catch((err) => {
   console.error(err);
-  process.exit(1);
+  (process as any).exitCode = 1;
+  return;
 });

@@ -24,7 +24,8 @@ async function main() {
     dataRaw = await fs.readFile(filePath, 'utf-8');
   } catch (e) {
     console.error('users.json not found');
-    process.exit(1);
+    (process as any).exitCode = 1;
+    return;
   }
 
   const users = JSON.parse(dataRaw) as any[];
@@ -44,10 +45,12 @@ async function main() {
   }
 
   console.log('User import complete');
-  process.exit(0);
+  (process as any).exitCode = 0;
+  return;
 }
 
 main().catch((err) => {
   console.error(err);
-  process.exit(1);
+  (process as any).exitCode = 1;
+  return;
 });

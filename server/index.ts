@@ -8,6 +8,48 @@ import { createServer } from "http";
 const app = express();
 const httpServer = createServer(app);
 
+// Safe exit helper — avoid calling process.exit directly. Set an exit code and attempt a graceful close.
+let _exitScheduled = false;
+let _exitRequestCount = 0;
+function safeExit(code = 1, reason?: string) {
+  if (_exitScheduled) return;
+  _exitRequestCount++;
+  _exitScheduled = true;
+  const backoffMs = Math.min(60_000, 1000 * Math.pow(2, Math.min(_exitRequestCount, 6))); // 1s,2s,4s,... up to 60s
+  try {
+    console.error(`Scheduling safe exit${reason ? ' (' + reason + ')' : ''} in ${backoffMs}ms; setting process.exitCode=${code}`);
+  } catch (e) { /* ignore */ }
+  // set the exit code so supervisors see the intended exit status without forcing an immediate exit
+  try { (process as any).exitCode = code; } catch (e) { /* ignore */ }
+  // attempt to stop accepting new connections after backoff — do not forcibly kill the process
+  setTimeout(() => {
+    try {
+      // Close the HTTP server if available
+      if (httpServer && typeof (httpServer as any).close === 'function') {
+        try { (httpServer as any).close(); } catch (e) { /* ignore */ }
+      }
+    } catch (e) { /* ignore */ }
+  }, backoffMs);
+}
+
+// Early global error handlers (cover errors during startup before full handlers are attached)
+let _earlyShutdownTriggered = false;
+process.on('uncaughtException', (err) => {
+  try { console.error('EARLY UNCaught Exception:', err); } catch (e) { /* ignore */ }
+  if (!_earlyShutdownTriggered) {
+    _earlyShutdownTriggered = true;
+    // give logs a moment to flush, then schedule a safe exit so restarts back off
+    safeExit(1, 'early-uncaughtException');
+  }
+});
+process.on('unhandledRejection', (reason) => {
+  try { console.error('EARLY UNHANDLED REJECTION:', reason); } catch (e) { /* ignore */ }
+  if (!_earlyShutdownTriggered) {
+    _earlyShutdownTriggered = true;
+    safeExit(1, 'early-unhandledRejection');
+  }
+});
+
 // readiness flag — set to true when server has finished startup tasks
 let isReady = false;
 
@@ -354,10 +396,10 @@ export const _internal = {
 
     startForcedCloseTimer();
 
-    // final safety exit if shutdown takes too long
+    // final safety action if shutdown takes too long: set an exit code and log
     setTimeout(() => {
-      log('Shutdown complete, exiting');
-      process.exit(0);
+      log('Shutdown complete; setting exit code 0');
+      try { (process as any).exitCode = 0; } catch (e) { /* ignore */ }
     }, 15000);
   }
 
@@ -379,7 +421,7 @@ export const _internal = {
     if (count > 3) {
       console.error('Too many fatal errors in short period, exiting to avoid crash loop');
       // give logger a moment to flush then exit with non-zero
-      setTimeout(() => process.exit(1), 1000);
+      safeExit(1, 'fatal-error-threshold');
       return;
     }
     // If an uncaught exception occurs, attempt a graceful shutdown and exit.
@@ -390,7 +432,7 @@ export const _internal = {
     const count = registerFatalError();
     if (count > 3) {
       console.error('Too many fatal errors in short period, exiting to avoid crash loop');
-      setTimeout(() => process.exit(1), 1000);
+      safeExit(1, 'fatal-error-threshold');
       return;
     }
     // Attempt graceful shutdown but don't rethrow synchronously.

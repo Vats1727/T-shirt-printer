@@ -9,7 +9,8 @@ import * as assetStore from '../src/services/assetStore';
     const parsed = JSON.parse(raw || '[]') as any[];
     if (!Array.isArray(parsed) || parsed.length === 0) {
       console.log('No designs found to backfill');
-      process.exit(0);
+      (process as any).exitCode = 0;
+      return;
     }
 
     const backupPath = `${designsFile}.bak-${Date.now()}`;
@@ -90,9 +91,11 @@ import * as assetStore from '../src/services/assetStore';
       console.log('No inline data URLs found; no changes made');
     }
 
-    process.exit(0);
+    (process as any).exitCode = 0;
+    return;
   } catch (e) {
     console.error('Backfill failed', e);
-    process.exit(1);
+    (process as any).exitCode = 1;
+    return;
   }
 })();

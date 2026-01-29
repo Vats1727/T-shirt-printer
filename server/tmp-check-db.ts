@@ -4,9 +4,11 @@ import { pool } from './db';
   try {
     const res = await pool.query('SELECT id, slogan, color, created_at FROM designs ORDER BY id DESC LIMIT 5');
     console.log('rows:', res.rows);
-    process.exit(0);
+    (process as any).exitCode = 0;
+    return;
   } catch (e) {
     console.error('error running query', e);
-    process.exit(1);
+    (process as any).exitCode = 1;
+    return;
   }
 })();

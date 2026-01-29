@@ -28,7 +28,8 @@ async function main() {
     dataRaw = await fs.readFile(filePath, 'utf-8');
   } catch (e) {
     console.error('designs.json not found');
-    process.exit(1);
+    (process as any).exitCode = 1;
+    return;
   }
 
   const designs = JSON.parse(dataRaw) as any[];
@@ -64,10 +65,12 @@ async function main() {
   }
 
   console.log('Import complete');
-  process.exit(0);
+  (process as any).exitCode = 0;
+  return;
 }
 
 main().catch((err) => {
   console.error(err);
-  process.exit(1);
+  (process as any).exitCode = 1;
+  return;
 });

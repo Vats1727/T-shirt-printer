@@ -11,7 +11,8 @@ import { pool } from '../db';
 async function main() {
   if (!pool) {
     console.error('DB pool not available. Ensure DB env vars are set and run migrations.');
-    process.exit(1);
+    (process as any).exitCode = 1;
+    return;
   }
 
   // Insert a default size_chart row for any size that doesn't have one yet
@@ -23,10 +24,12 @@ async function main() {
   `);
 
   console.log('Inserted rows:', res.rowCount);
-  process.exit(0);
+  (process as any).exitCode = 0;
+  return;
 }
 
 main().catch((err) => {
   console.error(err);
-  process.exit(1);
+  (process as any).exitCode = 1;
+  return;
 });

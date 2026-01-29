@@ -16,6 +16,7 @@ import { storage } from './storage';
     console.log('created: id=', (d && (d as any).id) || null);
   } catch (e) {
     console.error('error creating design', e);
-    process.exit(1);
+    (process as any).exitCode = 1;
+    return;
   }
 })();

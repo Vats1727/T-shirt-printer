@@ -4,9 +4,11 @@ import { storage } from './storage';
   try {
     const list = await storage.getDesigns();
     console.log('designs: count=', Array.isArray(list) ? list.length : 0);
-    process.exit(0);
+    (process as any).exitCode = 0;
+    return;
   } catch (e) {
     console.error('error listing designs', e);
-    process.exit(1);
+    (process as any).exitCode = 1;
+    return;
   }
 })();

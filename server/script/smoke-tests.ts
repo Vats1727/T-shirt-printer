@@ -94,5 +94,6 @@ async function run() {
 
 run().catch((err) => {
   console.error('Smoke tests failed:', err);
-  process.exit(1);
+  (process as any).exitCode = 1;
+  return;
 });
