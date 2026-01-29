@@ -124,7 +124,8 @@ export async function listSavedDesigns(req: Request, res: Response) {
   const user = (req as any).user;
   // Diagnostic logging: help trace why this route may return 401/404 during development
   try {
-    console.log('DEBUG: listSavedDesigns hit', { path: req.path, headers: req.headers, user: (req as any).user });
+    const uid = (req as any).user && ((req as any).user.sub || (req as any).user.id) ? ((req as any).user.sub || (req as any).user.id) : null;
+    console.log('DEBUG: listSavedDesigns hit', { path: req.path, userId: uid, hasAuth: !!req.headers.authorization });
   } catch (e) {
     // ignore logging errors
   }
@@ -197,8 +198,8 @@ export async function listSavedDesigns(req: Request, res: Response) {
 
     const groups = Object.keys(groupsMap).map(k => ({ key: k, ...groupsMap[k] }));
     return res.json({ designs: groups });
-  } catch (e:any) {
-    console.error('listSavedDesigns error', e?.message || e);
+  } catch (e: unknown) {
+    console.error('listSavedDesigns error', (await import('../utils')).fmtErr(e));
     return res.status(500).json({ message: 'Failed to list saved designs' });
   }
 }
@@ -244,8 +245,8 @@ export async function listSavedDesignsPublic(_req: Request, res: Response) {
       mapped.push({ id: p.id, filename: filename, mime: p.mime, size: p.size, storage_key: p.storage_key, metadata: p.metadata, url });
     }
     return res.json({ designs: mapped });
-  } catch (e:any) {
-    console.error('listSavedDesignsPublic error', e?.message || e);
+  } catch (e: unknown) {
+    console.error('listSavedDesignsPublic error', (await import('../utils')).fmtErr(e));
     return res.status(500).json({ message: 'Failed to list saved designs' });
   }
 }

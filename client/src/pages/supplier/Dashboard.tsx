@@ -5,7 +5,9 @@ import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 
 export default function SupplierDashboard() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const API_BASE = (import.meta as any).env?.VITE_API_BASE || `${window.location.protocol}//${window.location.hostname}:5000`;
+  const CLIENT_ORIGIN = (typeof window !== 'undefined' && window.location && window.location.origin) ? window.location.origin.replace(/\/$/, '') : '';
   const [, setLocation] = useLocation();
   const [catalog, setCatalog] = useState<any>(null);
   const [orders, setOrders] = useState<any[]>([]);
@@ -48,7 +50,20 @@ export default function SupplierDashboard() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">Supplier catalog</h1>
-        <button onClick={() => setLocation('/supplier/saved-designs')} className="px-3 py-1 bg-sky-600 text-white rounded text-sm">View Saved designs</button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setLocation('/supplier/listings/create')} className="px-3 py-1 bg-green-600 text-white rounded text-sm">Create Listing</button>
+          <button onClick={() => setLocation('/supplier/saved-designs')} className="px-3 py-1 bg-sky-600 text-white rounded text-sm">View Saved designs</button>
+          <button
+            onClick={() => {
+              const sid = (user && (user.id || (user as any).sub)) ? (user.id || (user as any).sub) : '';
+              const url = sid ? `${CLIENT_ORIGIN}/store/${encodeURIComponent(String(sid))}` : `${CLIENT_ORIGIN}/store`;
+              window.open(url, '_blank');
+            }}
+            className="px-3 py-1 bg-indigo-600 text-white rounded text-sm"
+          >
+            View Store
+          </button>
+        </div>
       </div>
 
       <div className="mb-6">

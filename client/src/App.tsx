@@ -20,7 +20,10 @@ import SupplierDashboard from '@/pages/supplier/Dashboard';
 import SupplierOrder from '@/pages/supplier/Order';
 import SupplierProductOrder from '@/pages/supplier/ProductOrder';
 import SupplierSavedDesigns from '@/pages/supplier/SavedDesigns';
+import SupplierCreateListing from '@/pages/supplier/listings/CreateListing';
 import SupplierRoute from '@/components/SupplierRoute';
+import StorePage from '@/pages/store/Store';
+import StoreProduct from '@/pages/store/Product';
 
 function Router() {
   return (
@@ -35,8 +38,12 @@ function Router() {
       <Route path="/supplier/login" component={Login} />
       <SupplierRoute path="/supplier/dashboard" component={SupplierDashboard} />
       <SupplierRoute path="/supplier/saved-designs" component={SupplierSavedDesigns} />
+      <SupplierRoute path="/supplier/listings/create" component={SupplierCreateListing} />
       <SupplierRoute path="/supplier/order" component={SupplierOrder} />
       <SupplierRoute path="/supplier/product/:id" component={SupplierProductOrder} />
+      <Route path="/store/:supplierId" component={StorePage} />
+      <Route path="/listing/:slug" component={StoreProduct} />
+      <Route path="/listing/id/:id" component={StoreProduct} />
       <Route component={NotFound} />
     </Switch>
   );

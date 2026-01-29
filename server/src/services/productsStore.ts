@@ -15,12 +15,15 @@ export async function createProduct(payload: {
 }) {
   const slugBase = slugify(payload.name);
   if (pool) {
-    // ensure slug uniqueness in products_full
+    // ensure slug uniqueness in products_full (guarded to avoid infinite loops)
     let slug = slugBase;
     let counter = 1;
+    let attempts = 0;
+    const MAX_UNIQUE_ATTEMPTS = 1000;
     while (true) {
       const exists = await pool.query('SELECT 1 FROM products_full WHERE lower(slug) = lower($1) LIMIT 1', [slug]);
       if (!exists.rows.length) break;
+      if (++attempts > MAX_UNIQUE_ATTEMPTS) throw new Error(`Unable to generate unique slug after ${MAX_UNIQUE_ATTEMPTS} attempts`);
       slug = `${slugBase}-${counter++}`;
     }
 
@@ -116,9 +119,12 @@ export async function updateProduct(id: number, payload: {
     const slugBase = slugify(payload.name);
     slug = slugBase;
     let counter = 1;
+    let attempts = 0;
+    const MAX_UNIQUE_ATTEMPTS = 1000;
     while (true) {
       const exists = await pool.query('SELECT 1 FROM products_full WHERE lower(slug) = lower($1) AND id <> $2 LIMIT 1', [slug, id]);
       if (!exists.rows.length) break;
+      if (++attempts > MAX_UNIQUE_ATTEMPTS) throw new Error(`Unable to generate unique slug after ${MAX_UNIQUE_ATTEMPTS} attempts`);
       slug = `${slugBase}-${counter++}`;
     }
     await pool.query('UPDATE products_full SET name=$1, slug=$2, single_price=$3, bulk_min=$4, bulk_price=$5, updated_at=now() WHERE id=$6', [payload.name, slug, payload.single_price || 0, payload.bulk_min || 100, payload.bulk_price || 0, id]);

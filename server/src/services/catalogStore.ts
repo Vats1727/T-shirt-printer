@@ -118,11 +118,14 @@ export async function upsertInventory(payload: { product?: string; color_id: num
     found.price = payload.price;
   } else {
     const id = (items.reduce((m, x) => Math.max(m, x.id || 0), 0) || 0) + 1;
-    found = { id, product, ...payload } as any;
-    items.push(found);
+    const newItem: Inventory = { id, color_id: payload.color_id, size_id: payload.size_id, quantity: payload.quantity, price: payload.price };
+    // attach product information in metadata for JSON-mode compatibility
+    (newItem as any).product = product;
+    items.push(newItem as any);
+    found = newItem as any;
   }
   await writeJsonAndInvalidate(inventoryFile, items);
-  return found;
+  return found as Inventory;
 }
 
 export async function listCatalog() {

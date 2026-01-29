@@ -80,6 +80,7 @@ export async function registerRoutes(
 
   // Supplier endpoints
   const supplierCtrl = await import('./src/controllers/supplierController');
+  const supplierListingsCtrl = await import('./src/controllers/supplierListingsController');
   app.get('/api/supplier/catalog', requireAuth, requireRole('supplier'), (req,res,next) => { res.set('Cache-Control','public, max-age=5'); return next(); }, safe(supplierCtrl.getCatalog));
   // Order creation temporarily disabled for suppliers. Re-enable when supplier ordering workflow is ready.
   // app.post('/api/supplier/order', requireAuth, requireRole('supplier'), safe(supplierCtrl.placeOrder));
@@ -87,12 +88,101 @@ export async function registerRoutes(
   app.get('/api/supplier/orders/:id', requireAuth, requireRole('supplier'), safe(supplierCtrl.getOrder));
   app.get('/api/supplier/saved-designs', requireAuth, requireRole('supplier'), safe(supplierCtrl.listSavedDesigns));
 
+  // Supplier listing management (create and list)
+  app.post('/api/supplier/listings', requireAuth, requireRole('supplier'), safe(supplierListingsCtrl.createListing));
+  app.get('/api/supplier/listings', requireAuth, requireRole('supplier'), safe(supplierListingsCtrl.listListings));
+  app.delete('/api/supplier/listings/:id', requireAuth, requireRole('supplier'), safe(supplierListingsCtrl.deleteListing));
+
   // Unauthenticated quick check for the supplier saved-designs path to validate routing/proxy
   app.get('/api/supplier/saved-designs/_test', safe(async (_req, res) => {
     return res.json({ ok: true, path: '/api/supplier/saved-designs/_test' });
   }));
   // Development-only public listing (no auth) for quick debugging
   app.get('/api/supplier/saved-designs/public', safe(supplierCtrl.listSavedDesignsPublic));
+
+  // Public listing page (simple renderer)
+  app.get('/listing/:slug', safe((await import('./src/controllers/supplierListingsController')).getPublicListing));
+  // NOTE: client SPA now renders the store; server no longer exposes HTML /store/:supplierId to avoid conflicts
+
+  // Debug JSON endpoint to fetch listings for a supplier (useful to verify server and DB)
+  app.get('/api/store/:supplierId', safe(async (req, res) => {
+    const listings = await (await import('./src/services/listingsStore')).listListingsBySupplier(req.params.supplierId);
+    // enhance listings with preview_url where possible
+    const enhanced: any[] = [];
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    const clientPath = path.join(process.cwd(), 'client', 'attached_assets');
+    const clientBase = process.env.CLIENT_BASE_URL ? String(process.env.CLIENT_BASE_URL).replace(/\/$/, '') : `http://localhost:5173`;
+    const { pool } = await import('./src/services/listingsStore');
+    for (const l of (listings || [])) {
+      let preview_url: string | null = null;
+      let preview_asset_id: number | null = null;
+      let preview_group: any = null;
+      const designKey = String(l.design_key || '');
+      if (designKey) {
+        try {
+          const files = await fs.readdir(clientPath);
+          const found = files.find((f: string) => f.toLowerCase().startsWith(designKey.toLowerCase()));
+          if (found) preview_url = `/attached_assets/${found}`;
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      // Build preview group from matching assets when available
+      if (designKey) {
+        try {
+          const db = await import('../db');
+          if (db.pool) {
+            const clientDb = await db.pool.connect();
+            try {
+              const likePattern = `%${designKey}%`;
+              const r = await clientDb.query('SELECT id, filename, mime, metadata FROM assets WHERE filename ILIKE $1 OR filename ILIKE $2 ORDER BY id', [likePattern, `${designKey}%`]);
+              if (r && r.rows && r.rows.length) {
+                const groupsMap: Record<string, any> = {};
+                for (const a of r.rows) {
+                  const fn = a.filename || '';
+                  const m = String(fn || '').match(/^design-(\d+)-(front|back)\.(png|jpg|jpeg)$/i);
+                  const key = m ? `design-${m[1]}` : `asset-${a.id}`;
+                  const side = m ? (m[2] === 'back' ? 'back' : 'front') : null;
+                  if (!groupsMap[key]) groupsMap[key] = { key, front: null, back: null, any: null };
+                  let url = `${clientBase}/api/assets/${a.id}`;
+                  try { if (fn) { await fs.access(path.join(clientPath, fn)); url = `${clientBase}/attached_assets/${fn}`; } } catch (e) { /* ignore */ }
+                  let meta: any = a.metadata || null;
+                  try { if (meta && typeof meta === 'string') meta = JSON.parse(meta); } catch (e) { /* ignore */ }
+                  const entry = { id: a.id, filename: fn, url, mime: a.mime, metadata: meta };
+                  if (side === 'front') groupsMap[key].front = entry;
+                  else if (side === 'back') groupsMap[key].back = entry;
+                  else groupsMap[key].any = entry;
+                }
+                const keys = Object.keys(groupsMap);
+                if (keys.length) preview_group = groupsMap[keys[0]];
+                const firstRow = r.rows[0];
+                if (firstRow) preview_asset_id = firstRow.id;
+                if (!preview_url && preview_group) preview_url = (preview_group.front?.url || preview_group.any?.url || preview_group.back?.url) || null;
+              }
+            } finally { clientDb.release(); }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      enhanced.push({ ...l, preview_url, preview_asset_id, preview_group });
+    }
+    return res.json({ supplierId: req.params.supplierId, count: enhanced.length, listings: enhanced });
+  }));
+
+  // JSON endpoint to fetch a single listing by slug (used by client storefront)
+  app.get('/api/listing/:slug', safe(async (req, res) => {
+    const ctrl = await import('./src/controllers/supplierListingsController');
+    return ctrl.getListingJson(req, res);
+  }));
+  // JSON endpoint to fetch a single listing by id
+  app.get('/api/listing/id/:id', safe(async (req, res) => {
+    const ctrl = await import('./src/controllers/supplierListingsController');
+    return ctrl.getListingByIdJson(req, res);
+  }));
 
   app.get('/api/storage-type', async (_req, res) => {
     try {

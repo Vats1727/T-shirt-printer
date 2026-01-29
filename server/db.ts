@@ -31,4 +31,16 @@ if (!conn) {
 }
 
 export const pool = conn ? new Pool({ connectionString: conn }) : (null as unknown as Pool);
+// Attach a pool error listener so unexpected client errors don't become uncaught exceptions
+if (pool) {
+  try {
+    (pool as any).on && (pool as any).on('error', (err: any) => {
+      console.error('Postgres pool error:', err);
+      // Don't exit the process here — the server has global uncaughtException/unhandledRejection handlers.
+      // This prevents the pool from emitting an error that would crash the process in some environments.
+    });
+  } catch (e) {
+    // ignore if attaching listener fails for any reason
+  }
+}
 export const db = conn ? drizzle(pool) : (null as any);

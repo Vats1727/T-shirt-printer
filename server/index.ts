@@ -81,31 +81,35 @@ export const _internal = {
           return { _type: 'designs_list', length: body.length };
         }
 
-        if (Array.isArray(body)) {
-          return body.map(item => {
-            if (item && typeof item === 'object') {
-              const c: any = { ...item };
-              if ('image' in c) c.image = '[redacted]';
-              // truncate long strings
-              for (const k of Object.keys(c)) {
-                if (typeof c[k] === 'string' && c[k].length > 200) c[k] = c[k].slice(0, 200) + '...[truncated]';
-              }
-              return c;
-            }
-            return item;
-          });
-        }
+        const isNoisyKey = (k: string) => /image|dataurl|data_url|data|preview|preview_front|preview_back/i.test(k);
 
-        if (typeof body === 'object' && body !== null) {
-          const c: any = { ...body };
-          if ('image' in c) c.image = '[redacted]';
-          for (const k of Object.keys(c)) {
-            if (typeof c[k] === 'string' && c[k].length > 200) c[k] = c[k].slice(0, 200) + '...[truncated]';
+        function sanitizeValue(v: any): any {
+          if (v == null) return v;
+          if (typeof v === 'string') {
+            if (v.startsWith('data:')) return '[dataurl redacted]';
+            if (v.length > 200) return v.slice(0, 200) + '...[truncated]';
+            return v;
           }
-          return c;
+          if (Array.isArray(v)) return v.map(sanitizeValue);
+          if (typeof v === 'object') {
+            const o: any = {};
+            for (const k of Object.keys(v)) {
+              try {
+                if (isNoisyKey(k)) {
+                  o[k] = '[redacted]';
+                } else {
+                  o[k] = sanitizeValue(v[k]);
+                }
+              } catch (e) {
+                o[k] = '[unserializable]';
+              }
+            }
+            return o;
+          }
+          return v;
         }
 
-        return body;
+        return sanitizeValue(body);
       } catch (e) {
         return '[unserializable]';
       }
@@ -160,6 +164,13 @@ export const _internal = {
 
     try {
       if (!res.headersSent) {
+        // ensure CORS headers are present even for error responses
+        try {
+          const origin = process.env.CORS_ORIGIN || 'http://localhost:5173';
+          res.setHeader('Access-Control-Allow-Origin', origin);
+          res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+        } catch (e) { /* ignore */ }
         res.status(status).json({ message });
       }
     } catch (e) {
@@ -207,6 +218,33 @@ export const _internal = {
     console.log('DEBUG: CORS middleware enabled');
   } catch (e) {
     console.log('DEBUG: cors module not available, skipping CORS middleware');
+  }
+
+  // Fallback CORS headers (ensures even 404/html errors include CORS headers during development)
+  app.use((req, res, next) => {
+    try {
+      const origin = process.env.CORS_ORIGIN || 'http://localhost:5173';
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+      if (req.method === 'OPTIONS') return res.sendStatus(204);
+    } catch (e) {
+      // ignore
+    }
+    next();
+  });
+
+  // Development-only: serve uploads and client attached assets so preview images
+  // referenced as /uploads/<file> or /attached_assets/<file> are reachable.
+  try {
+    const path = await import('path');
+    const fs = await import('fs/promises');
+    const uploadsDir = path.join(process.cwd(), 'uploads');
+    const attachedDir = path.join(process.cwd(), 'client', 'attached_assets');
+    try { await fs.access(uploadsDir); app.use('/uploads', (await import('express')).static(uploadsDir)); console.log('DEBUG: serving /uploads from', uploadsDir); } catch (e) {}
+    try { await fs.access(attachedDir); app.use('/attached_assets', (await import('express')).static(attachedDir)); console.log('DEBUG: serving /attached_assets from', attachedDir); } catch (e) {}
+  } catch (e) {
+    // ignore static setup errors
   }
 
   await registerRoutes(httpServer, app);

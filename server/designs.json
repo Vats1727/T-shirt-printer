@@ -4003,5 +4003,103 @@
     "back_image": "design-61-back.png",
     "id": 61,
     "createdAt": "2026-01-26T08:08:42.851Z"
+  },
+  {
+    "slogan": "Run....",
+    "color": "#00FF00",
+    "textSize": 24,
+    "textRotation": 0,
+    "textPosition": {
+      "x": 209.66101694915255,
+      "y": 208.81355932203388
+    },
+    "image": "design-62-front.png",
+    "imageScale": 100,
+    "imageRotation": 0,
+    "imagePosition": {
+      "x": 150,
+      "y": 150
+    },
+    "product": "hoodie-3",
+    "template": "tshirt",
+    "templateColor": "#00FF00",
+    "version": {
+      "versionName": "supplier-save",
+      "sides": [
+        {
+          "name": "front",
+          "layers": [
+            {
+              "type": "text",
+              "text": "Run....",
+              "size": 24,
+              "color": "#1a1e1a",
+              "rotation": 0,
+              "position": {
+                "x": 209.66101694915255,
+                "y": 208.81355932203388
+              }
+            }
+          ]
+        },
+        {
+          "name": "back",
+          "layers": [
+            {
+              "type": "image",
+              "rotation": 0,
+              "position": {
+                "x": 206.27118644067798,
+                "y": 222.3728813559322
+              },
+              "asset": {
+                "dataUrl": "/api/assets/280"
+              },
+              "scale": 0.06
+            }
+          ]
+        }
+      ],
+      "metadata": {
+        "preview_front": "/api/assets/281",
+        "preview_back": "/api/assets/282",
+        "selected_colors": [
+          {
+            "id": 8,
+            "hex": "#800080",
+            "name": "Purple"
+          },
+          {
+            "id": 5,
+            "hex": "#00FF00",
+            "name": "Green"
+          }
+        ],
+        "featured_color": {
+          "id": 8,
+          "hex": "#800080",
+          "name": "Purple"
+        },
+        "preview_by_color": [
+          {
+            "id": 8,
+            "hex": "#800080",
+            "name": "Purple",
+            "preview_front": "/api/assets/283",
+            "preview_back": "/api/assets/284"
+          },
+          {
+            "id": 5,
+            "hex": "#00FF00",
+            "name": "Green",
+            "preview_front": "/api/assets/285",
+            "preview_back": "/api/assets/286"
+          }
+        ]
+      }
+    },
+    "back_image": "design-62-back.png",
+    "id": 62,
+    "createdAt": "2026-01-29T13:40:21.763Z"
   }
 ]
