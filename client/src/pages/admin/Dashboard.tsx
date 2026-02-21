@@ -58,6 +58,7 @@ export default function AdminDashboard() {
         <div className="flex gap-2">
           <button onClick={() => setLocation('/admin/clothes')} className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded">Create Product</button>
           <button onClick={() => setLocation('/admin/orders')} className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-900 rounded">View Orders</button>
+          <button onClick={() => setLocation('/admin/login')} className="inline-flex items-center gap-2 px-4 py-2 bg-gray-200 text-slate-900 rounded">Login</button>
         </div>
       </div>
 

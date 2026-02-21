@@ -134,14 +134,6 @@ export default function StoreProduct() {
               </div>
 
               <div style={{ marginBottom: 12 }}>
-                {colors && colors.length > 0 && (
-                  <div style={{ marginBottom: 12 }}>
-                    {colors.map((c:any, idx:number) => (
-                      <button key={idx} onClick={() => setPreviewColor(c?.hex || c?.id)} title={c?.name || c?.id} style={{ width: 24, height: 24, borderRadius: 999, marginRight: 6, border: '1px solid #ddd', background: c?.hex || '#ddd' }} />
-                    ))}
-                  </div>
-                )}
-
                 {getPreviewImg() ? (
                   <div><img src={getPreviewImg() as string} alt="preview" style={{ width: '100%', height: 'auto', borderRadius: 6, border: '1px solid #eee' }} /></div>
                 ) : designPayload ? (
@@ -185,11 +177,7 @@ export default function StoreProduct() {
 
             </div>
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              {thumbs.slice(0,4).map((t,i) => (
-                <img key={i} src={t} alt={`thumb-${i}`} style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 6, border: '1px solid #eee', cursor: 'pointer' }} />
-              ))}
-            </div>
+            {/* thumbnails removed per UX request */}
           </div>
 
           <div style={{ flex: '1 1 360px' }}>

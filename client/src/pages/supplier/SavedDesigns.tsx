@@ -18,7 +18,44 @@ export default function SavedDesignsPage() {
   const [designPayload, setDesignPayload] = useState<any | null>(null);
   const [previewColor, setPreviewColor] = useState<string | null>(null);
   const [loadingDesign, setLoadingDesign] = useState(false);
+  const [previewResolvedUrl, setPreviewResolvedUrl] = useState<string | null>(null);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
+  const [previewFetchError, setPreviewFetchError] = useState<string | null>(null);
+
+  const resolveAndSetPreview = (side: 'front' | 'back') => {
+    try {
+      let previewSrc: any = null;
+      if (designPayload) {
+        try {
+          const mapping = designPayload.version?.metadata?.preview_by_color || null;
+          const chosen = mapping && previewColor ? mapping.find((m:any)=> (String(m.id) === String(previewColor) || String(m.hex) === String(previewColor))) : null;
+          previewSrc = chosen ? (side === 'front' ? (chosen.preview_front || chosen.front) : (chosen.preview_back || chosen.back)) : null;
+          if (!previewSrc) previewSrc = side === 'front' ? (designPayload.version?.metadata?.preview_front || null) : (designPayload.version?.metadata?.preview_back || null);
+        } catch (e) { /* ignore */ }
+      }
+      if (!previewSrc) previewSrc = side === 'front' ? (active?.front?.url || active?.any?.url) : (active?.back?.url || active?.any?.url);
+      const shown = normalizeUrl(previewSrc) || previewSrc || null;
+      // cleanup previous blob url
+      if (previewBlobUrl) { URL.revokeObjectURL(previewBlobUrl); setPreviewBlobUrl(null); }
+      setPreviewFetchError(null);
+      setPreviewResolvedUrl(shown);
+      setPreviewSide(side);
+    } catch (e) {
+      console.error('[SavedDesigns] resolveAndSetPreview error', e);
+    }
+  };
   const API_BASE = (import.meta as any).env?.VITE_API_BASE || `${window.location.protocol}//${window.location.hostname}:5000`;
+
+  const normalizeUrl = (raw?: string | null) => {
+    if (!raw) return null;
+    const s = String(raw);
+    if (/^data:/i.test(s)) return s;
+    if (/^blob:/i.test(s)) return s;
+    if (/^https?:\/\//i.test(s)) return s;
+    if (/^\/\//.test(s)) return window.location.protocol + s;
+    const base = String(API_BASE).replace(/\/$/, '');
+    return s.startsWith('/') ? `${base}${s}` : `${base}/${s}`;
+  };
 
   useEffect(() => {
     (async () => {
@@ -125,6 +162,57 @@ export default function SavedDesignsPage() {
     })();
   }, [token]);
 
+  // Compute a stable resolved preview URL whenever active/designPayload/side/color change
+  useEffect(() => {
+    if (!active) {
+      setPreviewResolvedUrl(null);
+      return;
+    }
+    try {
+      let previewSrc: any = null;
+      if (designPayload) {
+        try {
+          const mapping = designPayload.version?.metadata?.preview_by_color || null;
+          const chosen = mapping && previewColor ? mapping.find((m:any)=> (String(m.id) === String(previewColor) || String(m.hex) === String(previewColor))) : null;
+          previewSrc = chosen ? (previewSide === 'front' ? (chosen.preview_front || chosen.front) : (chosen.preview_back || chosen.back)) : null;
+          if (!previewSrc) previewSrc = previewSide === 'front' ? (designPayload.version?.metadata?.preview_front || null) : (designPayload.version?.metadata?.preview_back || null);
+        } catch (e) { /* ignore */ }
+      }
+      if (!previewSrc) previewSrc = previewSide === 'front' ? (active.front?.url || active.any?.url) : (active.back?.url || active.any?.url);
+      const shown = normalizeUrl(previewSrc) || previewSrc || null;
+      setPreviewResolvedUrl(shown);
+    } catch (e) {
+      setPreviewResolvedUrl(null);
+    }
+  }, [active, designPayload, previewSide, previewColor]);
+
+  // Try fetching the resolved URL as a blob to handle CORS/credential cases and create an object URL
+  useEffect(() => {
+    let cancelled = false;
+    // cleanup previous blob
+    if (previewBlobUrl) {
+      URL.revokeObjectURL(previewBlobUrl);
+      setPreviewBlobUrl(null);
+    }
+    setPreviewFetchError(null);
+    if (!previewResolvedUrl) return;
+    (async () => {
+      try {
+        const res = await fetch(previewResolvedUrl, { credentials: 'include' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const blob = await res.blob();
+        if (cancelled) return;
+        const obj = URL.createObjectURL(blob);
+        setPreviewBlobUrl(obj);
+      } catch (err:any) {
+        if (cancelled) return;
+        console.warn('[SavedDesigns] preview blob fetch failed', err?.message || err);
+        setPreviewFetchError(err?.message || String(err));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [previewResolvedUrl]);
+
   const openPreview = async (group:any, side: 'front' | 'back' = 'front') => {
     setActive(group);
     setPreviewSide(side);
@@ -163,7 +251,8 @@ export default function SavedDesignsPage() {
 
   const copyLink = (asset:any) => {
     if (!asset) return alert('No asset to copy');
-    const url = location.origin + asset.url;
+    const normalized = normalizeUrl(asset.url) || (asset.url ? String(asset.url) : null);
+    const url = normalized || (location.origin + (asset.url || ''));
     try { navigator.clipboard?.writeText(url); } catch (e) {}
     alert('Copied: ' + url);
   };
@@ -187,14 +276,14 @@ export default function SavedDesignsPage() {
               <div className="h-40 flex items-center justify-center bg-gray-50 rounded mb-3 gap-2 overflow-hidden">
                 <div className="flex-1 flex items-center justify-center">
                   {(g.front?.url || g.any?.url) ? (
-                    <img src={g.front?.url || g.any?.url} className="max-h-full" alt={(g.front?.filename || g.any?.filename) || 'front'} onError={(e:any)=>{const el=e.currentTarget as HTMLImageElement; try { if(el.dataset?.triedApiFallback==='1')return; el.dataset.triedApiFallback='1'; const asset = g.front || g.any; console.warn('[SavedDesigns] card image load failed, attempting API asset fallback', { src: el.src, assetId: asset?.id }); if(asset && asset.id) el.src=`${API_BASE}/api/assets/${asset.id}` } catch(err) { console.error('[SavedDesigns] error in front image onError', err) } }} />
+                    <img src={normalizeUrl(g.front?.url || g.any?.url) || undefined} className="max-h-full" alt={(g.front?.filename || g.any?.filename) || 'front'} onError={(e:any)=>{const el=e.currentTarget as HTMLImageElement; try { if(el.dataset?.triedApiFallback==='1')return; el.dataset.triedApiFallback='1'; const asset = g.front || g.any; console.warn('[SavedDesigns] card image load failed, attempting API asset fallback', { src: el.src, assetId: asset?.id }); if(asset && asset.id) el.src=`${API_BASE}/api/assets/${asset.id}` } catch(err) { console.error('[SavedDesigns] error in front image onError', err) } }} />
                   ) : (
                     <div className="text-sm text-muted-foreground">No front</div>
                   )}
                 </div>
                 <div className="flex-1 flex items-center justify-center">
                   {(g.back?.url || g.any?.url) ? (
-                    <img src={g.back?.url || g.any?.url} className="max-h-full" alt={(g.back?.filename || g.any?.filename) || 'back'} onError={(e:any)=>{const el=e.currentTarget as HTMLImageElement; try { if(el.dataset?.triedApiFallback==='1')return; el.dataset.triedApiFallback='1'; const asset = g.back || g.any; console.warn('[SavedDesigns] card image load failed, attempting API asset fallback', { src: el.src, assetId: asset?.id }); if(asset && asset.id) el.src=`${API_BASE}/api/assets/${asset.id}` } catch(err) { console.error('[SavedDesigns] error in back image onError', err) } }} />
+                    <img src={normalizeUrl(g.back?.url || g.any?.url) || undefined} className="max-h-full" alt={(g.back?.filename || g.any?.filename) || 'back'} onError={(e:any)=>{const el=e.currentTarget as HTMLImageElement; try { if(el.dataset?.triedApiFallback==='1')return; el.dataset.triedApiFallback='1'; const asset = g.back || g.any; console.warn('[SavedDesigns] card image load failed, attempting API asset fallback', { src: el.src, assetId: asset?.id }); if(asset && asset.id) el.src=`${API_BASE}/api/assets/${asset.id}` } catch(err) { console.error('[SavedDesigns] error in back image onError', err) } }} />
                   ) : (
                     <div className="text-sm text-muted-foreground">No back</div>
                   )}
@@ -260,55 +349,45 @@ export default function SavedDesignsPage() {
             {active ? (
               <div>
                 <div className="mb-3">
-                  <button className={`px-3 py-1 mr-2 rounded ${previewSide==='front' ? 'bg-sky-600 text-white' : 'bg-gray-100'}`} onClick={() => setPreviewSide('front')}>Front</button>
-                  <button className={`px-3 py-1 rounded ${previewSide==='back' ? 'bg-sky-600 text-white' : 'bg-gray-100'}`} onClick={() => setPreviewSide('back')}>Back</button>
+                  <button className={`px-3 py-1 mr-2 rounded ${previewSide==='front' ? 'bg-sky-600 text-white' : 'bg-gray-100'}`} onClick={() => resolveAndSetPreview('front')}>Front</button>
+                  <button className={`px-3 py-1 rounded ${previewSide==='back' ? 'bg-sky-600 text-white' : 'bg-gray-100'}`} onClick={() => resolveAndSetPreview('back')}>Back</button>
                 </div>
                 <div className="mb-4">
-                  {/* color swatches to pick preview color (from asset metadata) */}
                   <div className="flex items-center justify-center gap-2 mb-4">
                     {((designPayload?.version?.metadata?.selected_colors) || (active.front?.metadata?.selected_colors || active.back?.metadata?.selected_colors || active.any?.metadata?.selected_colors || [])).map((c:any, i:number) => (
                       <button key={i} className={`w-6 h-6 rounded-full border ${previewColor === (c?.hex || c?.id) ? 'ring-2 ring-sky-500' : ''}`} style={{ background: c?.hex || '#ddd' }} onClick={() => setPreviewColor(c?.hex || c?.id)} title={c?.name || c?.id} />
                     ))}
                   </div>
-
-                  {designPayload ? (
-                    // If a per-color pre-rendered preview exists for the selected color, show it directly (exact card preview)
-                    (() => {
+                  {(() => {
+                    // compute previewSrc
+                    let previewSrc: any = null;
+                    if (designPayload) {
                       try {
                         const mapping = designPayload.version?.metadata?.preview_by_color || null;
-                        console.debug('[SavedDesigns] preview_by_color mapping length', mapping ? mapping.length : 0, 'previewColor', previewColor);
                         const chosen = mapping && previewColor ? mapping.find((m:any)=> (String(m.id) === String(previewColor) || String(m.hex) === String(previewColor))) : null;
-                        const previewImg = chosen ? (previewSide === 'front' ? (chosen.preview_front || chosen.front) : (chosen.preview_back || chosen.back)) : null;
-                        // Also allow a top-level version preview_front/back as fallback
-                        const fallbackPreview = previewSide === 'front' ? (designPayload.version?.metadata?.preview_front || null) : (designPayload.version?.metadata?.preview_back || null);
-                        const imgToShow = previewImg || fallbackPreview || null;
-                        if (imgToShow) {
-                          console.log('[SavedDesigns] showing pre-rendered image for preview', { previewSide, previewColor, previewImg: !!previewImg, fallbackPreview: !!fallbackPreview, imgToShow });
-                          return (
-                            <div className="mx-auto">
-                              <img src={imgToShow} className="mx-auto max-h-[70vh]" alt={`preview-${previewSide}`} />
-                            </div>
-                          );
-                        } else {
-                          console.debug('[SavedDesigns] no pre-rendered image found, will fallback to canvas rendering', { previewSide, previewColor });
-                        }
-                      } catch (e) {
-                        // ignore and fallback to rendering canvas
-                      }
-
-                      // No pre-rendered image available for selected color — fallback to drawing on canvas and tinting image only.
+                        previewSrc = chosen ? (previewSide === 'front' ? (chosen.preview_front || chosen.front) : (chosen.preview_back || chosen.back)) : null;
+                        if (!previewSrc) previewSrc = previewSide === 'front' ? (designPayload.version?.metadata?.preview_front || null) : (designPayload.version?.metadata?.preview_back || null);
+                      } catch (e) { console.error('[SavedDesigns] compute previewSrc failed', e); }
+                    }
+                    if (!previewSrc) previewSrc = previewSide === 'front' ? (active.front?.url || active.any?.url) : (active.back?.url || active.any?.url);
+                    const shown = previewBlobUrl || (previewResolvedUrl || (normalizeUrl(previewSrc) || previewSrc || null));
+                    if (shown) {
+                      return (
+                        <div className="mx-auto">
+                          <img src={shown} className="mx-auto max-h-[70vh]" alt={`preview-${previewSide}`} onError={(e:any)=>{try{const el=e.currentTarget as HTMLImageElement; if(!el||!active) return; if(el.dataset?.triedApiFallback==='1') return; el.dataset.triedApiFallback='1'; const asset = previewSide==='front' ? active.front : active.back; console.warn('[SavedDesigns] modal image load failed, attempting API asset fallback', { src: el.src, assetId: asset?.id }); if(asset && asset.id) el.src = `${API_BASE}/api/assets/${asset.id}` }catch(err){console.error('[SavedDesigns] modal image onError', err);}}} />
+                        </div>
+                      );
+                    } else if (designPayload) {
+                      const fallbackDataUrl = (previewSide === 'front' ? (designPayload.version?.sides?.find((s:any)=>s.name==='front')?.layers?.find((l:any)=>l.type==='image')?.asset?.dataUrl || null) : (designPayload.version?.sides?.find((s:any)=>s.name==='back')?.layers?.find((l:any)=>l.type==='image')?.asset?.dataUrl || null));
                       return (
                         <div className="mx-auto">
                           <DesignCanvas
                             side={previewSide}
-                            slogan={(previewSide === 'front'
-                              ? (designPayload.version?.sides?.find((s:any)=>s.name==='front')?.layers?.find((l:any)=>l.type==='text')?.text)
-                              : (designPayload.version?.sides?.find((s:any)=>s.name==='back')?.layers?.find((l:any)=>l.type==='text')?.text)) || ''}
+                            slogan={''}
                             color={'#000000'}
                             template={designPayload.template || 'tshirt'}
                             templateImage={null}
                             showTemplate={true}
-                            // Keep template color unchanged; only tint the image layer
                             templateColor={designPayload.templateColor || '#ffffff'}
                             imageTintColor={previewColor || null}
                             tintImage={!!previewColor}
@@ -316,23 +395,7 @@ export default function SavedDesignsPage() {
                             textSize={24}
                             textRotation={0}
                             textPosition={{ x: 150, y: 150 }}
-                            image={((): any => {
-                              try {
-                                const mapping = designPayload.version?.metadata?.preview_by_color || null;
-                                if (mapping && previewColor) {
-                                  const found = mapping.find((m:any)=> (String(m.id) === String(previewColor) || String(m.hex) === String(previewColor)));
-                                  if (found) {
-                                    console.log('[SavedDesigns] using found per-color image for canvas', { found: { id: found.id, hasFront: !!found.preview_front || !!found.front, hasBack: !!found.preview_back || !!found.back } });
-                                    return previewSide === 'front' ? (found.preview_front || found.front || null) : (found.preview_back || found.back || null);
-                                  }
-                                }
-                              } catch (e) { console.error('[SavedDesigns] error locating per-color image for canvas', e); }
-                              const fallbackDataUrl = (previewSide === 'front'
-                                ? (designPayload.version?.sides?.find((s:any)=>s.name==='front')?.layers?.find((l:any)=>l.type==='image')?.asset?.dataUrl || null)
-                                : (designPayload.version?.sides?.find((s:any)=>s.name==='back')?.layers?.find((l:any)=>l.type==='image')?.asset?.dataUrl || null));
-                              console.debug('[SavedDesigns] canvas will use fallback image dataUrl present?', !!fallbackDataUrl);
-                              return fallbackDataUrl;
-                            })()}
+                            image={fallbackDataUrl}
                             imageScale={100}
                             imageRotation={0}
                             imagePosition={{ x: 150, y: 150 }}
@@ -341,30 +404,12 @@ export default function SavedDesignsPage() {
                           />
                         </div>
                       );
-                    })()
-                  ) : (
-                    <img
-                      src={previewSide === 'front' ? (active.front?.url || active.any?.url) : (active.back?.url || active.any?.url)}
-                      className="mx-auto max-h-[70vh]"
-                      alt={previewSide}
-                      onError={(e: any) => {
-                        try {
-                          const el = e?.currentTarget as HTMLImageElement | null;
-                          if (!el || !active) return;
-                          if (el.dataset?.triedApiFallback === '1') return;
-                          el.dataset.triedApiFallback = '1';
-                          const asset = previewSide === 'front' ? active.front : active.back;
-                          console.warn('[SavedDesigns] modal image load failed, attempting API asset fallback', { src: el.src, assetId: asset?.id });
-                          if (asset && asset.id) el.src = `${API_BASE}/api/assets/${asset.id}`;
-                        } catch (err) { console.error('[SavedDesigns] modal image onError', err); }
-                      }}
-                    />
-                  )}
+                    }
+                    return <div>No preview</div>;
+                  })()}
                 </div>
               </div>
-            ) : (
-              <div>No preview</div>
-            )}
+            ) : (<div>No preview</div>)}
           </div>
           <DialogFooter>
             <DialogClose asChild>

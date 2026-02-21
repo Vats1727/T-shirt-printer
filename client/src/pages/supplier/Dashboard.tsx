@@ -53,6 +53,7 @@ export default function SupplierDashboard() {
         <div className="flex items-center gap-2">
           <button onClick={() => setLocation('/supplier/listings/create')} className="px-3 py-1 bg-green-600 text-white rounded text-sm">Create Listing</button>
           <button onClick={() => setLocation('/supplier/saved-designs')} className="px-3 py-1 bg-sky-600 text-white rounded text-sm">View Saved designs</button>
+            <button onClick={() => setLocation('/supplier/login')} className="px-3 py-1 bg-gray-200 rounded text-sm">Login</button>
           <button
             onClick={() => {
               const sid = (user && (user.id || (user as any).sub)) ? (user.id || (user as any).sub) : '';
