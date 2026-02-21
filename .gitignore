@@ -71,5 +71,9 @@ server/designs.json.corrupt-*
 *.png
 *.jpg
 *.jpeg
+# Local uploads and attached assets (keep images out of the repo)
+/uploads/
+/client/attached_assets/
+/server/uploads/
 # Keep project config files tracked - do not ignore package.json, package-lock.json, tsconfig.json, scripts, or assets
 # (If you intentionally want to ignore any of these, add them explicitly)
