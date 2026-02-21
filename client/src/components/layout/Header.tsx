@@ -2,7 +2,7 @@ import React from 'react';
 
 export default function Header() {
   return (
-    <header style={{ background: 'linear-gradient(90deg,#00f0ff,#34d1ff)', padding: '12px 20px' }}>
+    <header style={{ background: 'linear-gradient(90deg,#00f0ff,#34d1ff)', padding: '8px 20px' }}>
       <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ fontWeight: 700, color: '#003' }}>SignatureThreads</div>
         <nav style={{ display: 'flex', gap: 18 }}>
