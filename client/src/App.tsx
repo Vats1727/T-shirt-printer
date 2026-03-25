@@ -15,15 +15,20 @@ import { useLocation } from 'wouter';
 import AdminDashboard from '@/pages/admin/Dashboard';
 import AdminClothes from '@/pages/admin/Clothes';
 import AdminOrders from '@/pages/admin/Orders';
+import AdminProfile from '@/pages/admin/Profile';
+import AdminDesigners from '@/pages/admin/Designers';
 import AdminRoute from '@/components/AdminRoute';
 import SupplierDashboard from '@/pages/supplier/Dashboard';
 import SupplierOrder from '@/pages/supplier/Order';
 import SupplierProductOrder from '@/pages/supplier/ProductOrder';
 import SupplierSavedDesigns from '@/pages/supplier/SavedDesigns';
 import SupplierCreateListing from '@/pages/supplier/listings/CreateListing';
+import SupplierProfile from '@/pages/supplier/Profile';
 import SupplierRoute from '@/components/SupplierRoute';
 import StorePage from '@/pages/store/Store';
 import StoreProduct from '@/pages/store/Product';
+import PortalAdminDashboard from '@/pages/portal/Dashboard';
+import PortalAdminRoute from '@/components/PortalAdminRoute';
 
 function Router() {
   return (
@@ -34,16 +39,20 @@ function Router() {
       <Route path="/admin/login" component={Login} />
       <AdminRoute path="/admin/dashboard" component={AdminDashboard} />
       <AdminRoute path="/admin/clothes" component={AdminClothes} />
-      <AdminRoute path="/admin/orders" component={AdminOrders} />
+      <Route path="/admin/orders" component={AdminOrders} />
+      <AdminRoute path="/admin/profile" component={AdminProfile} />
+      <AdminRoute path="/admin/designers" component={AdminDesigners} />
       <Route path="/supplier/login" component={Login} />
       <SupplierRoute path="/supplier/dashboard" component={SupplierDashboard} />
-      <SupplierRoute path="/supplier/saved-designs" component={SupplierSavedDesigns} />
+      <SupplierRoute path="/supplier/saved-designs/:designerId?" component={SupplierSavedDesigns} />
       <SupplierRoute path="/supplier/listings/create" component={SupplierCreateListing} />
       <SupplierRoute path="/supplier/order" component={SupplierOrder} />
       <SupplierRoute path="/supplier/product/:id" component={SupplierProductOrder} />
+      <SupplierRoute path="/supplier/profile" component={SupplierProfile} />
       <Route path="/store/:supplierId" component={StorePage} />
       <Route path="/listing/:slug" component={StoreProduct} />
       <Route path="/listing/id/:id" component={StoreProduct} />
+      <PortalAdminRoute path="/portal/dashboard" component={PortalAdminDashboard} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -30,11 +30,21 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   }
 }
 
-export function requireRole(role: 'admin' | 'supplier') {
+export function requireRole(role: 'print_provider' | 'designer' | 'portal_admin') {
   return (req: Request, res: Response, next: NextFunction) => {
     const user = (req as any).user;
     if (!user) return res.status(401).json({ message: 'Not authenticated' });
-    if (user.role !== role) return res.status(403).json({ message: 'Forbidden' });
+
+    const roleMap: Record<string, string[]> = {
+      'print_provider': ['print_provider', 'admin'],
+      'designer': ['designer', 'supplier'],
+      'portal_admin': ['portal_admin']
+    };
+
+    const allowedRoles = roleMap[role] || [role];
+    if (!allowedRoles.includes(user.role)) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
     return next();
   };
 }

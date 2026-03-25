@@ -5,19 +5,22 @@ export async function createProduct(req: Request, res: Response) {
   const body = req.body;
   if (!body || !body.name) return res.status(400).json({ message: 'name required' });
 
-  const product = await productsStore.createProduct(body);
+  const ownerId = (req as any).user?.sub || (req as any).user?.id || null;
+  const product = await productsStore.createProduct({ ...body, owner_id: ownerId });
   return res.json(product);
 }
 
-export async function listProducts(_req: Request, res: Response) {
-  const list = await productsStore.listProducts();
+export async function listProducts(req: Request, res: Response) {
+  const ownerId = (req as any).user?.sub || (req as any).user?.id || null;
+  const list = await productsStore.listProducts(ownerId);
   return res.json(list);
 }
 
 export async function getProduct(req: Request, res: Response) {
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ message: 'invalid id' });
-  const p = await productsStore.getProduct(id);
+  const ownerId = (req as any).user?.sub || (req as any).user?.id || null;
+  const p = await productsStore.getProduct(id, ownerId);
   if (!p) return res.status(404).json({ message: 'not found' });
   return res.json(p);
 }
@@ -25,15 +28,21 @@ export async function getProduct(req: Request, res: Response) {
 export async function updateProduct(req: Request, res: Response) {
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ message: 'invalid id' });
+  const ownerId = (req as any).user?.sub || (req as any).user?.id || null;
   const body = req.body;
-  const p = await productsStore.updateProduct(id, body);
-  return res.json(p);
+  try {
+    const p = await productsStore.updateProduct(id, body, ownerId);
+    return res.json(p);
+  } catch (err: any) {
+    return res.status(403).json({ message: err.message });
+  }
 }
 
 export async function deleteProduct(req: Request, res: Response) {
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ message: 'invalid id' });
-  const p = await productsStore.softDeleteProduct(id);
+  const ownerId = (req as any).user?.sub || (req as any).user?.id || null;
+  const p = await productsStore.softDeleteProduct(id, ownerId);
   if (!p) return res.status(404).json({ message: 'not found' });
   return res.json({ success: true, product: p });
 }

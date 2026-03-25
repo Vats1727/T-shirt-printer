@@ -48,8 +48,9 @@ export default function CreateListing() {
         return;
       }
       const js = await res.json();
-      // store created listing info and show Store button
       setCreatedListing(js || null);
+      // Redirect after success as requested
+      setTimeout(() => setLocation('/supplier/dashboard'), 800);
     } catch (err:any) {
       alert('Failed to create listing: ' + (err?.message || err));
     } finally { setSaving(false); }

@@ -4,14 +4,22 @@ import fs from 'fs/promises';
 import path from 'path';
 import { db } from '../../db';
 import { assets as assetsTable } from '@shared/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 
 export async function uploadAsset(req: Request, res: Response) {
   try {
+    const user = (req as any).user;
     const { dataUrl, filename, metadata } = req.body || {};
     if (!dataUrl || typeof dataUrl !== 'string') return res.status(400).json({ message: 'dataUrl is required' });
+
     // pass optional metadata object to storeDataUrl so callers can set preview flags
-    const result = await assetStore.storeDataUrl(String(dataUrl), filename ? String(filename) : undefined, (metadata && typeof metadata === 'object') ? metadata : undefined);
+    const result = await assetStore.storeDataUrl(
+      String(dataUrl),
+      filename ? String(filename) : undefined,
+      user?.sub || user?.id || null,
+      (metadata && typeof metadata === 'object') ? metadata : undefined
+    );
+
     // prefer DB-backed asset id when available
     if (result && (result as any).id) {
       const id = (result as any).id;
@@ -19,28 +27,37 @@ export async function uploadAsset(req: Request, res: Response) {
     }
     // fallback: return client copy path
     return res.status(201).json({ id: null, url: `/attached_assets/${result.filename}`, filename: result.filename });
-  } catch (e:any) {
+  } catch (e: any) {
     console.error('uploadAsset error', e?.message || e);
     return res.status(500).json({ message: 'Failed to upload asset' });
   }
 }
 
 export async function deleteAsset(req: Request, res: Response) {
+  const user = (req as any).user;
   const id = parseInt(req.params.id, 10);
   if (Number.isNaN(id)) return res.status(400).json({ message: 'Invalid id' });
+
   try {
     // If DB configured, try to find the asset row first
     let row: any = null;
     if (db) {
-      const rows = await db.select().from(assetsTable).where(eq(assetsTable.id, id));
+      const userId = user?.sub || user?.id || null;
+      const rows = await db.select().from(assetsTable).where(
+        and(
+          eq(assetsTable.id, id),
+          eq(assetsTable.uploader_id, userId)
+        )
+      );
       row = (rows as any[])[0];
+      if (!row) return res.status(404).json({ message: 'Asset not found or not owned by you' });
     }
 
     // If there is a filename or storage_key, attempt to remove files
     try {
       if (row && row.filename) {
         const clientPath = path.join(process.cwd(), 'client', 'attached_assets', row.filename || '');
-        try { await fs.unlink(clientPath); } catch (e) {}
+        try { await fs.unlink(clientPath); } catch (e) { }
       }
       if (row && row.storage_key) {
         const storageCandidates = [
@@ -49,7 +66,7 @@ export async function deleteAsset(req: Request, res: Response) {
           path.resolve(row.storage_key),
         ];
         for (const p of storageCandidates) {
-          try { await fs.unlink(p); } catch (e) {}
+          try { await fs.unlink(p); } catch (e) { }
         }
       }
     } catch (e) {
@@ -57,15 +74,13 @@ export async function deleteAsset(req: Request, res: Response) {
     }
 
     if (db) {
-      const del = await db.delete(assetsTable).where(eq(assetsTable.id, id));
-      const rowCount = (del.rowCount || 0);
-      if (rowCount === 0) return res.status(404).json({ message: 'Not found' });
+      await db.delete(assetsTable).where(eq(assetsTable.id, id));
       return res.status(204).end();
     }
 
     // If no DB, but file cleaned up, return 204
     return res.status(204).end();
-  } catch (e:any) {
+  } catch (e: any) {
     console.error('deleteAsset error', e?.message || e);
     return res.status(500).json({ message: 'Failed to delete asset' });
   }

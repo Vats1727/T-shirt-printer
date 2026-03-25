@@ -12,7 +12,7 @@ const UPLOAD_DIR = path.join(__dirname, '../../uploads');
 export async function ensureUploadDir() {
   try {
     await fs.mkdir(UPLOAD_DIR, { recursive: true });
-  } catch (e) {}
+  } catch (e) { }
 }
 
 function mimeToExt(mime: string | undefined) {
@@ -22,7 +22,7 @@ function mimeToExt(mime: string | undefined) {
   return m.split('+')[0];
 }
 
-export async function storeDataUrl(dataUrl: string, filenameHint?: string) {
+export async function storeDataUrl(dataUrl: string, filenameHint?: string, uploaderId?: number | null, metadata?: any) {
   await ensureUploadDir();
   const match = dataUrl.match(/^data:(.+);base64,(.*)$/);
   if (!match) throw new Error('Invalid dataUrl');
@@ -31,7 +31,8 @@ export async function storeDataUrl(dataUrl: string, filenameHint?: string) {
   const buf = Buffer.from(b64, 'base64');
   const ext = mimeToExt(mime);
   const id = crypto.randomBytes(10).toString('hex');
-  const filename = filenameHint ? `${id}-${filenameHint}` : `${id}.${ext}`;
+  const sanitizedHint = filenameHint ? filenameHint.replace(/[^\x00-\x7F]/g, '').replace(/[^a-zA-Z0-0\.\-_]/g, '_') : '';
+  const filename = sanitizedHint ? `${id}-${sanitizedHint}` : `${id}.${ext}`;
   const storageKey = `uploads/${filename}`;
   const outPath = path.join(__dirname, '../../', storageKey);
   await fs.writeFile(outPath, buf);
@@ -39,7 +40,8 @@ export async function storeDataUrl(dataUrl: string, filenameHint?: string) {
   try {
     if (db) {
       const clientPath = `client/attached_assets/${filename}`;
-      const res = await db.insert(assetsTable).values({ filename, mime, size: buf.length, storage_key: storageKey, metadata: { uploaded: true, client_copy: clientPath } }).returning();
+      const finalMetadata = { ...metadata, uploaded: true, client_copy: clientPath };
+      const res = await db.insert(assetsTable).values({ filename, mime, size: buf.length, storage_key: storageKey, metadata: finalMetadata, uploader_id: uploaderId }).returning();
       // eslint-disable-next-line no-console
       console.log('assetStore: inserted asset row', res?.[0]?.id);
     }
@@ -69,4 +71,31 @@ export async function storeDataUrl(dataUrl: string, filenameHint?: string) {
     // ignore lookup errors
   }
   return { storageKey, filename, mime, size: buf.length };
+}
+
+/**
+ * Stores front and back preview images (DataURLs) as files and returns their URLs or asset IDs.
+ */
+export async function storePreviewFiles(front: string | null, back: string | null, designId: number, uploaderId?: number | null) {
+  const result: { front?: string; back?: string } = {};
+  
+  if (front && front.startsWith('data:')) {
+    try {
+      const stored = await storeDataUrl(front, `design-${designId}-front.png`, uploaderId, { designId, side: 'front', automated: true });
+      result.front = stored.id ? `/api/assets/${stored.id}` : (stored.filename ? `/attached_assets/${stored.filename}` : undefined);
+    } catch (e) {
+      console.error(`assetStore: failed to store front preview for design ${designId}`, e);
+    }
+  }
+
+  if (back && back.startsWith('data:')) {
+    try {
+      const stored = await storeDataUrl(back, `design-${designId}-back.png`, uploaderId, { designId, side: 'back', automated: true });
+      result.back = stored.id ? `/api/assets/${stored.id}` : (stored.filename ? `/attached_assets/${stored.filename}` : undefined);
+    } catch (e) {
+      console.error(`assetStore: failed to store back preview for design ${designId}`, e);
+    }
+  }
+
+  return result;
 }

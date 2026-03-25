@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Card } from "@/components/ui/card";
 
 interface DesignCanvasProps {
@@ -230,7 +230,18 @@ export function DesignCanvas({
     const scale = width / 400;
 
     ctx.clearRect(0, 0, width, height);
+    // User requested blank background (white)
     ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, width, height);
+
+    // subtle grid pattern for better contrast - only draw inside to avoid edge bleeding
+    ctx.strokeStyle = 'rgba(209, 213, 219, 0.5)'; // #d1d5db with alpha
+    ctx.lineWidth = 1;
+    for (let i = 20; i < width; i += 20) {
+      ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, height); ctx.stroke();
+    }
+    for (let i = 20; i < height; i += 20) {
+      ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(width, i); ctx.stroke();
+    }
 
     if (backgroundRef.current) {
       const bg = backgroundRef.current; const ratio = Math.max(width / bg.width, height / bg.height);
@@ -280,9 +291,22 @@ export function DesignCanvas({
     }
 
     if (userImageRef.current && image && !forceTemplateFill) {
-      const src = userImageRef.current; const intrinsicW = src.naturalWidth || src.width; const intrinsicH = src.naturalHeight || src.height;
-      const imgScaleFactor = (imageScale / 100) * scale; const imgW = Math.max(1, Math.round(intrinsicW * imgScaleFactor)); const imgH = Math.max(1, Math.round(intrinsicH * imgScaleFactor));
-      ctx.save(); ctx.translate(imagePosition.x * scale, imagePosition.y * scale); ctx.rotate((imageRotation * Math.PI) / 180); ctx.globalAlpha = 0.95;
+      const src = userImageRef.current; 
+      const intrinsicW = src.naturalWidth || src.width; 
+      const intrinsicH = src.naturalHeight || src.height;
+      const aspectRatio = intrinsicH / intrinsicW;
+
+      // Make scale relative to canvas width (400) instead of raw pixels
+      // 1.0 scale = 400 units wide
+      const targetWidth = imageScale * 400; // imageScale is now a multiplier (e.g., 1.0 for 100%)
+      const imgW = targetWidth * scale;
+      const imgH = (targetWidth * aspectRatio) * scale;
+
+      ctx.save();
+      const drawX = imagePosition.x * scale;
+      const drawY = imagePosition.y * scale;
+      ctx.translate(drawX, drawY); 
+      ctx.rotate((imageRotation * Math.PI) / 180); ctx.globalAlpha = 0.95;
       if (tintImage) {
         const off = document.createElement('canvas'); off.width = imgW; off.height = imgH; const octx = off.getContext('2d');
         if (octx) { octx.drawImage(src, 0, 0, imgW, imgH); octx.globalCompositeOperation = 'source-in'; octx.fillStyle = imageTintColor || color; octx.fillRect(0,0,imgW,imgH); ctx.drawImage(off, -imgW/2, -imgH/2, imgW, imgH); }
@@ -395,12 +419,16 @@ export function DesignCanvas({
   };
 
   return (
-    <Card className={`overflow-hidden border-2 border-border/50 shadow-xl shadow-black/5 bg-white ${readonly ? '' : 'cursor-move'}`}>
+    <div 
+      className={`overflow-hidden border-2 border-border/50 shadow-xl shadow-black/5 bg-white rounded-lg flex-shrink-0 ${readonly ? '' : 'cursor-move'}`}
+      style={{ width: '100%', maxWidth: width, aspectRatio: `${width}/${height}` }}
+    >
       <canvas
         ref={(el) => { canvasRef.current = el; if (exportCanvasRef && typeof exportCanvasRef === 'object') { try { (exportCanvasRef as any).current = el; } catch(e) {} } }}
         width={width}
         height={height}
-        className="w-full h-auto block touch-none"
+        className="block touch-none w-full h-full"
+        style={{ width: '100%', height: '100%' }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -409,6 +437,6 @@ export function DesignCanvas({
         onTouchMove={handleMouseMove}
         onTouchEnd={handleMouseUp}
       />
-    </Card>
+    </div>
   );
 }

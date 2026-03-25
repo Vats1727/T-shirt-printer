@@ -1,0 +1,92 @@
+# T-Shirt Printer - Project Setup Guide
+
+This guide covers the steps required to set up and run the T-Shirt Printer project on a new system. 
+The project is a full-stack web application consisting of a React/Vite frontend (`client/`) and a Node.js/Express backend (`server/`) with a PostgreSQL database managed by Drizzle ORM.
+
+## Prerequisites
+Before you begin, ensure you have the following installed on your system:
+- **Node.js**: Minimum version v18 (Recommended v20 LTS)
+- **npm** or **pnpm**: Comes with Node.js
+- **PostgreSQL**: Make sure the PostgreSQL service is running and you have credentials to create a new database.
+
+---
+
+## Step 1: Clone the Repository
+Clone the repository to your new system and navigate into the project directory:
+```bash
+git clone <repository_url>
+cd Tshirt-printer
+```
+
+## Step 2: Install Dependencies
+The project relies on dependencies in both the `server` and `client` directories.
+```bash
+# Install root dependencies
+npm install
+
+# Install server dependencies
+cd server
+npm install
+
+# Install client dependencies
+cd ../client
+npm install
+```
+
+## Step 3: Database Setup & Environment Variables
+The backend requires a PostgreSQL database to run properly.
+1. Create a new empty PostgreSQL database (e.g., named `tshirt_printer`).
+2. Navigate to the `server` directory:
+   ```bash
+   cd ../server
+   ```
+3. Copy the example environment variables file to create a new `.env` file:
+   ```bash
+   cp .env.example .env
+   ```
+   *(On Windows Command Prompt, use `copy .env.example .env`)*
+
+4. Open the newly created `server/.env` file with a text editor and configure your database credentials. You can either use the component variables or the single connection string `DATABASE_URL`:
+   ```env
+   # Example: Using connection string
+   DATABASE_URL=postgres://your_db_username:your_db_password@localhost:5432/tshirt_printer
+
+   # Example: Using component variables
+   # DB_USER=your_db_username
+   # DB_PASSWORD=your_db_password
+   # DB_HOST=localhost
+   # DB_PORT=5432
+   # DB_NAME=tshirt_printer
+   ```
+
+## Step 4: Run Migrations and Seed Database
+Now that the database is connected, you need to push the schema and import the initial seed data. From the `server` directory, run:
+```bash
+# This will push the Drizzle schema and run seed scripts
+npm run db:setup
+```
+*Note: This script sequentially runs `db:push`, `db:import-json`, `db:import-users`, and `db:backfill-size-chart`.*
+
+## Step 5: Start the Development Server
+With dependencies installed and the database initialized, you can start the application.
+
+1. Navigate back to the root directory:
+   ```bash
+   cd ..
+   ```
+2. Start the full development environment (concurrently starts the backend server on port 5000 and the Vite frontend client):
+   ```bash
+   npm run dev
+   ```
+
+The application will launch, and you should be able to access the frontend via the URL printed in the terminal (usually `http://localhost:5173` or similar), communicating with the backend API at `http://localhost:5000`.
+
+---
+## Additional Commands
+- **Run Backend Only**: `npm start` (from the project root)
+- **Run Frontend Only**: `npm --prefix client run dev` (from the project root)
+- **Build for Production**:
+  ```bash
+  cd client && npm run build
+  cd ../server && npm run build
+  ```

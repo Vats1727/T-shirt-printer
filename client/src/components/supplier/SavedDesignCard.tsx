@@ -21,7 +21,7 @@ export default function SavedDesignCard({ sd, onView, onUse }: Props) {
       const templateColor = payload.templateColor || payload.template_color || payload.color || undefined;
       let slogan = '';
       let imageUrl: string | null = null;
-      let imageScale = 100;
+      let imageScale = 1;
       let imageRotation = 0;
       let imagePosition = { x: 200, y: 180 };
       let textSize = 28;
@@ -67,7 +67,7 @@ export default function SavedDesignCard({ sd, onView, onUse }: Props) {
               }
               return imageUrl;
             })()}
-            imageScale={Number(imageScale) || 100}
+            imageScale={Number(imageScale) || 1}
             imageRotation={Number(imageRotation) || 0}
             imagePosition={imagePosition}
             // If there is a featured color, tint the image only (do not change template color)

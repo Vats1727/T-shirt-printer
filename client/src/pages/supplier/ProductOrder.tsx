@@ -4,6 +4,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { DesignCanvas } from '@/components/design/DesignCanvas';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { ChevronLeft, Save, Palette, Type, Image as ImageIcon, DollarSign, Loader2 } from 'lucide-react';
+import { toast } from '@/hooks/use-toast';
 
 export default function SupplierProductOrder() {
   const [match, params] = useRoute('/supplier/product/:id');
@@ -13,11 +18,12 @@ export default function SupplierProductOrder() {
   const { token } = useAuth();
   const [catalog, setCatalog] = useState<any | null>(null);
   const [product, setProduct] = useState<any | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [selectedColor, setSelectedColor] = useState<number | null>(null);
   const [selectedColors, setSelectedColors] = useState<number[]>([]);
   const [featuredColor, setFeaturedColor] = useState<number | null>(null);
   const [selectedSize, setSelectedSize] = useState<number | null>(null);
-  // per-size quantities for multi-size orders: { [sizeId]: quantity }
   const [sizeQuantities, setSizeQuantities] = useState<Record<number, number>>({});
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -26,9 +32,8 @@ export default function SupplierProductOrder() {
   const frontExportRef = useRef<HTMLCanvasElement | null>(null);
   const backExportRef = useRef<HTMLCanvasElement | null>(null);
 
-  // design state (per-side similar to Home)
   const [side, setSide] = useState<'front'|'back'>('front');
-  const [activeTab, setActiveTab] = useState<'colors'|'slogan'|'logo'|'price'>('colors');
+  const [activeTab, setActiveTab] = useState<string>('colors');
 
   const baseState = {
     slogan: '',
@@ -39,7 +44,7 @@ export default function SupplierProductOrder() {
     textRotation: 0,
     textPosition: { x: 180, y: 180 },
     image: null as string | null,
-    imageScale: 100,
+    imageScale: 25,
     imageRotation: 0,
     imagePosition: { x: 180, y: 180 },
     template: product?.template || 'tshirt',
@@ -51,8 +56,8 @@ export default function SupplierProductOrder() {
 
   const activeState = side === 'front' ? frontState : backState;
   const setActiveState = (patch: Partial<typeof baseState>) => {
-    if (side === 'front') setFrontState(prev => ({ ...prev, ...patch }));
-    else setBackState(prev => ({ ...prev, ...patch }));
+    if (side === 'front') setFrontState((prev: typeof baseState) => ({ ...prev, ...patch }));
+    else setBackState((prev: typeof baseState) => ({ ...prev, ...patch }));
   };
 
   // helpers to access current values
@@ -108,6 +113,7 @@ export default function SupplierProductOrder() {
       const prod = data.products?.find((p:any) => Number(p.id) === Number(id));
       console.debug('SupplierProductOrder: loaded product from catalog', prod);
       setProduct(prod || null);
+      setLoading(false);
       // initialize price input from product if available
       try { setPriceInput(Number(prod?.single_price || 0)); } catch(e) { setPriceInput(0); }
       if (!prod) return;
@@ -163,7 +169,7 @@ export default function SupplierProductOrder() {
         // only use admin-provided design image (strict)
         let img = pickDesignImage(frontDesign);
 
-        setFrontState(prev => ({
+        setFrontState((prev: typeof baseState) => ({
           ...prev,
           slogan: frontDesign.slogan || prev.slogan,
             image: null,
@@ -184,13 +190,13 @@ export default function SupplierProductOrder() {
         try { console.debug('SupplierProductOrder: front side resolved', { resolvedTemplate, frontDesign, templateImage: normalizeImage(frontDesign.template || frontDesign.image || frontDesign.image_src || frontDesign.image_url) || null }); } catch (e) {}
       } else {
         // no admin front design image — ensure we clear any preview image
-        setFrontState(prev => ({ ...prev, image: null }));
+        setFrontState((prev: typeof baseState) => ({ ...prev, image: null }));
       }
 
       if (backDesign) {
         // only use admin-provided design image (strict)
         let img = pickDesignImage(backDesign);
-        setBackState(prev => ({
+        setBackState((prev: typeof baseState) => ({
           ...prev,
           slogan: backDesign.slogan || prev.slogan,
             image: null,
@@ -211,26 +217,26 @@ export default function SupplierProductOrder() {
         try { console.debug('SupplierProductOrder: back side resolved', { resolvedTemplate, backDesign, templateImage: normalizeImage(backDesign.template || backDesign.image || backDesign.image_src || backDesign.image_url) || null }); } catch (e) {}
       } else {
         // no admin back design image — ensure we clear any preview image
-        setBackState(prev => ({ ...prev, image: null }));
+        setBackState((prev: typeof baseState) => ({ ...prev, image: null }));
       }
 
       // if no designs provided, set template (from product) and apply admin default as template color and image tint so both sides match
       if (!frontDesign && !backDesign) {
         // No admin side-specific designs: do NOT show product-level image in the preview; leave image blank
-        setFrontState(prev => ({ ...prev, template: prod.template || prev.template, templateColor: firstColorHex || prev.templateColor, imageTintColor: firstColorHex || prev.imageTintColor, image: null, templateImage: null }));
-        setBackState(prev => ({ ...prev, template: prod.template || prev.template, templateColor: firstColorHex || prev.templateColor, imageTintColor: firstColorHex || prev.imageTintColor, image: null, templateImage: null }));
+        setFrontState((prev: typeof baseState) => ({ ...prev, template: prod.template || prev.template, templateColor: firstColorHex || prev.templateColor, imageTintColor: firstColorHex || prev.imageTintColor, image: null, templateImage: null }));
+        setBackState((prev: typeof baseState) => ({ ...prev, template: prod.template || prev.template, templateColor: firstColorHex || prev.templateColor, imageTintColor: firstColorHex || prev.imageTintColor, image: null, templateImage: null }));
       }
 
       // Ensure both sides use the product template if available (covers cases where only one side has a design)
-      setFrontState(prev => ({ ...prev, template: prod.template || prev.template }));
-      setBackState(prev => ({ ...prev, template: prod.template || prev.template }));
+      setFrontState((prev: typeof baseState) => ({ ...prev, template: prod.template || prev.template }));
+      setBackState((prev: typeof baseState) => ({ ...prev, template: prod.template || prev.template }));
 
       // If only one side had a design, do NOT use product-level images for the other side; leave image null
       if (!frontDesign) {
-        setFrontState(prev => ({ ...prev, image: null }));
+        setFrontState((prev: typeof baseState) => ({ ...prev, image: null }));
       }
       if (!backDesign) {
-        setBackState(prev => ({ ...prev, image: null }));
+        setBackState((prev: typeof baseState) => ({ ...prev, image: null }));
       }
     };
 
@@ -248,7 +254,9 @@ export default function SupplierProductOrder() {
           try {
             setError(null);
             setMessage('Fetching versions...');
-            const res = await fetch(`/api/designs/${savedDesignId}/versions`);
+            const res = await fetch(`/api/designs/${savedDesignId}/versions`, {
+              headers: { Authorization: token ? `Bearer ${token}` : '' }
+            });
             if (!res.ok) {
               const txt = await res.text().catch(()=>res.statusText);
               setError('Failed to fetch versions: ' + (txt || res.status));
@@ -362,6 +370,7 @@ export default function SupplierProductOrder() {
   // stores the supplier-entered price locally (localStorage) until a server-side
   // supplier-price API is available.
   async function saveDesign() {
+    setSaving(true);
     setError(null);
     const buildSide = (state: typeof baseState, name: 'front'|'back') => ({
       name,
@@ -386,6 +395,8 @@ export default function SupplierProductOrder() {
         versionName: 'supplier-save',
         sides: [buildSide(frontState, 'front'), buildSide(backState, 'back')],
         metadata: {
+          canvasDimensions: { width: 400, height: 400 },
+          dpiAware: true,
           preview_front: frontPreview,
           preview_back: backPreview,
           selected_colors: selectedColors.map((cid)=>{
@@ -418,7 +429,14 @@ export default function SupplierProductOrder() {
 
       // Helper to post a design payload (cloned with single selected color)
       const postDesign = async (payloadToSend:any) => {
-        const res = await fetch('/api/designs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payloadToSend) });
+        const res = await fetch('/api/designs', { 
+          method: 'POST', 
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': token ? `Bearer ${token}` : ''
+          }, 
+          body: JSON.stringify(payloadToSend) 
+        });
         if (!res.ok) {
           const txt = await res.text().catch(()=>'');
           throw new Error('Failed to save design: ' + (txt || res.status));
@@ -462,8 +480,8 @@ export default function SupplierProductOrder() {
         if (did) createdIds.push(did);
 
         // restore original template colors
-        setFrontState(prev => ({ ...prev, templateColor: originalFrontColor }));
-        setBackState(prev => ({ ...prev, templateColor: originalBackColor }));
+        setFrontState((prev: typeof baseState) => ({ ...prev, templateColor: originalFrontColor }));
+        setBackState((prev: typeof baseState) => ({ ...prev, templateColor: originalBackColor }));
 
         // persist price locally for now
         try { localStorage.setItem(`supplier:product:${product?.id}:price`, String(priceInput || 0)); } catch(e) {}
@@ -474,7 +492,14 @@ export default function SupplierProductOrder() {
       }
 
       // single save (fallback)
-      const res = await fetch('/api/designs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const res = await fetch('/api/designs', { 
+        method: 'POST', 
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        }, 
+        body: JSON.stringify(payload) 
+      });
       if (!res.ok) {
         const txt = await res.text().catch(()=>'');
         setError('Failed to save design: ' + (txt || res.status));
@@ -492,333 +517,417 @@ export default function SupplierProductOrder() {
         setVersions([js.design.version]);
       }
       setMessage('Design saved (id: ' + (did || 'unknown') + '). Price stored locally.');
+      // Redirect after success as requested
+      setTimeout(() => setLocation('/supplier/dashboard'), 1500);
     } catch (e:any) {
       setError(e?.message || 'Failed to save design');
+    } finally {
+      setSaving(false);
     }
   }
 
-
-
-  return (
-    <div className="max-w-6xl mx-auto p-8">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Order: {product.name}</h1>
-          <p className="text-sm text-muted-foreground mt-1">Place an order for this product — choose size, color and quantity.</p>
+  if (loading) {
+    return (
+      <div className="p-12 flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="size-10 text-primary animate-spin" />
+          <p className="text-muted-foreground animate-pulse text-sm font-medium">Preparing design environment...</p>
         </div>
       </div>
-      <Banner />
-      {versions && (
-        <div className="my-4 p-4 border rounded bg-white">
-          <h3 className="font-semibold mb-2">Design Versions (JSON)</h3>
-          <pre style={{ maxHeight: 400, overflow: 'auto' }} className="text-xs">{JSON.stringify(versions, null, 2)}</pre>
+    );
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto p-8 space-y-8 animate-in fade-in duration-500">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b">
+        <div className="flex items-center gap-4">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => setLocation('/supplier/dashboard')}
+            className="rounded-full hover:bg-primary/5 hover:text-primary transition-colors"
+          >
+            <ChevronLeft className="size-6" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">{product.name}</h1>
+            <p className="text-sm text-muted-foreground">Customize and save your design for {product.slug}</p>
+          </div>
         </div>
-      )}
+        <div className="flex items-center gap-3">
+          <Button 
+            onClick={saveDesign} 
+            disabled={saving || selectedColors.length === 0}
+            className="gap-2 bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-100 min-w-[140px]"
+          >
+            {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+            {saving ? 'Saving...' : 'Save Design'}
+          </Button>
+        </div>
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-3">
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle>Design</CardTitle>
-              <CardDescription>Customize slogan or image for your order (optional)</CardDescription>
-              <div className="text-xs text-muted-foreground mt-1">Note: these edits affect only the preview and are not persisted to the product.</div>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-3 mb-4">
-                <button type="button" onClick={() => setSide('front')} className={`px-3 py-1 rounded ${side==='front' ? 'bg-primary text-white' : 'bg-gray-100'}`}>Front Side</button>
-                <button type="button" onClick={() => setSide('back')} className={`px-3 py-1 rounded ${side==='back' ? 'bg-primary text-white' : 'bg-gray-100'}`}>Back Side</button>
-              </div>
+      <Banner />
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Left: Tabs & Controls */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:items-start">
+        {/* Left column: Controls */}
+        <div className="lg:col-span-5 space-y-6">
+          <Card className="border-border/40 shadow-sm overflow-hidden">
+            <CardHeader className="bg-muted/30 pb-4">
+              <div className="flex items-center justify-between">
                 <div>
+                  <CardTitle className="text-lg">Design Customization</CardTitle>
+                  <CardDescription>Configure colors, text, and logos</CardDescription>
+                </div>
+                <div className="flex bg-white/50 backdrop-blur-sm p-1 rounded-lg border shadow-sm">
+                  <button 
+                    onClick={() => setSide('front')}
+                    className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all ${side === 'front' ? 'bg-indigo-600 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    Front
+                  </button>
+                  <button 
+                    onClick={() => setSide('back')}
+                    className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all ${side === 'back' ? 'bg-indigo-600 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    Back
+                  </button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-6">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+                <TabsList className="grid grid-cols-4 gap-1 bg-muted/50 p-1">
+                  <TabsTrigger value="colors" className="gap-2 data-[state=active]:bg-white data-[state=active]:text-indigo-600 data-[state=active]:shadow-sm">
+                    <Palette className="size-4" />
+                    <span className="hidden sm:inline">Colors</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="slogan" className="gap-2 data-[state=active]:bg-white data-[state=active]:text-indigo-600 data-[state=active]:shadow-sm" disabled={selectedColors.length === 0}>
+                    <Type className="size-4" />
+                    <span className="hidden sm:inline">Text</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="logo" className="gap-2 data-[state=active]:bg-white data-[state=active]:text-indigo-600 data-[state=active]:shadow-sm" disabled={selectedColors.length === 0}>
+                    <ImageIcon className="size-4" />
+                    <span className="hidden sm:inline">Logo</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="price" className="gap-2 data-[state=active]:bg-white data-[state=active]:text-indigo-600 data-[state=active]:shadow-sm" disabled={selectedColors.length === 0}>
+                    <DollarSign className="size-4" />
+                    <span className="hidden sm:inline">Price</span>
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="colors" className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                   <div className="space-y-4">
-                    <div className="flex items-center gap-2 mb-4">
-                      <button type="button" onClick={()=>setActiveTab('colors')} className={`px-3 py-1 rounded ${activeTab==='colors' ? 'bg-primary text-white' : 'bg-gray-100'}`}>Colors</button>
-                      <button type="button" onClick={()=>setActiveTab('slogan')} disabled={selectedColors.length===0} className={`px-3 py-1 rounded ${activeTab==='slogan' ? 'bg-primary text-white' : 'bg-gray-100'} ${selectedColors.length===0 ? 'opacity-50 cursor-not-allowed' : ''}`}>Slogan</button>
-                      <button type="button" onClick={()=>setActiveTab('logo')} disabled={selectedColors.length===0} className={`px-3 py-1 rounded ${activeTab==='logo' ? 'bg-primary text-white' : 'bg-gray-100'} ${selectedColors.length===0 ? 'opacity-50 cursor-not-allowed' : ''}`}>Logo / Image</button>
-                      <button type="button" onClick={()=>setActiveTab('price')} disabled={selectedColors.length===0} className={`px-3 py-1 rounded ${activeTab==='price' ? 'bg-primary text-white' : 'bg-gray-100'} ${selectedColors.length===0 ? 'opacity-50 cursor-not-allowed' : ''}`}>Price</button>
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-semibold text-foreground italic">Available Print Colors</label>
+                      <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground bg-slate-50">Select at least one</Badge>
+                    </div>
+                    <div className="grid grid-cols-4 sm:grid-cols-6 gap-3">
+                      {product.colors?.map((cid: number) => {
+                        const c = getColorObj(Number(cid));
+                        const selected = selectedColors.includes(Number(cid));
+                        const isFeatured = featuredColor === Number(cid);
+                        return (
+                          <div key={cid} className="relative group/color">
+                            <button 
+                              onClick={() => { 
+                                setSelectedColors(prev => {
+                                  if (prev.includes(Number(cid))) {
+                                    const filtered = prev.filter(x => x !== Number(cid));
+                                    if (featuredColor === Number(cid)) setFeaturedColor(filtered.length ? filtered[0] : null);
+                                    return filtered;
+                                  }
+                                  const next = [...prev, Number(cid)];
+                                  if (!featuredColor) setFeaturedColor(Number(cid));
+                                  return next;
+                                });
+                                  setFrontState((prev: typeof baseState) => ({ ...prev, templateColor: c.hex || prev.templateColor, imageTintColor: c.hex || prev.imageTintColor }));
+                                  setBackState((prev: typeof baseState) => ({ ...prev, templateColor: c.hex || prev.templateColor, imageTintColor: c.hex || prev.imageTintColor }));
+                              }} 
+                              className={`w-full aspect-square rounded-full border-4 transition-all ${selected ? 'border-indigo-500 shadow-md scale-105' : 'border-white hover:border-gray-200'}`}
+                              style={{ background: c.hex }}
+                              title={c.name}
+                            />
+                            {selected && (
+                              <button 
+                                onClick={(e: React.MouseEvent) => { e.stopPropagation(); setFeaturedColor(Number(cid)); }} 
+                                className={`absolute -top-1 -right-1 size-5 rounded-full border flex items-center justify-center text-[10px] shadow-sm transition-transform active:scale-90 ${isFeatured ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-white text-muted-foreground border-gray-200 hover:bg-gray-50'}`}
+                                title={isFeatured ? 'Featured color' : 'Mark as featured'}
+                              >
+                                ★
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="slogan" className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold italic">Design Slogan</label>
+                      <Input
+                        placeholder="Type your slogan here..."
+                        value={slogan}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setActiveState({ slogan: e.target.value })}
+                        className="bg-muted/30 focus-visible:ring-indigo-500 h-12"
+                      />
                     </div>
 
-                    {activeTab === 'colors' && (
-                      <div className="p-4 rounded-lg bg-white shadow-sm border">
-                        <div className="flex items-center justify-between mb-2">
-                          <label className="block text-sm font-medium">Available colors</label>
-                          <div className="text-xs text-muted-foreground">Pick a base color first</div>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {product.colors?.map((cid:number)=>{
-                            const c = getColorObj(Number(cid));
-                            const selected = selectedColors.includes(Number(cid));
-                            const isFeatured = featuredColor === Number(cid);
-                            return (
-                              <div key={cid} className="relative">
-                                <button onClick={()=>{ 
-                                  setSelectedColors(prev => {
-                                    if (prev.includes(Number(cid))) {
-                                      const filtered = prev.filter(x=>x!==Number(cid));
-                                      // if removed color was featured, clear featured or pick another
-                                      if (featuredColor === Number(cid)) {
-                                        setFeaturedColor(filtered.length ? filtered[0] : null);
-                                      }
-                                      return filtered;
-                                    }
-                                    // add and set as featured if none chosen yet
-                                    const next = [...prev, Number(cid)];
-                                    if (!featuredColor) setFeaturedColor(Number(cid));
-                                    return next;
-                                  });
-                                  // apply color as preview tint
-                                  setFrontState(prev=>({...prev, templateColor: c.hex || prev.templateColor, imageTintColor: c.hex || prev.imageTintColor }));
-                                  setBackState(prev=>({...prev, templateColor: c.hex || prev.templateColor, imageTintColor: c.hex || prev.imageTintColor }));
-                                }} className={`p-2 rounded border ${selected ? 'ring-2 ring-indigo-400' : ''}`} title={c.name}>
-                                  <span className="w-6 h-6 rounded-full block" style={{background:c.hex}} />
-                                </button>
-                                {/* small featured toggle */}
-                                <button title={isFeatured ? 'Featured color' : 'Mark as featured'} onClick={(e)=>{e.stopPropagation(); setFeaturedColor(Number(cid));}} className={`absolute -top-1 -right-1 w-4 h-4 rounded-full border flex items-center justify-center text-xs ${isFeatured ? 'bg-indigo-600 text-white' : 'bg-white text-muted-foreground'}`}>{isFeatured ? '★' : ''}</button>
-                              </div>
-                            );
-                          })}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold italic">Text Color</label>
+                        <div className="flex items-center gap-3">
+                          <input type="color" value={color} onChange={e => setActiveState({ color: e.target.value })} className="size-10 p-0.5 rounded-lg border cursor-pointer overflow-hidden bg-white" />
+                          <span className="text-xs font-mono text-muted-foreground uppercase">{color}</span>
                         </div>
                       </div>
-                    )}
+                      <div className="flex items-end justify-end">
+                        <Button variant="outline" size="sm" onClick={() => setActiveState({ slogan: '' })} className="text-xs">Clear Text</Button>
+                      </div>
+                    </div>
 
-                    {activeTab === 'slogan' && (
-                      <div className="p-4 rounded-lg bg-white shadow-sm border">
-                        <div className="flex items-center justify-between mb-3">
-                          <h3 className="text-sm font-semibold">Slogan</h3>
-                          <div className="text-xs text-muted-foreground">Design text settings</div>
+                    {slogan && (
+                      <div className="space-y-6 pt-4 border-t">
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Font Size</span>
+                            <span className="text-xs font-bold font-mono text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{textSize}px</span>
+                          </div>
+                          <input type="range" min={8} max={200} value={textSize} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setActiveState({ textSize: Number(e.target.value) })} className="w-full accent-indigo-600 h-1.5 bg-muted rounded-lg appearance-none cursor-pointer" />
                         </div>
 
                         <div className="space-y-3">
-                          <input
-                            className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                            placeholder="Add optional slogan"
-                            value={slogan}
-                            onChange={e => setActiveState({ slogan: e.target.value })}
-                          />
-
-                          <div className="flex items-center gap-3">
-                            <label className="text-sm font-medium">Color</label>
-                            <input type="color" value={color} onChange={e=>setActiveState({ color: e.target.value })} className="w-9 h-9 p-0 rounded border" aria-label="Slogan color" />
-                            <div className="text-sm text-muted-foreground">{color}</div>
-                            <div className="ml-auto flex items-center gap-2">
-                              <button type="button" onClick={()=>setActiveState({ slogan: '' })} className="px-2 py-1 text-xs rounded border hover:bg-gray-50">Clear</button>
-                            </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Rotation</span>
+                            <span className="text-xs font-bold font-mono text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{textRotation}°</span>
                           </div>
+                          <input type="range" min={0} max={360} value={textRotation} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setActiveState({ textRotation: Number(e.target.value) })} className="w-full accent-indigo-600 h-1.5 bg-muted rounded-lg appearance-none cursor-pointer" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </TabsContent>
 
-                          {slogan && (
+                <TabsContent value="logo" className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="space-y-5">
+                    <div className="space-y-3">
+                      <label className="text-sm font-semibold italic">Upload Art or Logo</label>
+                      <div className="flex items-center justify-center border-2 border-dashed border-border/60 rounded-xl p-8 bg-muted/20 hover:bg-muted/30 transition-colors group">
+                        <label className="cursor-pointer flex flex-col items-center gap-3 w-full h-full">
+                          <input type="file" accept="image/*" onChange={async (e) => {
+                              const f = e.target.files?.[0];
+                              if (!f) return;
+                              const reader = new FileReader();
+                              reader.onload = async () => {
+                                const result = reader.result as string | null;
+                                if (!result) return;
+                                try {
+                                  const res = await fetch('/api/assets', { 
+                                    method: 'POST', 
+                                    headers: { 
+                                      'Content-Type': 'application/json',
+                                      'Authorization': token ? `Bearer ${token}` : ''
+                                    }, 
+                                    body: JSON.stringify({ dataUrl: result, filename: f.name }) 
+                                  });
+                      if (res.ok) {
+                        const js = await res.json();
+                        const url = js?.url || `/attached_assets/${js?.filename}`;
+                        setActiveState({ image: url });
+                        toast({ title: "Image Uploaded", description: `${f.name} has been added successfully.` });
+                        return;
+                      }
+                    } catch (err: any) {}
+                    setActiveState({ image: result });
+                  };
+                              reader.readAsDataURL(f);
+                            }} className="hidden" />
+                          <div className="size-12 rounded-full bg-white shadow-sm flex items-center justify-center group-hover:scale-110 transition-transform duration-300 border">
+                            <ImageIcon className="size-6 text-indigo-600" />
+                          </div>
+                          <div className="text-center">
+                            <p className="text-sm font-medium">Click to browse</p>
+                            <p className="text-xs text-muted-foreground mt-1">PNG, JPG or SVG up to 5MB</p>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+
+                    {image && (
+                      <div className="space-y-6 pt-4 border-t">
+                        <div className="flex gap-4">
+                          <div className="size-24 rounded-lg border bg-white p-2 flex items-center justify-center shadow-sm flex-shrink-0">
+                            <img src={image} alt="logo preview" className="max-h-full max-w-full object-contain" />
+                          </div>
+                          <div className="flex-grow space-y-4">
                             <div className="space-y-3">
-                              <div className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <div className="text-sm font-medium">Font size</div>
-                                  <div className="text-xs font-medium">{textSize}px</div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <button type="button" onClick={()=>setActiveState({ textSize: Math.max(8, textSize - 1) })} className="px-2 py-1 rounded border">-</button>
-                                  <input type="number" min={8} max={200} value={textSize} onChange={e=>setActiveState({ textSize: Number(e.target.value) || 8 })} className="w-20 text-center border rounded p-1" />
-                                  <button type="button" onClick={()=>setActiveState({ textSize: Math.min(200, textSize + 1) })} className="px-2 py-1 rounded border">+</button>
-                                  <input type="range" min={8} max={200} value={textSize} onChange={e=>setActiveState({ textSize: Number(e.target.value) })} className="flex-1" />
-                                </div>
+                              <div className="flex justify-between items-center">
+                                <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Size Scale</span>
+                                <span className="text-xs font-bold font-mono text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{imageScale}%</span>
                               </div>
-
-                              <div className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <div className="text-sm font-medium">Rotation</div>
-                                  <div className="text-xs font-medium">{textRotation}°</div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <button type="button" onClick={()=>setActiveState({ textRotation: (textRotation - 1 + 360) % 360 })} className="px-2 py-1 rounded border">-</button>
-                                  <input type="number" min={0} max={360} value={textRotation} onChange={e=>setActiveState({ textRotation: Number(e.target.value) || 0 })} className="w-20 text-center border rounded p-1" />
-                                  <button type="button" onClick={()=>setActiveState({ textRotation: (textRotation + 1) % 360 })} className="px-2 py-1 rounded border">+</button>
-                                  <input type="range" min={0} max={360} value={textRotation} onChange={e=>setActiveState({ textRotation: Number(e.target.value) })} className="flex-1" />
-                                </div>
-                              </div>
+                              <input type="range" min={1} max={100} value={imageScale} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setActiveState({ imageScale: Number(e.target.value) })} className="w-full accent-indigo-600 h-1.5 bg-muted rounded-lg appearance-none cursor-pointer" />
                             </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {activeTab === 'logo' && (
-                      <div className="p-4 rounded-lg bg-white shadow-sm border">
-                        <div className="flex items-center justify-between mb-3">
-                          <h3 className="text-sm font-semibold">Logo / Image</h3>
-                          <div className="text-xs text-muted-foreground">Front and back independent</div>
-                        </div>
-
-                        <div className="flex items-start gap-4">
-                          <div className="flex-shrink-0">
-                            <label className="cursor-pointer inline-flex items-center justify-center w-24 h-24 rounded border bg-gray-50 hover:bg-gray-100">
-                              <input type="file" accept="image/*" onChange={async (e) => {
-                                  const f = e.target.files?.[0];
-                                  if (!f) return;
-                                  const reader = new FileReader();
-                                  reader.onload = async () => {
-                                    const result = reader.result as string | null;
-                                    if (!result) return;
-                                    try {
-                                      const res = await fetch('/api/assets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dataUrl: result, filename: f.name }) });
-                                      if (res.ok) {
-                                        const js = await res.json();
-                                        const url = js?.url || `/attached_assets/${js?.filename}`;
-                                        setActiveState({ image: url });
-                                        return;
-                                      }
-                                    } catch (err) {
-                                      // ignore and fallback
-                                    }
-                                    setActiveState({ image: result });
-                                  };
-                                  reader.readAsDataURL(f);
-                                }} className="hidden" />
-                              <div className="text-sm text-muted-foreground">Choose Image</div>
-                            </label>
-                          </div>
-
-                          <div className="flex-1">
-                            {image ? (
-                              <div className="flex items-start gap-4">
-                                <img src={image} alt="logo preview" className="w-24 h-24 object-contain border rounded" />
-                                <div className="w-full">
-                                  <div className="grid grid-cols-1 gap-3">
-                                    <div>
-                                      <div className="flex items-center justify-between mb-1">
-                                        <div className="text-sm font-medium">Scale</div>
-                                        <div className="text-xs text-muted-foreground">{imageScale}%</div>
-                                      </div>
-                                      <div className="flex items-center gap-2">
-                                              <button type="button" onClick={()=>setActiveState({ imageScale: Math.max(1, imageScale - 5) })} className="px-2 py-1 rounded border">-</button>
-                                              <input type="number" min={1} max={500} value={imageScale} onChange={e=>setActiveState({ imageScale: Math.max(1, Number(e.target.value) || 1) })} className="w-24 text-center border rounded p-1" />
-                                              <button type="button" onClick={()=>setActiveState({ imageScale: Math.min(500, imageScale + 5) })} className="px-2 py-1 rounded border">+</button>
-                                              <input type="range" min={1} max={500} step={1} value={imageScale} onChange={e=>setActiveState({ imageScale: Number(e.target.value) })} className="flex-1" />
-                                            </div>
-                                    </div>
-
-                                    <div>
-                                      <div className="flex items-center justify-between mb-1">
-                                        <div className="text-sm font-medium">Rotation</div>
-                                        <div className="text-xs text-muted-foreground">{imageRotation}°</div>
-                                      </div>
-                                      <div className="flex items-center gap-2">
-                                        <button type="button" onClick={()=>setActiveState({ imageRotation: (imageRotation - 1 + 360) % 360 })} className="px-2 py-1 rounded border">-</button>
-                                        <input type="number" min={-360} max={360} value={imageRotation} onChange={e=>setActiveState({ imageRotation: Number(e.target.value) || 0 })} className="w-20 text-center border rounded p-1" />
-                                        <button type="button" onClick={()=>setActiveState({ imageRotation: (imageRotation + 1) % 360 })} className="px-2 py-1 rounded border">+</button>
-                                        <input type="range" min={-360} max={360} value={imageRotation} onChange={e=>setActiveState({ imageRotation: Number(e.target.value) })} className="flex-1" />
-                                      </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-2">
-                                      <button type="button" onClick={()=>setActiveState({ image: null })} className="px-3 py-1 rounded border text-sm">Remove image</button>
-                                      <button type="button" onClick={()=>{ setActiveState({ imageScale: 10, imageRotation: 0, imagePosition: { x: 180, y: 180 } }); }} className="px-3 py-1 rounded border text-sm">Reset</button>
-                                      <div className="text-xs text-muted-foreground ml-auto">Tip: drag image on preview to reposition</div>
-                                    </div>
-                                  </div>
-                                </div>
+                            <div className="space-y-3">
+                              <div className="flex justify-between items-center">
+                                <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Rotation</span>
+                                <span className="text-xs font-bold font-mono text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{imageRotation}°</span>
                               </div>
-                            ) : (
-                              <div className="text-sm text-muted-foreground">No image selected</div>
-                            )}
+                              <input type="range" min={0} max={360} value={imageRotation} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setActiveState({ imageRotation: Number(e.target.value) })} className="w-full accent-indigo-600 h-1.5 bg-muted rounded-lg appearance-none cursor-pointer" />
+                            </div>
+                            <div className="flex items-center gap-2 pt-2">
+                              <Button variant="outline" size="sm" onClick={() => setActiveState({ image: null })} className="text-xs flex-grow text-red-600 hover:text-red-700 hover:bg-red-50">Remove</Button>
+                              <Button variant="ghost" size="sm" onClick={() => setActiveState({ imageScale: 100, imageRotation: 0, imagePosition: { x: 180, y: 180 } })} className="text-xs">Reset</Button>
+                            </div>
                           </div>
                         </div>
                       </div>
                     )}
+                  </div>
+                </TabsContent>
 
-                    {activeTab === 'price' && (
-                      <div className="p-4 rounded-lg bg-white shadow-sm border">
-                        <label className="block text-sm font-medium mb-2">Set price (for this design)</label>
-                        <div className="flex gap-2 items-center">
-                          <input type="number" step="0.01" value={priceInput} onChange={e=>setPriceInput(Number(e.target.value) || 0)} className="flex-1 border rounded p-1" />
-                          <button onClick={saveDesign} className="px-4 py-2 bg-blue-600 text-white rounded">Save Design</button>
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-2">Saved price is stored locally for now. Saving stores the design to your account.</div>
+                <TabsContent value="price" className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="p-4 rounded-xl bg-indigo-50/50 border border-indigo-100/50 space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold italic text-indigo-900">Retail Price (for your Listing)</label>
+                      <div className="relative">
+                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-indigo-600/60" />
+                        <Input 
+                          type="number" 
+                          step="0.01" 
+                          value={priceInput} 
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPriceInput(Number(e.target.value) || 0)} 
+                          className="pl-9 bg-white border-indigo-200 focus-visible:ring-indigo-500 h-12 text-lg font-semibold"
+                        />
                       </div>
-                    )}
+                      <p className="text-[10px] text-indigo-600/80 italic font-medium">This is the price your customers will see on your storefront.</p>
+                    </div>
                   </div>
-                </div>
-
-                {/* Right: Preview */}
-                <div className="flex items-center justify-center">
-                  <div className="w-[520px] h-[520px] bg-gray-50 rounded p-4 flex items-center justify-center">
-                    <DesignCanvas
-                      side={side}
-                      slogan={slogan}
-                      color={color}
-                      template={template || product.template || 'tshirt'}
-                      templateImage={templateImage}
-                      showTemplate={true}
-                      templateColor={templateColor}
-                      imageTintColor={imageTintColor}
-                      tintImage={false}
-                      forceTemplateFill={false}
-                      textSize={textSize}
-                      textRotation={textRotation}
-                      textPosition={textPosition}
-                      onTextMove={(pos)=>setActiveState({ textPosition: pos })}
-                      image={image}
-                      imageScale={imageScale}
-                      imageRotation={imageRotation}
-                      imagePosition={imagePosition}
-                      onImageMove={(pos)=>setActiveState({ imagePosition: pos })}
-                      width={520}
-                      height={520}
-                    />
-                  </div>
-                </div>
-                {/* Hidden canvases for exporting front/back previews */}
-                <div aria-hidden style={{ height: 0, width: 0, overflow: 'hidden', position: 'absolute' }}>
-                  <DesignCanvas
-                    side={'front'}
-                    slogan={frontState.slogan}
-                    color={frontState.color}
-                    template={frontState.template || product.template}
-                    templateImage={frontState.templateImage}
-                    showTemplate={true}
-                    templateColor={frontState.templateColor}
-                    imageTintColor={frontState.imageTintColor}
-                    tintImage={false}
-                    forceTemplateFill={false}
-                    textSize={frontState.textSize}
-                    textRotation={frontState.textRotation}
-                    textPosition={frontState.textPosition}
-                    image={frontState.image}
-                    imageScale={frontState.imageScale}
-                    imageRotation={frontState.imageRotation}
-                    imagePosition={frontState.imagePosition}
-                    width={520}
-                    height={520}
-                    exportCanvasRef={frontExportRef}
-                  />
-                  <DesignCanvas
-                    side={'back'}
-                    slogan={backState.slogan}
-                    color={backState.color}
-                    template={backState.template || product.template}
-                    templateImage={backState.templateImage}
-                    showTemplate={true}
-                    templateColor={backState.templateColor}
-                    imageTintColor={backState.imageTintColor}
-                    tintImage={false}
-                    forceTemplateFill={false}
-                    textSize={backState.textSize}
-                    textRotation={backState.textRotation}
-                    textPosition={backState.textPosition}
-                    image={backState.image}
-                    imageScale={backState.imageScale}
-                    imageRotation={backState.imageRotation}
-                    imagePosition={backState.imagePosition}
-                    width={520}
-                    height={520}
-                    exportCanvasRef={backExportRef}
-                  />
-                </div>
-              </div>
+                </TabsContent>
+              </Tabs>
             </CardContent>
           </Card>
         </div>
 
-        {/* Order panel hidden for suppliers while ordering is disabled. */}
+        {/* Right column: 3D Preview */}
+        <div className="lg:col-span-7 space-y-6">
+          <div className="relative aspect-square w-full max-w-2xl mx-auto rounded-3xl overflow-hidden shadow-2xl shadow-indigo-100 border-8 border-white bg-slate-100 flex items-center justify-center">
+            <DesignCanvas
+              side={side}
+              slogan={slogan}
+              color={color}
+              template={template || product.template || 'tshirt'}
+              templateImage={templateImage}
+              showTemplate={true}
+              templateColor={templateColor}
+              imageTintColor={imageTintColor}
+              tintImage={false}
+              forceTemplateFill={false}
+              textSize={textSize}
+              textRotation={textRotation}
+              textPosition={textPosition}
+              onTextMove={(pos) => setActiveState({ textPosition: pos })}
+              image={image}
+              imageScale={imageScale / 100}
+              imageRotation={imageRotation}
+              imagePosition={imagePosition}
+              onImageMove={(pos) => setActiveState({ imagePosition: pos })}
+              width={640}
+              height={640}
+            />
+            
+            {/* Design tools Overlay */}
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-white/10 backdrop-blur-xl border border-white/20 p-2 rounded-full shadow-lg">
+              <Badge variant="secondary" className="bg-indigo-600 text-white border-none py-1.5 px-4 shadow-sm select-none">
+                Interactive Preview
+              </Badge>
+              <div className="flex items-center gap-1.5 pr-2">
+                <div className="size-2 rounded-full bg-green-500 animate-pulse" />
+                <span className="text-[10px] uppercase tracking-wider font-bold text-slate-600 select-none">Live Sync</span>
+              </div>
+            </div>
+            
+            {/* Zoom / Hint indicator */}
+            <div className="absolute top-6 right-6 p-3 rounded-2xl bg-white/80 backdrop-blur-md shadow-sm border border-white flex flex-col items-center gap-1">
+              <span className="text-[10px] font-bold uppercase tracking-tighter text-indigo-600">Hint</span>
+              <p className="text-[8px] italic text-slate-500 max-w-[60px] text-center leading-tight">Drag items to reposition</p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 italic text-sm text-slate-500">
+            <div className="flex items-center gap-2">
+              <div className="size-2 rounded-full bg-indigo-400" />
+              <span>Base Template: <span className="font-semibold text-slate-700 capitalize">{product.template || 'Default'}</span></span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="size-2 rounded-full bg-indigo-400" />
+              <span>Active Side: <span className="font-semibold text-slate-700 capitalize">{side}</span></span>
+            </div>
+          </div>
+        </div>
       </div>
+
+      {/* Hidden canvases for exporting front/back previews */}
+      <div aria-hidden className="invisible pointer-events-none fixed top-[-1000px] left-[-1000px]">
+        <DesignCanvas
+          side={'front'}
+          slogan={frontState.slogan}
+          color={frontState.color}
+          template={frontState.template || product.template}
+          templateImage={frontState.templateImage}
+          showTemplate={true}
+          templateColor={frontState.templateColor}
+          imageTintColor={frontState.imageTintColor}
+          tintImage={false}
+          forceTemplateFill={false}
+          textSize={frontState.textSize}
+          textRotation={frontState.textRotation}
+          textPosition={frontState.textPosition}
+          image={frontState.image}
+          imageScale={frontState.imageScale / 100}
+          imageRotation={frontState.imageRotation}
+          imagePosition={frontState.imagePosition}
+          width={520}
+          height={520}
+          exportCanvasRef={frontExportRef}
+        />
+        <DesignCanvas
+          side={'back'}
+          slogan={backState.slogan}
+          color={backState.color}
+          template={backState.template || product.template}
+          templateImage={backState.templateImage}
+          showTemplate={true}
+          templateColor={backState.templateColor}
+          imageTintColor={backState.imageTintColor}
+          tintImage={false}
+          forceTemplateFill={false}
+          textSize={backState.textSize}
+          textRotation={backState.textRotation}
+          textPosition={backState.textPosition}
+          image={backState.image}
+          imageScale={backState.imageScale / 100}
+          imageRotation={backState.imageRotation}
+          imagePosition={backState.imagePosition}
+          width={520}
+          height={520}
+          exportCanvasRef={backExportRef}
+        />
+      </div>
+
+      {versions && (
+        <Card className="mt-8 border-dashed bg-muted/20">
+          <CardHeader>
+            <CardTitle className="text-sm font-semibold">Debug: Design Versions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <pre className="text-[10px] font-mono bg-white p-4 rounded-lg overflow-auto max-h-[300px] shadow-inner border leading-relaxed">
+              {JSON.stringify(versions, null, 2)}
+            </pre>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

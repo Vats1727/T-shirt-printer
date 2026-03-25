@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, jsonb, doublePrecision, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -25,6 +25,12 @@ export const designs = pgTable("designs", {
   back_text_size: integer("back_text_size").notNull().default(24),
   back_text_rotation: integer("back_text_rotation").notNull().default(0),
   back_text_position: jsonb("back_text_position").notNull().default({ x: 150, y: 135 }),
+  back_image_mask: text("back_image_mask"),
+  image_mask: text("image_mask"),
+  product_id: integer("product_id"),
+  owner_id: integer("owner_id"),
+  group_id: text("group_id"),
+  design_code: text("design_code"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -64,8 +70,111 @@ export const users = pgTable('users', {
   email: text('email').notNull(),
   passwordHash: text('password_hash').notNull(),
   role: text('role').notNull(),
+  status: text('status').notNull().default('active'),
+  subscription_tier: text('subscription_tier').notNull().default('none'),
+  subscription_expiry: timestamp('subscription_expiry'),
+  associated_provider_id: integer('associated_provider_id'),
   createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at'),
 });
+
+export const colors = pgTable("colors", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  hex: text("hex").notNull(),
+  owner_id: integer("owner_id"),
+});
+
+export const sizes = pgTable("sizes", {
+  id: serial("id").primaryKey(),
+  label: text("label").notNull(),
+  owner_id: integer("owner_id"),
+});
+
+export const size_chart = pgTable("size_chart", {
+  id: serial("id").primaryKey(),
+  size_id: integer("size_id").notNull(),
+  product: text("product").notNull().default('tshirt'),
+  chest: doublePrecision("chest").notNull(),
+  length: doublePrecision("length").notNull(),
+  shoulder: doublePrecision("shoulder").notNull(),
+  owner_id: integer("owner_id"),
+});
+
+export const cloth_inventory = pgTable("cloth_inventory", {
+  id: serial("id").primaryKey(),
+  color_id: integer("color_id").notNull(),
+  size_id: integer("size_id").notNull(),
+  product: text("product").notNull().default('tshirt'),
+  quantity: integer("quantity").notNull().default(0),
+  price: doublePrecision("price").notNull().default(0),
+  owner_id: integer("owner_id"),
+});
+
+export const products = pgTable("products", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(),
+  single_price: doublePrecision("single_price").notNull().default(0),
+  bulk_min: integer("bulk_min").notNull().default(100),
+  bulk_price: doublePrecision("bulk_price").notNull().default(0),
+  created_at: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const product_sizes = pgTable("product_sizes", {
+  id: serial("id").primaryKey(),
+  product_id: integer("product_id").notNull(),
+  size_id: integer("size_id").notNull(),
+  created_at: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const product_colors = pgTable("product_colors", {
+  id: serial("id").primaryKey(),
+  product_id: integer("product_id").notNull(),
+  color_id: integer("color_id").notNull(),
+  created_at: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const products_full = pgTable("products_full", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(),
+  single_price: doublePrecision("single_price").notNull().default(0),
+  bulk_min: integer("bulk_min").notNull().default(100),
+  bulk_price: doublePrecision("bulk_price").notNull().default(0),
+  sizes: jsonb("sizes").notNull().default([]),
+  colors: jsonb("colors").notNull().default([]),
+  size_chart: jsonb("size_chart").notNull().default([]),
+  designs: jsonb("designs").notNull().default([]),
+  inventory: jsonb("inventory").notNull().default([]),
+  is_deleted: boolean("is_deleted").notNull().default(false),
+  deleted_at: timestamp("deleted_at"),
+  created_at: timestamp("created_at").notNull().defaultNow(),
+  updated_at: timestamp("updated_at"),
+  owner_id: integer("owner_id"),
+});
+
+export const listings = pgTable("listings", {
+  id: serial("id").primaryKey(),
+  supplier_id: integer("supplier_id"),
+  title: text("title").notNull(),
+  slug: text("slug"),
+  description: text("description"),
+  design_key: text("design_key"),
+  visibility: text("visibility").default("public"),
+  published: boolean("published").default(false),
+  published_at: timestamp("published_at"),
+  created_at: timestamp("created_at").defaultNow(),
+});
+
+export const listing_versions = pgTable("listing_versions", {
+  id: serial("id").primaryKey(),
+  listing_id: integer("listing_id"),
+  version_name: text("version_name"),
+  metadata: jsonb("metadata"),
+  created_at: timestamp("created_at").defaultNow(),
+});
+
 
 // Extended tables for new supplier flow
 // Note: `designs_full` and `design_assets` were removed because the
@@ -113,6 +222,8 @@ export const assets = pgTable('assets', {
   size: integer('size'),
   storage_key: text('storage_key'),
   metadata: jsonb('metadata'),
+  uploader_id: integer('uploader_id'),
+  owner_id: integer('owner_id'),
   created_at: timestamp('created_at').defaultNow(),
 });
 

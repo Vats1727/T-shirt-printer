@@ -4,8 +4,8 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "dev": "cross-env NODE_ENV=development tsx index.ts",
-    "server:dev": "cross-env NODE_ENV=development SKIP_VITE=1 tsx index.ts",
+    "dev": "cross-env NODE_ENV=development tsx --watch index.ts",
+    "server:dev": "cross-env NODE_ENV=development SKIP_VITE=1 tsx --watch index.ts",
     "client:dev": "node ./node_modules/vite/bin/vite.js --config ../client/vite.config.ts",
     "build": "tsx script/build.ts",
     "start": "npm run server:dev",
@@ -27,12 +27,12 @@
     "jsonwebtoken": "^9.0.3",
     "nanoid": "^4.0.0",
     "node-fetch": "^3.3.2",
+    "pdfkit": "^0.13.0",
     "pg": "^8.16.3",
     "wouter": "^3.3.5",
     "ws": "^8.18.0",
     "zod": "^3.24.2",
-    "zod-validation-error": "^3.4.0",
-    "pdfkit": "^0.13.0"
+    "zod-validation-error": "^3.4.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
@@ -40,6 +40,7 @@
     "@types/pg": "^8.16.0",
     "@vitejs/plugin-react": "^4.7.0",
     "cross-env": "^7.0.3",
+    "drizzle-kit": "^0.31.9",
     "esbuild": "^0.25.0",
     "tsx": "^4.20.5",
     "typescript": "5.6.3",

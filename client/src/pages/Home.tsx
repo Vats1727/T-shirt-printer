@@ -113,7 +113,7 @@ export default function Home() {
       imageScale: 50,
       imageRotation: 0,
       imagePosition: { x: 200, y: 200 },
-      version: { versionName: 'initial', sides: [ { name: 'front', layers: [] }, { name: 'back', layers: [] } ] },
+      version: { versionName: 'initial', sides: [ { name: 'front', layers: [] }, { name: 'back', layers: [] } ], metadata: { canvasDimensions: { width: 400, height: 400 }, dpiAware: true } },
     },
   });
 
@@ -133,6 +133,7 @@ export default function Home() {
       version: {
         versionName: 'initial',
         sides: [buildSide(frontState, 'front'), buildSide(backState, 'back')],
+        metadata: { canvasDimensions: { width: 400, height: 400 }, dpiAware: true },
       },
     };
 
@@ -467,7 +468,7 @@ export default function Home() {
                         textPosition={textPosition}
                         onTextMove={(pos) => setActiveState({ textPosition: pos })}
                         image={image}
-                        imageScale={imageScale}
+                        imageScale={imageScale / 100}
                         imageRotation={imageRotation}
                         imagePosition={imagePosition}
                         onImageMove={(pos) => setActiveState({ imagePosition: pos })}

@@ -8,7 +8,10 @@ import * as assetStore from './assetStore';
 
 export interface IStorage {
   createDesign(design: InsertDesign | InsertDesignV2): Promise<Design>;
-  getDesigns(limit?: number): Promise<Design[]>;
+  getDesigns(limit?: number, userId?: number | null): Promise<Design[]>;
+  getDesign(id: number, userId?: number | null): Promise<Design | undefined>;
+  updateDesign(id: number, changes: Partial<InsertDesign>, userId?: number | null): Promise<Design | undefined>;
+  deleteDesign(id: number, userId?: number | null): Promise<boolean>;
 }
 
 function normalizeV2ToLegacy(input: InsertDesignV2): InsertDesign & { version?: any } {
@@ -63,6 +66,7 @@ function normalizeV2ToLegacy(input: InsertDesignV2): InsertDesign & { version?: 
     product: input.product || 'T-shirt',
     template: input.template || 'tshirt',
     templateColor: input.templateColor || '#ffffff',
+    owner_id: (input as any).owner_id || null,
     // keep original v2 payload for future migration/inspection
     version: input.version,
   };
@@ -162,7 +166,7 @@ export class JsonStorage implements IStorage {
         console.log('storage: wrote preview file', outPath);
         // If DB is available, insert an asset row so supplier listing can find it
         try {
-        if (db) {
+          if (db) {
             const storageKey = `client/attached_assets/${filename}`;
             const previewMeta = { preview: true, selected_colors: (insertDesign as any)?.version?.metadata?.selected_colors || null, featured_color: (insertDesign as any)?.version?.metadata?.featured_color || null };
             const res = await db.insert(assetsTable).values({ filename, mime, size: buf.length, storage_key: storageKey, metadata: previewMeta }).returning();
@@ -230,11 +234,23 @@ export class JsonStorage implements IStorage {
     try {
       if (newDesign.image && typeof newDesign.image === 'string' && newDesign.image.startsWith('data:')) {
         const fname = await writePreviewIfDataUrl(newDesign.image, 'front');
-        if (fname) newDesign.image = fname;
+        if (fname) {
+          newDesign.image = `/attached_assets/${fname}`;
+          // Also try to update the metadata if we have a version payload
+          if ((toStore as any)?.version?.metadata) {
+            (toStore as any).version.metadata.preview_front = newDesign.image;
+          }
+        }
       }
       if ((newDesign as any).back_image && typeof (newDesign as any).back_image === 'string' && (newDesign as any).back_image.startsWith('data:')) {
         const fname = await writePreviewIfDataUrl((newDesign as any).back_image, 'back');
-        if (fname) (newDesign as any).back_image = fname;
+        if (fname) {
+          (newDesign as any).back_image = `/attached_assets/${fname}`;
+          // Also try to update the metadata if we have a version payload
+          if ((toStore as any)?.version?.metadata) {
+            (toStore as any).version.metadata.preview_back = (newDesign as any).back_image;
+          }
+        }
       }
     } catch (e) {
       // ignore preview write errors
@@ -260,7 +276,7 @@ export class JsonStorage implements IStorage {
           } else {
             console.warn('Skipping mask generation for front image because it is too large');
           }
-        } catch(e) {
+        } catch (e) {
           // ignore
         }
       }
@@ -277,7 +293,7 @@ export class JsonStorage implements IStorage {
           } else {
             console.warn('Skipping mask generation for back image because it is too large');
           }
-        } catch(e) {
+        } catch (e) {
           // ignore
         }
       }
@@ -296,21 +312,27 @@ export class JsonStorage implements IStorage {
     return newDesign;
   }
 
-  async getDesigns(limit?: number): Promise<Design[]> {
-    const designs = await this.readData();
+  async getDesigns(limit?: number, userId?: number | null): Promise<Design[]> {
+    let designs = await this.readData();
+    if (userId !== undefined && userId !== null) {
+      designs = designs.filter(d => (d as any).owner_id === userId);
+    }
     if (typeof limit === "number") return designs.slice(0, limit);
     return designs;
   }
 
-  async getDesign(id: number): Promise<Design | undefined> {
+  async getDesign(id: number, userId?: number | null): Promise<Design | undefined> {
     const designs = await this.readData();
-    return designs.find((d) => d.id === id);
+    const d = designs.find((d) => d.id === id);
+    if (userId !== undefined && userId !== null && d && (d as any).owner_id !== userId) return undefined;
+    return d;
   }
 
-  async updateDesign(id: number, changes: Partial<InsertDesign>): Promise<Design | undefined> {
+  async updateDesign(id: number, changes: Partial<InsertDesign>, userId?: number | null): Promise<Design | undefined> {
     const designs = await this.readData();
     const idx = designs.findIndex((d) => d.id === id);
     if (idx === -1) return undefined;
+    if (userId !== undefined && userId !== null && (designs[idx] as any).owner_id !== userId) return undefined;
     const updated = { ...designs[idx], ...changes } as Design;
     // If inline previews provided as data URLs, persist them as files under client/attached_assets
     const writePreviewIfDataUrl = async (dataUrl: any, suffix: string) => {
@@ -350,13 +372,25 @@ export class JsonStorage implements IStorage {
     try {
       if (changes.image && typeof changes.image === 'string' && changes.image.startsWith('data:')) {
         const fname = await writePreviewIfDataUrl(changes.image, 'front');
-        if (fname) updated.image = fname as any;
-        else updated.image = changes.image as any;
+        if (fname) {
+          updated.image = `/attached_assets/${fname}` as any;
+          if ((updated as any).version?.metadata) {
+            (updated as any).version.metadata.preview_front = updated.image;
+          }
+        } else {
+          updated.image = changes.image as any;
+        }
       }
       if ((changes as any).back_image && typeof (changes as any).back_image === 'string' && (changes as any).back_image.startsWith('data:')) {
         const fname = await writePreviewIfDataUrl((changes as any).back_image, 'back');
-        if (fname) (updated as any).back_image = fname as any;
-        else (updated as any).back_image = (changes as any).back_image as any;
+        if (fname) {
+          (updated as any).back_image = `/attached_assets/${fname}` as any;
+           if ((updated as any).version?.metadata) {
+             (updated as any).version.metadata.preview_back = (updated as any).back_image;
+           }
+        } else {
+          (updated as any).back_image = (changes as any).back_image as any;
+        }
       }
     } catch (e) {
       // ignore file write errors
@@ -429,7 +463,7 @@ export class JsonStorage implements IStorage {
           } else {
             console.warn('Skipping mask generation for front image because it is too large');
           }
-        } catch(e) {
+        } catch (e) {
           // ignore
         }
       }
@@ -447,7 +481,7 @@ export class JsonStorage implements IStorage {
           } else {
             console.warn('Skipping mask generation for back image because it is too large');
           }
-        } catch(e) {
+        } catch (e) {
           // ignore
         }
       }
@@ -463,10 +497,11 @@ export class JsonStorage implements IStorage {
     return updated;
   }
 
-  async deleteDesign(id: number): Promise<boolean> {
+  async deleteDesign(id: number, userId?: number | null): Promise<boolean> {
     const designs = await this.readData();
     const idx = designs.findIndex((d) => d.id === id);
     if (idx === -1) return false;
+    if (userId !== undefined && userId !== null && (designs[idx] as any).owner_id !== userId) return false;
     designs.splice(idx, 1);
     await this.writeData(designs);
     return true;

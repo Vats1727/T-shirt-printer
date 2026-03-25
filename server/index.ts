@@ -73,48 +73,6 @@ export const _internal = {
       return originalResJson.apply(res, [bodyJson, ...args]);
     };
 
-    function sanitizeForLog(p: string, body: any) {
-      try {
-        if (!body) return body;
-        // If it's the designs list, don't log the full payload — just its length
-        if (p.startsWith('/api/designs') && Array.isArray(body)) {
-          return { _type: 'designs_list', length: body.length };
-        }
-
-        const isNoisyKey = (k: string) => /image|dataurl|data_url|data|preview|preview_front|preview_back/i.test(k);
-
-        function sanitizeValue(v: any): any {
-          if (v == null) return v;
-          if (typeof v === 'string') {
-            if (v.startsWith('data:')) return '[dataurl redacted]';
-            if (v.length > 200) return v.slice(0, 200) + '...[truncated]';
-            return v;
-          }
-          if (Array.isArray(v)) return v.map(sanitizeValue);
-          if (typeof v === 'object') {
-            const o: any = {};
-            for (const k of Object.keys(v)) {
-              try {
-                if (isNoisyKey(k)) {
-                  o[k] = '[redacted]';
-                } else {
-                  o[k] = sanitizeValue(v[k]);
-                }
-              } catch (e) {
-                o[k] = '[unserializable]';
-              }
-            }
-            return o;
-          }
-          return v;
-        }
-
-        return sanitizeValue(body);
-      } catch (e) {
-        return '[unserializable]';
-      }
-    }
-
     // request timeout: 15 seconds
     const timeoutMs = 15_000;
     const timeout = setTimeout(() => {
@@ -133,15 +91,9 @@ export const _internal = {
       if (path.startsWith("/api")) {
         let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
 
-        if (capturedJsonResponse) {
-          const sanitized = sanitizeForLog(path, capturedJsonResponse);
-
-          // For designs list responses, log a short summary instead of the full payload
-          if (path === '/api/designs' && req.method === 'GET') {
-            logLine += ` :: ${JSON.stringify(sanitized)}`;
-          } else {
-            logLine += ` :: ${JSON.stringify(sanitized)}`;
-          }
+        // Only log response payloads for errors to keep the terminal clean
+        if (capturedJsonResponse && res.statusCode >= 400) {
+          logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
         }
 
         log(logLine);
@@ -197,7 +149,7 @@ export const _internal = {
       console.log(`Created missing file: ${filePath}`);
     }
   }
-  await ensureFile('designs.json');
+  // designs.json is removed and no longer needed
   await ensureFile('components.json');
 
   console.log('DEBUG: before registerRoutes');

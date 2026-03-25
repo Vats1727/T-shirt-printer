@@ -1,18 +1,27 @@
 import { Request, Response } from 'express';
 import * as catalog from '../services/catalogStore';
 import * as productsStore from '../services/productsStore';
+import * as userStore from '../services/userStore';
 import { db } from '../../db';
-import { assets as assetsTable } from '@shared/schema';
+import { assets as assetsTable, designs as designsTable } from '@shared/schema';
+import { eq, and } from 'drizzle-orm';
 import fs from 'fs/promises';
 import path from 'path';
 
 export async function getCatalog(req: Request, res: Response) {
-  const data = await catalog.listCatalog();
-  // include full product details for suppliers
-  const list = await productsStore.listProducts();
+  const user = (req as any).user;
+  if (!user) return res.status(401).json({ message: 'Not authenticated' });
+
+  const userId = user.sub || user.id;
+  const userRow = await userStore.findById(Number(userId));
+  const ownerId = userRow?.associated_provider_id || (user.role === 'print_provider' ? userId : null);
+
+  const data = await catalog.listCatalog(ownerId);
+  // include full product details for suppliers/designers
+  const list = await productsStore.listProducts(ownerId as number);
   const products = [] as any[];
   for (const p of list) {
-    const full = await productsStore.getProduct(p.id);
+    const full = await productsStore.getProduct(p.id, ownerId as number);
     if (full) products.push(full);
   }
   return res.json({ ...data, products });
@@ -153,7 +162,10 @@ export async function listSavedDesigns(req: Request, res: Response) {
       }
     }
 
-    const rows = await db.select().from(assetsTable).orderBy(assetsTable.id);
+    const userId = user.sub || user.id;
+    const rows = await db.select().from(assetsTable)
+      .where(eq(assetsTable.uploader_id, Number(userId)))
+      .orderBy(assetsTable.id);
 
     // Build groups by design id (preferred) or by filename pattern 'design-<id>-front/back'. This is robust to mixed workflows.
     const groupsMap: Record<string, any> = {};
@@ -166,13 +178,18 @@ export async function listSavedDesigns(req: Request, res: Response) {
       const designIdFromMeta = meta && (meta.designId || meta.design_id || meta.design);
 
       const filename = p.filename || '';
-      // determine key & side
+      const sideFromMeta = meta && (meta.side || meta.side_name);
+
       let key: string | null = null;
-      let side: 'front'|'back'|null = null;
+      let side: 'front' | 'back' | null = null;
 
       if (designIdFromMeta) {
         key = `design-${designIdFromMeta}`;
-      } else {
+        side = sideFromMeta === 'back' ? 'back' : (sideFromMeta === 'front' ? 'front' : null);
+      }
+      
+      // If still no key/side, try filename pattern
+      if (!key) {
         const m = String(filename || '').match(/^design-(\d+)-(front|back)\.(png|jpg|jpeg)$/i);
         if (m) { key = `design-${m[1]}`; side = m[2] === 'back' ? 'back' : 'front'; }
       }
@@ -198,8 +215,8 @@ export async function listSavedDesigns(req: Request, res: Response) {
 
     const groups = Object.keys(groupsMap).map(k => ({ key: k, ...groupsMap[k] }));
     return res.json({ designs: groups });
-  } catch (e: unknown) {
-    console.error('listSavedDesigns error', (await import('../utils')).fmtErr(e));
+  } catch (e: any) {
+    console.error('listSavedDesigns error', e?.message || e);
     return res.status(500).json({ message: 'Failed to list saved designs' });
   }
 }
@@ -241,12 +258,64 @@ export async function listSavedDesignsPublic(_req: Request, res: Response) {
           await fs.access(clientPath);
           url = `/attached_assets/${filename}`;
         }
-      } catch (e) {}
+      } catch (e) { }
       mapped.push({ id: p.id, filename: filename, mime: p.mime, size: p.size, storage_key: p.storage_key, metadata: p.metadata, url });
     }
     return res.json({ designs: mapped });
-  } catch (e: unknown) {
-    console.error('listSavedDesignsPublic error', (await import('../utils')).fmtErr(e));
+  } catch (e: any) {
+    console.error('listSavedDesignsPublic error', e?.message || e);
     return res.status(500).json({ message: 'Failed to list saved designs' });
+  }
+}
+
+export async function updateProfile(req: Request, res: Response) {
+  const user = (req as any).user;
+  if (!user) return res.status(401).json({ message: 'Not authenticated' });
+  const userId = user.sub || user.id;
+  const { associated_provider_id } = req.body;
+
+  try {
+    await userStore.updateUser(Number(userId), { associated_provider_id: associated_provider_id ? Number(associated_provider_id) : null });
+    return res.json({ ok: true });
+  } catch (e: any) {
+    return res.status(500).json({ message: e.message || 'Failed to update profile' });
+  }
+}
+
+
+export const getDesignsByGroup = async (req: Request, res: Response) => {
+  try {
+    const { groupId } = req.params;
+    const results = await db.select({ design_code: designsTable.design_code })
+      .from(designsTable)
+      .where(eq(designsTable.group_id, groupId as string))
+      .orderBy(designsTable.id);
+    
+    return res.json(results.map((r: any) => r.design_code).filter(Boolean));
+  } catch (e: any) {
+    return res.status(500).json({ message: e.message || 'Failed to fetch group designs' });
+  }
+}
+
+export const getDesignByGroupAndCode = async (req: Request, res: Response) => {
+  try {
+    const { groupId, designCode } = req.params;
+    const [design] = await db.select()
+      .from(designsTable)
+      .where(
+        and(
+          eq(designsTable.group_id, groupId as string),
+          eq(designsTable.design_code, designCode as string)
+        )
+      )
+      .limit(1);
+
+    if (!design) {
+      return res.status(400).json({ message: 'Invalid design code' });
+    }
+
+    return res.json(design);
+  } catch (e: any) {
+    return res.status(500).json({ message: e.message || 'Failed to fetch design' });
   }
 }

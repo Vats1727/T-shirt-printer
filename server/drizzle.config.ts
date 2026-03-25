@@ -1,9 +1,9 @@
 // Basic drizzle-kit config (avoid typed helper to stop compile errors in this environment)
 // Load env file located at server/.env so drizzle-kit picks up DB_* values when running from npm scripts
 import path from "path";
-import { fileURLToPath } from "url";
 import dotenv from "dotenv";
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const dir = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
 // Load server/.env so drizzle-kit picks up DB_* values when running via npm scripts
 dotenv.config({ path: path.resolve(__dirname, '.env') });
 

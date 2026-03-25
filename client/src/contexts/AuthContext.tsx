@@ -1,12 +1,13 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 
-type User = { id?: number; name?: string; email?: string; role?: string } | null;
+type User = { id?: number; name?: string; email?: string; role?: string; associated_provider_id?: number | null } | null;
 
 type AuthContextValue = {
   user: User;
   token?: string | null;
-  loginWithCredentials: (email: string, password: string) => Promise<void>;
+  loginWithCredentials: (email: string, password: string) => Promise<{ token: string; user: User }>;
   logout: () => void;
+  updateUser: (data: Partial<NonNullable<User>>) => void;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -28,6 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(res.user);
     localStorage.setItem('token', res.token);
     localStorage.setItem('user', JSON.stringify(res.user));
+    return res;
   };
 
   const logout = () => {
@@ -37,8 +39,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('user');
   };
 
+  const updateUser = (data: Partial<NonNullable<User>>) => {
+    setUser((prev: User) => {
+      const newUser = prev ? { ...prev, ...data } : null;
+      if (newUser) localStorage.setItem('user', JSON.stringify(newUser));
+      return newUser;
+    });
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, loginWithCredentials, logout }}>
+    <AuthContext.Provider value={{ user, token, loginWithCredentials, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

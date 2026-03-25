@@ -173,7 +173,7 @@ export default function StoreProduct() {
                           : (designPayload.version?.sides?.find((s:any)=>s.name==='back')?.layers?.find((l:any)=>l.type==='image')?.asset?.dataUrl || null));
                         return fallbackDataUrl;
                       })()}
-                      imageScale={100}
+                      imageScale={1}
                       imageRotation={0}
                       imagePosition={{ x: 150, y: 150 }}
                       width={480}

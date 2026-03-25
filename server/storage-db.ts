@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { designs, assets as assetsTable, design_versions } from "./shared/schema";
 import type { Design, InsertDesign, InsertDesignV2 } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { storeDataUrl, storePreviewFiles } from './src/services/assetStore';
 
 export class DbStorage {
@@ -47,6 +47,7 @@ export class DbStorage {
       product: input.product || 'T-shirt',
       template: input.template || 'tshirt',
       templateColor: input.templateColor || '#ffffff',
+      owner_id: (input as any).owner_id || null,
       version: input.version,
     };
 
@@ -72,6 +73,7 @@ export class DbStorage {
         product: v.product || 'T-shirt',
         template: v.template || 'tshirt',
         templateColor: v.templateColor || '#ffffff',
+        owner_id: (v as any).owner_id || null,
       }).returning();
 
       const designId = (designRow as any).id;
@@ -126,7 +128,7 @@ export class DbStorage {
         console.log('storage-db.createDesign: inserted design_version id=', dvRow?.id, 'for design id=', designId);
       } catch (e) {
         // log full error and attempt a safe fallback insert using a sanitized payload
-        console.error('storage-db.createDesign: failed to insert design_versions row:', e && (e.stack || e.message) ? (e.stack || e.message) : e);
+        console.error('storage-db.createDesign: failed to insert design_versions row:', (e as any).stack || (e as any).message || e);
         try {
           // try to sanitize payload to plain JSON (remove unexpected values)
           const safePayload = JSON.parse(JSON.stringify(payload));
@@ -140,7 +142,7 @@ export class DbStorage {
           }).returning())[0];
           console.log('storage-db.createDesign: fallback insert succeeded, dv id=', dvRow?.id);
         } catch (e2) {
-          console.error('storage-db.createDesign: fallback insert also failed:', e2 && (e2.stack || e2.message) ? (e2.stack || e2.message) : e2);
+          console.error('storage-db.createDesign: fallback insert also failed:', (e as any).stack || (e as any).message || e);
           // Do not throw — we will continue and return designRow, but record the failure in logs so you can investigate
         }
       }
@@ -150,26 +152,23 @@ export class DbStorage {
         const frontPreview = payload?.metadata?.preview_front || null;
         const backPreview = payload?.metadata?.preview_back || null;
         if (frontPreview || backPreview) {
-          const info = await storePreviewFiles(designId, frontPreview, backPreview);
-          if (info?.images && Array.isArray(info.images)) {
-            for (const img of info.images) {
-              await db.insert(assetsTable).values({
-                filename: img.filename,
-                mime: img.mime,
-                size: img.size,
-                storage_key: img.storageKey,
-                metadata: { designId, preview: true },
-              }).returning();
-            }
+          const info = await storePreviewFiles(frontPreview, backPreview, designId, (v as any).owner_id);
+          
+          let modified = false;
+          if (info.front && payload?.metadata) {
+            payload.metadata.preview_front = info.front;
+            modified = true;
           }
-          if (info?.pdf) {
-            await db.insert(assetsTable).values({
-              filename: info.pdf.filename,
-              mime: info.pdf.mime,
-              size: info.pdf.size,
-              storage_key: info.pdf.storageKey,
-              metadata: { designId, preview: true, pdf: true },
-            }).returning();
+          if (info.back && payload?.metadata) {
+            payload.metadata.preview_back = info.back;
+            modified = true;
+          }
+          
+          if (modified && dvRow) {
+            // Update the design_versions row with the replaced preview URLs
+            await db.update(design_versions)
+              .set({ payload: payload })
+              .where(eq(design_versions.id, (dvRow as any).id));
           }
         }
       } catch (e) {
@@ -194,25 +193,79 @@ export class DbStorage {
     return row as Design;
   }
 
-  async getDesigns(limit?: number): Promise<Design[]> {
-    let q = db.select().from(designs).orderBy(designs.id);
-    if (typeof limit === 'number') q = q.limit(limit);
+  async getDesigns(limit?: number, userId?: number | null): Promise<Design[]> {
+    // Fail-safe: if no userId is provided, return nothing to prevent leaks
+    if (userId === undefined || userId === null) {
+      console.warn('storage-db.getDesigns: userId is missing/null, returning empty list for privacy');
+      return [];
+    }
+    let q = db.select().from(designs).where(eq(designs.owner_id, userId)).orderBy(designs.id);
+    if (typeof limit === 'number') q = q.limit(limit) as any;
     const rows = await q;
-    return rows as Design[];
+    const items = rows as Design[];
+
+    // Attach latest version to each
+    for (const item of items) {
+      try {
+        const vRows = await db.select().from(design_versions)
+          .where(eq(design_versions.design_id, item.id))
+          .orderBy(design_versions.id) as any[];
+        if (vRows.length > 0) {
+          const latest = vRows[vRows.length - 1];
+          let p = latest.payload;
+          if (typeof p === 'string') {
+            try { p = JSON.parse(p); } catch (e) { }
+          }
+          (item as any).version = p;
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    return items;
   }
 
-  async getDesign(id: number): Promise<Design | undefined> {
-    const rows = await db.select().from(designs).where(eq(designs.id, id));
-    return (rows as Design[])[0];
+  async getDesign(id: number, userId?: number | null): Promise<Design | undefined> {
+    // Fail-safe: if no userId is provided, return undefined
+    if (userId === undefined || userId === null) {
+      console.warn('storage-db.getDesign: userId is missing/null, returning undefined for privacy');
+      return undefined;
+    }
+    const condition = and(eq(designs.id, id), eq(designs.owner_id, userId));
+    const rows = await db.select().from(designs).where(condition);
+    const design = (rows as Design[])[0];
+    if (!design) return undefined;
+
+    // Fetch latest version
+    try {
+      const vRows = await db.select().from(design_versions)
+        .where(eq(design_versions.design_id, id))
+        .orderBy(design_versions.id) as any[];
+      if (vRows.length > 0) {
+        const latest = vRows[vRows.length - 1];
+        let p = latest.payload;
+        if (typeof p === 'string') {
+          try { p = JSON.parse(p); } catch (e) { }
+        }
+        (design as any).version = p;
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    return design;
   }
 
-  async updateDesign(id: number, changes: Partial<InsertDesign>): Promise<Design | undefined> {
-    const [row] = await db.update(designs).set(changes).where(eq(designs.id, id)).returning();
+  async updateDesign(id: number, changes: Partial<InsertDesign>, userId?: number | null): Promise<Design | undefined> {
+    if (userId === undefined || userId === null) return undefined;
+    const condition = and(eq(designs.id, id), eq(designs.owner_id, userId));
+    const [row] = await db.update(designs).set(changes).where(condition).returning();
     return row as Design | undefined;
   }
 
-  async deleteDesign(id: number): Promise<boolean> {
-    const res = await db.delete(designs).where(eq(designs.id, id));
+  async deleteDesign(id: number, userId?: number | null): Promise<boolean> {
+    if (userId === undefined || userId === null) return false;
+    const condition = and(eq(designs.id, id), eq(designs.owner_id, userId));
+    const res = await db.delete(designs).where(condition);
     return (res.rowCount || 0) > 0;
   }
 }

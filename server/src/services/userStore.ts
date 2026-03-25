@@ -11,8 +11,12 @@ export type UserRecord = {
   username?: string;
   name?: string;
   email?: string;
-  role: 'admin' | 'supplier';
+  role: 'print_provider' | 'designer' | 'portal_admin' | 'admin' | 'supplier';
   password: string; // hashed (password or password_hash)
+  status?: string;
+  subscription_tier?: string;
+  subscription_expiry?: string;
+  associated_provider_id?: number | null;
   createdAt?: string;
 };
 
@@ -80,7 +84,7 @@ function getPool(): Pool | null {
 export async function findByEmail(email: string) {
   const pool = getPool();
   if (pool) {
-    const res = await pool.query('SELECT id, name, email, role, password_hash, created_at FROM users WHERE email=$1', [email]);
+    const res = await pool.query('SELECT id, name, email, role, password_hash, status, subscription_tier, subscription_expiry, associated_provider_id, created_at FROM users WHERE email=$1', [email]);
     const row = res.rows[0];
     if (!row) return undefined;
     return {
@@ -89,6 +93,10 @@ export async function findByEmail(email: string) {
       email: row.email,
       role: row.role,
       password: row.password_hash,
+      status: row.status,
+      subscription_tier: row.subscription_tier,
+      subscription_expiry: row.subscription_expiry?.toISOString?.() || row.subscription_expiry,
+      associated_provider_id: row.associated_provider_id,
       createdAt: row.created_at?.toISOString?.() || row.created_at,
     } as UserRecord;
   }
@@ -100,7 +108,7 @@ export async function findByEmail(email: string) {
 export async function findById(id: number) {
   const pool = getPool();
   if (pool) {
-    const res = await pool.query('SELECT id, name, email, role, password_hash, created_at FROM users WHERE id=$1', [id]);
+    const res = await pool.query('SELECT id, name, email, role, password_hash, status, subscription_tier, subscription_expiry, associated_provider_id, created_at FROM users WHERE id=$1', [id]);
     const row = res.rows[0];
     if (!row) return undefined;
     return {
@@ -109,6 +117,10 @@ export async function findById(id: number) {
       email: row.email,
       role: row.role,
       password: row.password_hash,
+      status: row.status,
+      subscription_tier: row.subscription_tier,
+      subscription_expiry: row.subscription_expiry?.toISOString?.() || row.subscription_expiry,
+      associated_provider_id: row.associated_provider_id,
       createdAt: row.created_at?.toISOString?.() || row.created_at,
     } as UserRecord;
   }
@@ -117,16 +129,16 @@ export async function findById(id: number) {
   return users.find(u => u.id === id);
 }
 
-export async function createUser({ name, email, role, password }: { name?: string; email: string; role: 'admin' | 'supplier'; password: string; }) {
+export async function createUser({ name, email, role, password, associated_provider_id }: { name?: string; email: string; role: 'print_provider' | 'designer' | 'portal_admin'; password: string; associated_provider_id?: number | null; }) {
   const hashed = await bcrypt.hash(password, 10);
 
   const pool = getPool();
   if (pool) {
-    // Insert into DB
     try {
+      const initialStatus = role === 'print_provider' ? 'pending' : 'active';
       const res = await pool.query(
-        'INSERT INTO users (name, email, password_hash, role, created_at) VALUES ($1,$2,$3,$4,NOW()) RETURNING id, name, email, role, created_at',
-        [name || null, email, hashed, role]
+        'INSERT INTO users (name, email, password_hash, role, status, associated_provider_id, created_at) VALUES ($1,$2,$3,$4,$5,$6,NOW()) RETURNING id, name, email, role, status, subscription_tier, subscription_expiry, associated_provider_id, created_at',
+        [name || null, email, hashed, role, initialStatus, associated_provider_id || null]
       );
       const row = res.rows[0];
       return {
@@ -134,6 +146,10 @@ export async function createUser({ name, email, role, password }: { name?: strin
         name: row.name,
         email: row.email,
         role: row.role,
+        status: row.status,
+        subscription_tier: row.subscription_tier,
+        subscription_expiry: row.subscription_expiry?.toISOString?.() || row.subscription_expiry,
+        associated_provider_id: row.associated_provider_id,
         createdAt: row.created_at?.toISOString?.() || row.created_at,
       } as Omit<UserRecord, 'password'>;
     } catch (err: any) {
@@ -154,12 +170,95 @@ export async function createUser({ name, email, role, password }: { name?: strin
     email,
     role,
     password: hashed,
+    status: role === 'print_provider' ? 'pending' : 'active',
     createdAt: new Date().toISOString(),
   };
   users.push(user);
   await writeUsers(users);
   const { password: _pw, ...out } = user;
   return out as Omit<UserRecord, 'password'>;
+}
+
+export async function getDesignersByProvider(providerId: number): Promise<UserRecord[]> {
+  const pool = getPool();
+  if (pool) {
+    const res = await pool.query('SELECT id, name, email, role, status, subscription_tier, subscription_expiry, associated_provider_id, created_at FROM users WHERE associated_provider_id = $1 AND role = \'designer\' ORDER BY id', [providerId]);
+    return res.rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      role: row.role,
+      status: row.status,
+      subscription_tier: row.subscription_tier,
+      subscription_expiry: row.subscription_expiry?.toISOString?.() || row.subscription_expiry,
+      associated_provider_id: row.associated_provider_id,
+      createdAt: row.created_at?.toISOString?.() || row.created_at,
+    })) as UserRecord[];
+  }
+  const users = await readUsers();
+  return users.filter(u => u.associated_provider_id === providerId && u.role === 'designer');
+}
+
+export async function getAllUsers(): Promise<UserRecord[]> {
+  const pool = getPool();
+  if (pool) {
+    const res = await pool.query('SELECT id, name, email, role, status, subscription_tier, subscription_expiry, associated_provider_id, created_at FROM users ORDER BY id');
+    return res.rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      role: row.role,
+      status: row.status,
+      subscription_tier: row.subscription_tier,
+      subscription_expiry: row.subscription_expiry?.toISOString?.() || row.subscription_expiry,
+      associated_provider_id: row.associated_provider_id,
+      createdAt: row.created_at?.toISOString?.() || row.created_at,
+    })) as UserRecord[];
+  }
+  return readUsers();
+}
+
+export async function updateUser(id: number, data: Partial<Omit<UserRecord, 'id' | 'password'>>) {
+  const pool = getPool();
+  if (pool) {
+    const fields: string[] = [];
+    const values: any[] = [];
+    let i = 1;
+    if (data.status !== undefined) { fields.push(`status = $${i++}`); values.push(data.status); }
+    if (data.subscription_tier !== undefined) { fields.push(`subscription_tier = $${i++}`); values.push(data.subscription_tier); }
+    if (data.subscription_expiry !== undefined) { fields.push(`subscription_expiry = $${i++}`); values.push(data.subscription_expiry); }
+    if (data.associated_provider_id !== undefined) { fields.push(`associated_provider_id = $${i++}`); values.push(data.associated_provider_id); }
+    if (data.name !== undefined) { fields.push(`name = $${i++}`); values.push(data.name); }
+
+    if (fields.length > 0) {
+      values.push(id);
+      await pool.query(`UPDATE users SET ${fields.join(', ')}, updated_at = NOW() WHERE id = $${i}`, values);
+    }
+  }
+
+  // Always update JSON for consistency
+  const users = await readUsers();
+  const idx = users.findIndex(u => u.id === id);
+  if (idx !== -1) {
+    users[idx] = { ...users[idx], ...data };
+    await writeUsers(users);
+  }
+}
+
+export async function updatePassword(id: number, newPassword: string) {
+  const hashed = await bcrypt.hash(newPassword, 10);
+  const pool = getPool();
+  if (pool) {
+    await pool.query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [hashed, id]);
+  }
+
+  // Always update JSON for consistency
+  const users = await readUsers();
+  const idx = users.findIndex(u => u.id === id);
+  if (idx !== -1) {
+    users[idx].password = hashed;
+    await writeUsers(users);
+  }
 }
 
 export async function verifyPassword(user: UserRecord, password: string) {

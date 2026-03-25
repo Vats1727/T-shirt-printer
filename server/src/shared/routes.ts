@@ -35,7 +35,7 @@ export const api = {
     register: {
       method: 'POST' as const,
       path: '/api/auth/register',
-      input: z.object({ name: z.string().optional(), email: z.string().email(), password: z.string().min(6), role: z.enum(['admin','supplier']) }),
+      input: z.object({ name: z.string().optional(), email: z.string().email(), password: z.string().min(6), role: z.enum(['print_provider', 'designer', 'portal_admin']) }),
       responses: {
         201: z.object({ id: z.number(), name: z.string().optional(), email: z.string(), role: z.string(), createdAt: z.string().optional() }),
         400: errorSchemas.validation
@@ -65,7 +65,17 @@ export const api = {
       upsert: { method: 'POST' as const, path: '/api/admin/inventory', input: z.object({ color_id: z.number(), size_id: z.number(), quantity: z.number(), price: z.number() }), responses: { 200: z.object({ id: z.number(), color_id: z.number(), size_id: z.number(), quantity: z.number(), price: z.number() }) } }
     },
     orders: { method: 'GET' as const, path: '/api/admin/orders', responses: { 200: z.object({ orders: z.array(z.any()) }) } },
-    order: { method: 'GET' as const, path: '/api/admin/orders/:id', responses: { 200: z.object({ order: z.any() }), 404: errorSchemas.validation } }
+    order: { method: 'GET' as const, path: '/api/admin/orders/:id', responses: { 200: z.object({ order: z.any() }), 404: errorSchemas.validation } },
+    profile: {
+      get: { method: 'GET' as const, path: '/api/admin/profile', responses: { 200: z.any() } },
+      update: { method: 'PATCH' as const, path: '/api/admin/profile', input: z.object({ subscription_tier: z.string() }), responses: { 200: z.object({ ok: z.boolean() }), 400: errorSchemas.validation } }
+    }
+  },
+  portal: {
+    providers: {
+      list: { method: 'GET' as const, path: '/api/portal/providers', responses: { 200: z.array(z.any()) } },
+      update: { method: 'PATCH' as const, path: '/api/portal/providers/:id', input: z.object({ status: z.string().optional(), subscription_tier: z.string().optional() }), responses: { 200: z.object({ ok: z.boolean() }), 400: errorSchemas.validation } }
+    }
   },
   supplier: {
     catalog: { method: 'GET' as const, path: '/api/supplier/catalog', responses: { 200: z.object({ colors: z.array(z.object({ id: z.number(), name: z.string(), hex: z.string() })), sizes: z.array(z.object({ id: z.number(), label: z.string() })), inventory: z.array(z.object({ id: z.number(), color_id: z.number(), size_id: z.number(), quantity: z.number(), price: z.number() })) }) } },
