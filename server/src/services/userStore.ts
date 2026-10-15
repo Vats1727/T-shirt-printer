@@ -17,6 +17,7 @@ export type UserRecord = {
   subscription_tier?: string;
   subscription_expiry?: string;
   associated_provider_id?: number | null;
+  store_settings?: any;
   createdAt?: string;
 };
 
@@ -76,7 +77,10 @@ function getPool(): Pool | null {
   const conn = getConnectionStringFromEnv();
   if (!conn) return null;
   localPool = new Pool({ connectionString: conn });
-  console.log('userStore: created local pg Pool from env');
+  localPool.on('error', (err) => {
+    console.error('userStore localPool error (caught, server staying alive):', err);
+  });
+  console.log('userStore: created local pg Pool from env with error listener');
   return localPool;
 }
 
@@ -108,9 +112,13 @@ export async function findByEmail(email: string) {
 export async function findById(id: number) {
   const pool = getPool();
   if (pool) {
-    const res = await pool.query('SELECT id, name, email, role, password_hash, status, subscription_tier, subscription_expiry, associated_provider_id, created_at FROM users WHERE id=$1', [id]);
+    const res = await pool.query('SELECT id, name, email, role, password_hash, status, subscription_tier, subscription_expiry, associated_provider_id, store_settings, created_at FROM users WHERE id=$1', [id]);
     const row = res.rows[0];
     if (!row) return undefined;
+    let settings = row.store_settings;
+    if (typeof settings === 'string') {
+      try { settings = JSON.parse(settings); } catch (e) {}
+    }
     return {
       id: row.id,
       name: row.name,
@@ -121,12 +129,53 @@ export async function findById(id: number) {
       subscription_tier: row.subscription_tier,
       subscription_expiry: row.subscription_expiry?.toISOString?.() || row.subscription_expiry,
       associated_provider_id: row.associated_provider_id,
+      store_settings: settings || {},
       createdAt: row.created_at?.toISOString?.() || row.created_at,
     } as UserRecord;
   }
 
   const users = await readUsers();
   return users.find(u => u.id === id);
+}
+
+export async function getStoreSettings(userId: number) {
+  const pool = getPool();
+  if (pool) {
+    const res = await pool.query('SELECT store_settings, name, email FROM users WHERE id = $1', [userId]);
+    if (res.rows[0]) {
+      let settings = res.rows[0].store_settings;
+      if (typeof settings === 'string') {
+        try { settings = JSON.parse(settings); } catch (e) {}
+      }
+      return {
+        store_settings: settings || {},
+        name: res.rows[0].name || '',
+        email: res.rows[0].email || ''
+      };
+    }
+  }
+  const user = await findById(userId);
+  return {
+    store_settings: user?.store_settings || {},
+    name: user?.name || '',
+    email: user?.email || ''
+  };
+}
+
+export async function updateStoreSettings(userId: number, settings: any) {
+  const pool = getPool();
+  if (pool) {
+    await pool.query('UPDATE users SET store_settings = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(settings || {}), userId]);
+    return true;
+  }
+  const users = await readUsers();
+  const idx = users.findIndex(u => u.id === userId);
+  if (idx !== -1) {
+    users[idx].store_settings = settings || {};
+    await writeUsers(users);
+    return true;
+  }
+  return false;
 }
 
 export async function createUser({ name, email, role, password, associated_provider_id }: { name?: string; email: string; role: 'print_provider' | 'designer' | 'portal_admin'; password: string; associated_provider_id?: number | null; }) {
@@ -229,6 +278,7 @@ export async function updateUser(id: number, data: Partial<Omit<UserRecord, 'id'
     if (data.subscription_expiry !== undefined) { fields.push(`subscription_expiry = $${i++}`); values.push(data.subscription_expiry); }
     if (data.associated_provider_id !== undefined) { fields.push(`associated_provider_id = $${i++}`); values.push(data.associated_provider_id); }
     if (data.name !== undefined) { fields.push(`name = $${i++}`); values.push(data.name); }
+    if (data.store_settings !== undefined) { fields.push(`store_settings = $${i++}`); values.push(JSON.stringify(data.store_settings)); }
 
     if (fields.length > 0) {
       values.push(id);

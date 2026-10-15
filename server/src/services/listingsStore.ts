@@ -4,15 +4,16 @@ export async function createListing(supplierId: number | string, title: string, 
   if (!pool) throw new Error('Database not configured');
   const client = await pool.connect();
   try {
-    const q = `INSERT INTO listings (supplier_id, title, description, slug, design_key, visibility, published, created_at)
-      VALUES ($1,$2,$3,$4,$5,$6,false,now()) RETURNING id, slug`;
+    const isPublic = (visibility || 'public') === 'public';
+    const q = `INSERT INTO listings (supplier_id, title, description, slug, design_key, visibility, published, published_at, created_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,${isPublic ? 'now()' : 'null'},now()) RETURNING id, slug, published`;
 
     // Try to insert; if slug conflicts, retry with a short random suffix up to N attempts
     const MAX_RETRIES = 5;
     let attemptSlug: string | null = slug || null;
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
-        const res = await client.query(q, [supplierId, title, description, attemptSlug, design_key || null, visibility || 'public']);
+        const res = await client.query(q, [supplierId, title, description, attemptSlug, design_key || null, visibility || 'public', isPublic]);
         return res.rows[0];
       } catch (err: any) {
         // detect unique slug violation (Postgres error code 23505)
@@ -26,7 +27,7 @@ export async function createListing(supplierId: number | string, title: string, 
       }
     }
     // If we exhausted retries, perform one final insert (will throw if fails)
-    const res = await client.query(q, [supplierId, title, description, attemptSlug, design_key || null, visibility || 'public']);
+    const res = await client.query(q, [supplierId, title, description, attemptSlug, design_key || null, visibility || 'public', isPublic]);
     return res.rows[0];
   } finally {
     client.release();

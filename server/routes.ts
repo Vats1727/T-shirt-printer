@@ -76,7 +76,7 @@ export async function registerRoutes(
 
   // Public upload endpoint that accepts JSON { dataUrl, filename } and returns { id, url }
   app.post('/api/assets', safe(assetsCtrl.uploadAsset));
-  app.delete('/api/assets/:id', requireAuth, requireRole('designer'), safe(assetsCtrl.deleteAsset));
+  app.delete('/api/assets/:id', requireAuth, safe(assetsCtrl.deleteAsset));
 
   // Admin endpoints (protected)
   app.get('/api/admin/colors', requireAuth, requireRole('print_provider'), safe(adminCtrl.listColors));
@@ -140,79 +140,118 @@ export async function registerRoutes(
   app.delete('/api/supplier/listings/:id', requireAuth, requireRole('designer'), safe(supplierListingsCtrl.deleteListing));
   app.patch('/api/supplier/profile', requireAuth, requireRole('designer'), safe(supplierCtrl.updateProfile));
 
-  // Public Design Group / Code endpoints
-  app.get('/api/:groupId', safe(supplierCtrl.getDesignsByGroup));
-  app.get('/api/:groupId/:designCode', safe(supplierCtrl.getDesignByGroupAndCode));
-
-  // Unauthenticated quick check for the supplier saved-designs path to validate routing/proxy
-  app.get('/api/supplier/saved-designs/_test', requireAuth, safe(async (_req, res) => {
-    return res.json({ ok: true, path: '/api/supplier/saved-designs/_test' });
+  // Store Customizer Settings for Designer
+  app.get('/api/supplier/store-settings', requireAuth, requireRole('designer'), safe(async (req, res) => {
+    const userStore = await import('./src/services/userStore');
+    const userId = Number((req as any).user.sub || (req as any).user.id);
+    const data = await userStore.getStoreSettings(userId);
+    return res.json(data);
   }));
-  // Development public listing removed for privacy
 
-  // Public listing page (simple renderer)
-  app.get('/listing/:slug', safe((await import('./src/controllers/supplierListingsController')).getPublicListing));
-  // NOTE: client SPA now renders the store; server no longer exposes HTML /store/:supplierId to avoid conflicts
+  app.patch('/api/supplier/store-settings', requireAuth, requireRole('designer'), safe(async (req, res) => {
+    const userStore = await import('./src/services/userStore');
+    const userId = Number((req as any).user.sub || (req as any).user.id);
+    const { store_settings } = req.body;
+    await userStore.updateStoreSettings(userId, store_settings || {});
+    return res.json({ ok: true, store_settings: store_settings || {} });
+  }));
 
-  // Debug JSON endpoint to fetch listings for a supplier (useful to verify server and DB)
+  // JSON endpoint to fetch listings for a supplier storefront
   app.get('/api/store/:supplierId', safe(async (req, res) => {
-    const listings = await (await import('./src/services/listingsStore')).listListingsBySupplier(req.params.supplierId);
-    // enhance listings with preview_url where possible
+    const supplierId = req.params.supplierId;
+    const listings = await (await import('./src/services/listingsStore')).listListingsBySupplier(supplierId);
     const enhanced: any[] = [];
     const fs = await import('fs/promises');
     const path = await import('path');
-    const clientPath = path.join(process.cwd(), 'client', 'attached_assets');
-    const clientBase = process.env.CLIENT_BASE_URL ? String(process.env.CLIENT_BASE_URL).replace(/\/$/, '') : `http://localhost:5173`;
+    const uploadsDir = path.resolve(process.cwd(), 'server', 'uploads');
+    const altUploadsDir = path.resolve(process.cwd(), 'uploads');
     const { pool } = await import('./db');
+    const userStore = await import('./src/services/userStore');
+
+    let designerInfo: any = null;
+    try {
+      const dId = Number(supplierId);
+      if (dId) {
+        const d = await userStore.findById(dId);
+        if (d) {
+          designerInfo = {
+            id: d.id,
+            name: d.name,
+            email: d.email,
+            store_settings: d.store_settings || {}
+          };
+        }
+      }
+    } catch (e) {}
+
     for (const l of (listings || [])) {
       let preview_url: string | null = null;
       let preview_asset_id: number | null = null;
       let preview_group: any = null;
       const designKey = String(l.design_key || '');
-      if (designKey) {
-        try {
-          const files = await fs.readdir(clientPath);
-          const found = files.find((f: string) => f.toLowerCase().startsWith(designKey.toLowerCase()));
-          if (found) preview_url = `/attached_assets/${found}`;
-        } catch (e) {
-          // ignore
-        }
-      }
 
-      // Build preview group from matching assets when available
-      if (designKey) {
+      let numericId: number | null = null;
+      const mId = designKey.match(/design-(\d+)/i);
+      if (mId) numericId = Number(mId[1]);
+
+      if (designKey && pool) {
         try {
-          const db = await import('./db');
-          if (db.pool) {
-            const clientDb = await db.pool.connect();
-            try {
-              const likePattern = `%${designKey}%`;
-              const r = await clientDb.query('SELECT id, filename, mime, metadata FROM assets WHERE filename ILIKE $1 OR filename ILIKE $2 ORDER BY id', [likePattern, `${designKey}%`]);
-              if (r && r.rows && r.rows.length) {
-                const groupsMap: Record<string, any> = {};
-                for (const a of r.rows) {
-                  const fn = a.filename || '';
-                  const m = String(fn || '').match(/^design-(\d+)-(front|back)\.(png|jpg|jpeg)$/i);
-                  const key = m ? `design-${m[1]}` : `asset-${a.id}`;
-                  const side = m ? (m[2] === 'back' ? 'back' : 'front') : null;
-                  if (!groupsMap[key]) groupsMap[key] = { key, front: null, back: null, any: null };
-                  let url = `${clientBase}/api/assets/${a.id}`;
-                  try { if (fn) { await fs.access(path.join(clientPath, fn)); url = `${clientBase}/attached_assets/${fn}`; } } catch (e) { /* ignore */ }
-                  let meta: any = a.metadata || null;
-                  try { if (meta && typeof meta === 'string') meta = JSON.parse(meta); } catch (e) { /* ignore */ }
-                  const entry = { id: a.id, filename: fn, url, mime: a.mime, metadata: meta };
-                  if (side === 'front') groupsMap[key].front = entry;
-                  else if (side === 'back') groupsMap[key].back = entry;
-                  else groupsMap[key].any = entry;
+          const clientDb = await pool.connect();
+          try {
+            const likePattern = `%${designKey}%`;
+            const r = await clientDb.query(
+              `SELECT id, filename, mime, metadata FROM assets 
+               WHERE filename ILIKE $1 
+                  OR filename ILIKE $2 
+                  OR ($3::int IS NOT NULL AND (metadata->>'designId')::int = $3)
+               ORDER BY id`,
+              [likePattern, `${designKey}%`, numericId]
+            );
+
+            if (r && r.rows && r.rows.length) {
+              const groupsMap: Record<string, any> = {};
+              for (const a of r.rows) {
+                const fn = a.filename || '';
+                let meta: any = a.metadata || null;
+                try { if (meta && typeof meta === 'string') meta = JSON.parse(meta); } catch (e) {}
+
+                // Verify file physically exists on disk
+                const candidates = [
+                  fn ? path.resolve(uploadsDir, fn) : null,
+                  fn ? path.resolve(altUploadsDir, fn) : null,
+                ].filter(Boolean) as string[];
+
+                let exists = false;
+                for (const c of candidates) {
+                  try {
+                    const st = await fs.stat(c);
+                    if (st.isFile() && st.size > 200) { exists = true; break; }
+                  } catch (e) {}
                 }
-                const keys = Object.keys(groupsMap);
-                if (keys.length) preview_group = groupsMap[keys[0]];
-                const firstRow = r.rows[0];
-                if (firstRow) preview_asset_id = firstRow.id;
-                if (!preview_url && preview_group) preview_url = (preview_group.front?.url || preview_group.any?.url || preview_group.back?.url) || null;
+                if (!exists) continue;
+
+                const sideFromMeta = meta && (meta.side || meta.side_name);
+                const m = String(fn || '').match(/^design-(\d+)-(front|back)\.(png|jpg|jpeg)$/i);
+                const side = sideFromMeta === 'back' ? 'back' : (sideFromMeta === 'front' ? 'front' : (m ? (m[2] === 'back' ? 'back' : 'front') : null));
+                const key = designKey || `asset-${a.id}`;
+
+                if (!groupsMap[key]) groupsMap[key] = { key, front: null, back: null, any: null };
+                const entry = { id: a.id, filename: fn, url: `/api/assets/${a.id}`, mime: a.mime, metadata: meta };
+
+                if (side === 'front') groupsMap[key].front = entry;
+                else if (side === 'back') groupsMap[key].back = entry;
+                else groupsMap[key].any = entry;
               }
-            } finally { clientDb.release(); }
-          }
+
+              const keys = Object.keys(groupsMap);
+              if (keys.length) {
+                preview_group = groupsMap[keys[0]];
+                preview_url = (preview_group.front?.url || preview_group.any?.url || preview_group.back?.url) || null;
+                const assetObj = preview_group.front || preview_group.any || preview_group.back;
+                if (assetObj) preview_asset_id = assetObj.id;
+              }
+            }
+          } finally { clientDb.release(); }
         } catch (e) {
           // ignore
         }
@@ -220,7 +259,13 @@ export async function registerRoutes(
 
       enhanced.push({ ...l, preview_url, preview_asset_id, preview_group });
     }
-    return res.json({ supplierId: req.params.supplierId, count: enhanced.length, listings: enhanced });
+    return res.json({
+      supplierId,
+      count: enhanced.length,
+      listings: enhanced,
+      designer: designerInfo,
+      store_settings: designerInfo?.store_settings || {}
+    });
   }));
 
   // JSON endpoint to fetch a single listing by slug (used by client storefront)
@@ -233,6 +278,18 @@ export async function registerRoutes(
     const ctrl = await import('./src/controllers/supplierListingsController');
     return ctrl.getListingByIdJson(req, res);
   }));
+
+  // Public Design Group / Code endpoints (registered after specific /api/... routes to avoid intercepting them)
+  app.get('/api/:groupId', safe(supplierCtrl.getDesignsByGroup));
+  app.get('/api/:groupId/:designCode', safe(supplierCtrl.getDesignByGroupAndCode));
+
+  // Unauthenticated quick check for the supplier saved-designs path to validate routing/proxy
+  app.get('/api/supplier/saved-designs/_test', requireAuth, safe(async (_req, res) => {
+    return res.json({ ok: true, path: '/api/supplier/saved-designs/_test' });
+  }));
+
+  // Public listing page (simple renderer)
+  app.get('/listing/:slug', safe((await import('./src/controllers/supplierListingsController')).getPublicListing));
 
   // Portal Admin endpoints (moved to top)
 

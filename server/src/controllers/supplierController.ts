@@ -197,23 +197,40 @@ export async function listSavedDesigns(req: Request, res: Response) {
       // If asset isn't preview-marked and doesn't seem related to a design, skip it
       if (!previewFlag && !key) continue;
 
+      // Verify file exists on disk and is non-empty before including
+      const uploadsDir = path.resolve(process.cwd(), 'server', 'uploads');
+      const altUploadsDir = path.resolve(process.cwd(), 'uploads');
+      const fileCandidates = [
+        p.filename ? path.resolve(uploadsDir, p.filename) : null,
+        p.filename ? path.resolve(altUploadsDir, p.filename) : null,
+        p.storage_key ? path.resolve(uploadsDir, path.basename(p.storage_key)) : null,
+        p.storage_key ? path.resolve(process.cwd(), p.storage_key) : null,
+        p.storage_key ? path.resolve(process.cwd(), 'server', p.storage_key) : null,
+      ].filter(Boolean) as string[];
+
+      let fileFound = false;
+      for (const fc of fileCandidates) {
+        try {
+          const st = await fs.stat(fc);
+          if (st.isFile() && st.size > 200) {
+            fileFound = true;
+            break;
+          }
+        } catch (e) {}
+      }
+      if (!fileFound) continue;
+
       if (!groupsMap[key || `asset-${p.id}`]) groupsMap[key || `asset-${p.id}`] = { key: key || `asset-${p.id}`, front: null, back: null, any: null };
       const entry = { id: p.id, filename: p.filename, url: `/api/assets/${p.id}`, mime: p.mime, size: p.size, storage_key: p.storage_key, metadata: meta };
-      // Prefer client attached copy for URL if present
-      try {
-        if (p.filename) {
-          const clientPath = path.join(process.cwd(), 'client', 'attached_assets', p.filename);
-          await fs.access(clientPath);
-          entry.url = `/attached_assets/${p.filename}`;
-        }
-      } catch (e) { /* ignore */ }
 
       if (side === 'front') groupsMap[key || `asset-${p.id}`].front = entry;
       else if (side === 'back') groupsMap[key || `asset-${p.id}`].back = entry;
       else groupsMap[key || `asset-${p.id}`].any = entry;
     }
 
-    const groups = Object.keys(groupsMap).map(k => ({ key: k, ...groupsMap[k] }));
+    const groups = Object.keys(groupsMap)
+      .map(k => ({ key: k, ...groupsMap[k] }))
+      .filter(g => g.front || g.back || g.any);
     return res.json({ designs: groups });
   } catch (e: any) {
     console.error('listSavedDesigns error', e?.message || e);

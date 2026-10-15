@@ -13,7 +13,8 @@
     "username": "supplier1",
     "role": "designer",
     "createdAt": "2026-01-14T15:35:09.327Z",
-    "password": "$2a$10$D7d78hPiSxN457DshI4KN.4Mw331aB6jyEIjUH.kUzQd/LEDG5Ko."
+    "password": "$2a$10$D7d78hPiSxN457DshI4KN.4Mw331aB6jyEIjUH.kUzQd/LEDG5Ko.",
+    "associated_provider_id": 7
   },
   {
     "id": 3,

@@ -77,6 +77,18 @@ export default function AdminDashboard() {
     }
   }
 
+  const [selectedCategory, setSelectedCategory] = useState<'all' | 'men' | 'women'>('all');
+  const [cardSides, setCardSides] = useState<Record<number, 'front' | 'back'>>({});
+
+  const filteredProducts = products.filter(p => {
+    if (selectedCategory === 'all') return true;
+    const cat = p.category || (p.slug?.includes('women') ? 'women' : 'men');
+    return cat === selectedCategory;
+  });
+
+  const menCount = products.filter(p => (p.category || (p.slug?.includes('women') ? 'women' : 'men')) === 'men').length;
+  const womenCount = products.filter(p => (p.category || (p.slug?.includes('women') ? 'women' : 'men')) === 'women').length;
+
   return (
     <div className="max-w-7xl mx-auto p-8 space-y-8 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-6">
@@ -140,47 +152,121 @@ export default function AdminDashboard() {
           <p className="text-sm text-muted-foreground mt-1">Create and manage products, sizes, colors and inventory from a single place.</p>
         </div>
         <div className="flex gap-2">
-          <button disabled={blocked} onClick={() => setLocation('/admin/clothes')} className={`inline-flex items-center gap-2 px-4 py-2 ${blocked ? 'bg-gray-200 text-gray-500' : 'bg-blue-600 text-white'} rounded`}>Create Product</button>
-          <button disabled={blocked} onClick={() => setLocation('/admin/designers')} className={`inline-flex items-center gap-2 px-4 py-2 ${blocked ? 'bg-gray-200 text-gray-500' : 'bg-indigo-600 text-white'} rounded`}><Users className="w-4 h-4" /> Designers</button>
-          <button disabled={blocked} onClick={() => setLocation('/admin/orders')} className={`inline-flex items-center gap-2 px-4 py-2 ${blocked ? 'bg-gray-200 text-gray-500' : 'bg-slate-100 text-slate-900'} rounded`}>View Orders</button>
+          <button disabled={blocked} onClick={() => setLocation('/admin/clothes')} className={`inline-flex items-center gap-2 px-4 py-2 ${blocked ? 'bg-gray-200 text-gray-500' : 'bg-blue-600 text-white'} rounded shadow hover:bg-blue-700 transition`}>Create Product</button>
+          <button disabled={blocked} onClick={() => setLocation('/admin/designers')} className={`inline-flex items-center gap-2 px-4 py-2 ${blocked ? 'bg-gray-200 text-gray-500' : 'bg-indigo-600 text-white'} rounded shadow hover:bg-indigo-700 transition`}><Users className="w-4 h-4" /> Designers</button>
+          <button disabled={blocked} onClick={() => setLocation('/admin/orders')} className={`inline-flex items-center gap-2 px-4 py-2 ${blocked ? 'bg-gray-200 text-gray-500' : 'bg-slate-100 text-slate-900'} rounded hover:bg-slate-200 transition`}>View Orders</button>
         </div>
       </div>
 
-      <div className="mb-6">
-        <h2 className="text-xl font-semibold mb-3">Products</h2>
+      <div className="mb-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <h2 className="text-xl font-semibold">Garment Blanks & Products</h2>
+          {/* Category Filter Tabs */}
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 text-sm">
+            <button
+              onClick={() => setSelectedCategory('all')}
+              className={`px-3 py-1.5 rounded-md font-medium transition-all ${selectedCategory === 'all' ? 'bg-white text-indigo-700 shadow-sm font-semibold' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              All Blanks ({products.length})
+            </button>
+            <button
+              onClick={() => setSelectedCategory('men')}
+              className={`px-3 py-1.5 rounded-md font-medium transition-all flex items-center gap-1.5 ${selectedCategory === 'men' ? 'bg-white text-blue-700 shadow-sm font-semibold' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              <span>👨</span> Men's Farmo ({menCount})
+            </button>
+            <button
+              onClick={() => setSelectedCategory('women')}
+              className={`px-3 py-1.5 rounded-md font-medium transition-all flex items-center gap-1.5 ${selectedCategory === 'women' ? 'bg-white text-pink-700 shadow-sm font-semibold' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              <span>👩</span> Women's Farmo ({womenCount})
+            </button>
+          </div>
+        </div>
+
         {loading && <div className="text-sm text-muted-foreground">Loading products…</div>}
         {error && <div className="text-sm text-red-600">{error}</div>}
         {message && <div className="text-sm text-green-600">{message}</div>}
-        {!loading && products.length === 0 && <div className="text-sm text-muted-foreground">No products yet. Create one via Create Product.</div>}
+        {!loading && filteredProducts.length === 0 && <div className="text-sm text-muted-foreground py-8 text-center bg-gray-50 rounded-lg border border-dashed">No products found in this category.</div>}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
-          {products.map(p => {
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mt-4">
+          {filteredProducts.map(p => {
             const formatPrice = (v: any) => {
               const n = Number(v);
               return isNaN(n) ? '0.00' : n.toFixed(2);
             };
+
+            const currentSide = cardSides[p.id] || 'front';
+            const cat = p.category || (p.slug?.includes('women') ? 'women' : 'men');
+            const frontImg = p.designs?.front?.image;
+            const backImg = p.designs?.back?.image;
+            const activeImg = currentSide === 'back' && backImg ? backImg : frontImg;
+
             return (
-              <div key={p.id} className="p-4 rounded-lg border bg-white">
-                <div className="h-40 flex items-center justify-center bg-gray-50 rounded mb-3 overflow-hidden">
-                  {p.designs?.front?.image ? (
-                    <img src={p.designs.front.image} alt={p.name} className="max-h-full" />
-                  ) : (
-                    <div className="text-sm text-muted-foreground">No preview</div>
-                  )}
+              <div key={p.id} className="p-4 rounded-xl border bg-white shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+                <div>
+                  <div className="relative h-48 flex items-center justify-center bg-slate-50/70 rounded-lg mb-3 overflow-hidden p-2 group">
+                    {/* Category pill */}
+                    <div className="absolute top-2.5 left-2.5 z-10">
+                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${cat === 'women' ? 'bg-pink-100 text-pink-700 border border-pink-200' : 'bg-blue-100 text-blue-700 border border-blue-200'}`}>
+                        {cat === 'women' ? "Women" : "Men"}
+                      </span>
+                    </div>
+
+                    {/* Front / Back Side Switcher */}
+                    {frontImg && backImg && (
+                      <div className="absolute top-2.5 right-2.5 z-10 flex bg-white/90 backdrop-blur rounded-full p-0.5 shadow-sm border border-slate-200 text-[11px] font-medium">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setCardSides(prev => ({ ...prev, [p.id]: 'front' })); }}
+                          className={`px-2 py-0.5 rounded-full transition-all ${currentSide === 'front' ? 'bg-indigo-600 text-white shadow-xs font-semibold' : 'text-slate-600 hover:text-slate-900'}`}
+                        >
+                          Front
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setCardSides(prev => ({ ...prev, [p.id]: 'back' })); }}
+                          className={`px-2 py-0.5 rounded-full transition-all ${currentSide === 'back' ? 'bg-indigo-600 text-white shadow-xs font-semibold' : 'text-slate-600 hover:text-slate-900'}`}
+                        >
+                          Back
+                        </button>
+                      </div>
+                    )}
+
+                    {activeImg ? (
+                      <img src={activeImg} alt={p.name} className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover:scale-105" />
+                    ) : (
+                      <div className="text-sm text-muted-foreground">No preview</div>
+                    )}
+                  </div>
+
+                  <div className="mb-2">
+                    <div className="font-semibold text-slate-900 text-base flex items-center justify-between">
+                      <span>{p.name}</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground font-mono">{p.slug}</div>
+                  </div>
+
+                  <div className="text-sm mb-4 space-y-1 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Single unit:</span>
+                      <strong>${formatPrice(p.single_price)}</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Bulk min qty:</span>
+                      <strong>{p.bulk_min || 0} pcs</strong>
+                    </div>
+                    <div className="flex justify-between text-indigo-700">
+                      <span>Bulk price:</span>
+                      <strong>${formatPrice(p.bulk_price)}</strong>
+                    </div>
+                  </div>
                 </div>
-                <div className="mb-2">
-                  <div className="font-semibold">{p.name}</div>
-                  <div className="text-sm text-muted-foreground">{p.slug}</div>
-                </div>
-                <div className="text-sm mb-3">
-                  <div className="mb-1">Single unit: <strong>${formatPrice(p.single_price)}</strong></div>
-                  <div className="mb-1">Bulk minimum qty: <strong>{p.bulk_min || 0}</strong></div>
-                  <div>Bulk price: <strong>${formatPrice(p.bulk_price)}</strong></div>
-                </div>
-                <div className="flex gap-2">
-                  <button disabled={blocked} onClick={() => setLocation('/admin/clothes?productId=' + p.id)} className={`px-3 py-1 ${blocked ? 'bg-gray-200 text-gray-500' : 'bg-blue-600 text-white'} rounded text-sm`}>Edit</button>
-                  <button disabled={blocked} onClick={() => { navigator.clipboard?.writeText(window.location.origin + '/product/' + p.slug); }} className={`px-3 py-1 ${blocked ? 'bg-gray-100 text-gray-400' : 'bg-gray-100'} rounded text-sm`}>Copy URL</button>
-                  <button disabled={blocked} onClick={() => deleteProduct(p.id)} className={`px-3 py-1 ${blocked ? 'bg-gray-200 text-gray-500' : 'bg-red-600 text-white'} rounded text-sm`}>Delete</button>
+
+                <div className="flex gap-2 pt-2 border-t border-slate-100">
+                  <button disabled={blocked} onClick={() => setLocation('/admin/clothes?productId=' + p.id)} className={`flex-1 py-1.5 ${blocked ? 'bg-gray-200 text-gray-500' : 'bg-indigo-600 hover:bg-indigo-700 text-white'} rounded-md text-sm font-medium transition`}>Edit</button>
+                  <button disabled={blocked} onClick={() => { navigator.clipboard?.writeText(window.location.origin + '/product/' + p.slug); }} className={`px-3 py-1.5 ${blocked ? 'bg-gray-100 text-gray-400' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'} rounded-md text-sm font-medium transition`}>Copy URL</button>
+                  <button disabled={blocked} onClick={() => deleteProduct(p.id)} className={`px-3 py-1.5 ${blocked ? 'bg-gray-200 text-gray-500' : 'bg-red-50 hover:bg-red-100 text-red-600'} rounded-md text-sm font-medium transition`}>Delete</button>
                 </div>
               </div>
             );

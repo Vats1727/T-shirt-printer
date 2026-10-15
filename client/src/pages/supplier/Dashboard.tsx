@@ -5,7 +5,7 @@ import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Plus, LayoutTemplate, Store, Copy, ExternalLink, Package, Check, ChevronRight } from 'lucide-react';
+import { Plus, LayoutTemplate, Store, Copy, ExternalLink, Package, Check, ChevronRight, Paintbrush } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
 export default function SupplierDashboard() {
@@ -136,6 +136,10 @@ export default function SupplierDashboard() {
           <Button variant="outline" onClick={() => setLocation(`/supplier/saved-designs/${user?.id || (user as any)?.sub || ''}`)} className="gap-2 border-primary/20 hover:bg-primary/5 text-primary">
             <LayoutTemplate className="size-4" />
             Saved Designs
+          </Button>
+          <Button variant="outline" onClick={() => setLocation('/supplier/customize-store')} className="gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-semibold shadow-xs">
+            <Paintbrush className="size-4" />
+            Customize Store
           </Button>
           <Button onClick={openStore} className="gap-2 bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-200">
             <Store className="size-4" />

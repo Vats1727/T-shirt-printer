@@ -10,7 +10,10 @@ import {
     ChevronRight,
     ShieldCheck,
     HelpCircle,
-    Package
+    Package,
+    Paintbrush,
+    Store,
+    LayoutTemplate
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -42,6 +45,20 @@ export function AppSidebar() {
             active: location.includes('dashboard')
         },
         {
+            title: 'Customize Store',
+            icon: Paintbrush,
+            url: '/supplier/customize-store',
+            active: location.includes('customize-store') || location.includes('store-settings'),
+            hidden: !isDesigner
+        },
+        {
+            title: 'Saved Designs',
+            icon: LayoutTemplate,
+            url: `/supplier/saved-designs/${user?.id || (user as any)?.sub || ''}`,
+            active: location.includes('saved-designs'),
+            hidden: !isDesigner
+        },
+        {
             title: isAdmin ? 'Orders' : 'My Orders',
             icon: ShoppingBag,
             url: isAdmin ? '/admin/orders' : '/supplier/orders',
@@ -51,7 +68,7 @@ export function AppSidebar() {
         {
             title: 'Products',
             icon: Package,
-            url: isAdmin ? '/admin/dashboard' : '/supplier/dashboard', // Adjust as needed
+            url: isAdmin ? '/admin/dashboard' : '/supplier/dashboard',
             active: location.includes('products') || (isAdmin && location === '/admin/dashboard'),
             hidden: isPortalAdmin
         },

@@ -25,9 +25,43 @@ export default function AdminClothes() {
   // Product & local design state for the linear flow
   const [productName, setProductName] = useState('');
   const [productSaved, setProductSaved] = useState(false);
+  const [category, setCategory] = useState<'men' | 'women'>('men');
 
   // Sections enabled when product is saved OR a product name is present (allows continuing without saving immediately)
   const sectionsEnabled = productSaved || productName.trim() !== '';
+
+  const FARMO_PRESETS = [
+    { category: 'men', label: "Classic Crewneck", name: "Men's Classic Crewneck T-Shirt", template: 'tshirt' as const, frontImage: "/uploads/farmo_men_crewneck_front.png", backImage: "/uploads/farmo_men_crewneck_back.png", singlePrice: 15, bulkMin: 50, bulkPrice: 9.5 },
+    { category: 'men', label: "Oversized Boxy Tee", name: "Men's Oversized Boxy T-Shirt", template: 'tshirt' as const, frontImage: "/uploads/farmo_men_oversized_front.png", backImage: "/uploads/farmo_men_oversized_back.png", singlePrice: 18, bulkMin: 50, bulkPrice: 11.5 },
+    { category: 'men', label: "Piqué Polo Shirt", name: "Men's Classic Piqué Polo", template: 'tshirt' as const, frontImage: "/uploads/farmo_men_polo_front.png", backImage: "/uploads/farmo_men_polo_back.png", singlePrice: 22, bulkMin: 50, bulkPrice: 14 },
+    { category: 'men', label: "Pullover Hoodie", name: "Men's Pullover Fleece Hoodie", template: 'hoodie' as const, frontImage: "/uploads/farmo_men_hoodie_front.png", backImage: "/uploads/farmo_men_hoodie_back.png", singlePrice: 32, bulkMin: 50, bulkPrice: 22 },
+    { category: 'men', label: "Crewneck Sweatshirt", name: "Men's Crewneck Fleece Sweatshirt", template: 'tshirt' as const, frontImage: "/uploads/farmo_men_sweatshirt_front.png", backImage: "/uploads/farmo_men_sweatshirt_back.png", singlePrice: 28, bulkMin: 50, bulkPrice: 18.5 },
+    { category: 'men', label: "Athletic Tank Top", name: "Men's Athletic Tank Top", template: 'tshirt' as const, frontImage: "/uploads/farmo_men_tank_front.png", backImage: "/uploads/farmo_men_tank_back.png", singlePrice: 14, bulkMin: 50, bulkPrice: 8.5 },
+    { category: 'women', label: "Fitted Crewneck", name: "Women's Fitted Crewneck T-Shirt", template: 'women_tshirt' as const, frontImage: "/uploads/farmo_women_fitted_front.png", backImage: "/uploads/farmo_women_fitted_back.png", singlePrice: 15, bulkMin: 50, bulkPrice: 9.5 },
+    { category: 'women', label: "Boxy Crop Top", name: "Women's Boxy Crop Top T-Shirt", template: 'women_tshirt' as const, frontImage: "/uploads/farmo_women_crop_front.png", backImage: "/uploads/farmo_women_crop_back.png", singlePrice: 16, bulkMin: 50, bulkPrice: 10 },
+    { category: 'women', label: "Boyfriend Oversized", name: "Women's Oversized Boyfriend T-Shirt", template: 'women_tshirt' as const, frontImage: "/uploads/farmo_women_boyfriend_front.png", backImage: "/uploads/farmo_women_boyfriend_back.png", singlePrice: 18, bulkMin: 50, bulkPrice: 11.5 },
+    { category: 'women', label: "Cropped Hoodie", name: "Women's Cropped Pullover Hoodie", template: 'hoodie' as const, frontImage: "/uploads/farmo_women_crophoodie_front.png", backImage: "/uploads/farmo_women_crophoodie_back.png", singlePrice: 30, bulkMin: 50, bulkPrice: 20 },
+    { category: 'women', label: "Relaxed Hoodie", name: "Women's Relaxed Pullover Hoodie", template: 'hoodie' as const, frontImage: "/uploads/farmo_women_hoodie_front.png", backImage: "/uploads/farmo_women_hoodie_back.png", singlePrice: 32, bulkMin: 50, bulkPrice: 22 },
+    { category: 'women', label: "Racerback Tank", name: "Women's Racerback Tank Top", template: 'women_tshirt' as const, frontImage: "/uploads/farmo_women_tank_front.png", backImage: "/uploads/farmo_women_tank_back.png", singlePrice: 14, bulkMin: 50, bulkPrice: 8.5 },
+  ];
+
+  function applyPreset(preset: typeof FARMO_PRESETS[0]) {
+    setProductName(preset.name);
+    setCategory(preset.category);
+    setProduct(preset.template);
+    setSinglePrice(preset.singlePrice);
+    setBulkMin(preset.bulkMin);
+    setBulkPrice(preset.bulkPrice);
+    setDesigns({
+      front: { image: preset.frontImage, imageScale: 85, imageRotation: 0, imagePosition: { x: 200, y: 200 }, slogan: '', color: '#000000', template: preset.template },
+      back: { image: preset.backImage, imageScale: 85, imageRotation: 0, imagePosition: { x: 200, y: 200 }, slogan: '', color: '#000000', template: preset.template }
+    });
+    setFrontFilename(preset.frontImage);
+    setBackFilename(preset.backImage);
+    setSelectedSizes(sizes.map((s: any) => s.id));
+    setSelectedColors([1, 2, 3, 4, 9]);
+    toast({ title: "Farmo Preset Loaded", description: `Loaded blank template: ${preset.name}` });
+  }
 
   const [designSide, setDesignSide] = useState<'front'|'back'>('front');
   const [activeTab, setActiveTab] = useState<'product'|'design'|'sizes'|'pricing'>('product');
@@ -92,6 +126,7 @@ export default function AdminClothes() {
 
       // populate form fields
       setProductName(p.name || '');
+      if (p.category) setCategory(p.category);
       setSinglePrice(p.single_price ?? 0);
       setBulkMin(p.bulk_min ?? 100);
       setBulkPrice(p.bulk_price ?? 0);
@@ -254,6 +289,7 @@ export default function AdminClothes() {
 
     const payload = {
       name: productName,
+      category: category,
       single_price: singlePrice === '' ? 0 : Number(singlePrice),
       bulk_min: bulkMin,
       bulk_price: bulkPrice === '' ? 0 : Number(bulkPrice),
@@ -338,18 +374,63 @@ export default function AdminClothes() {
 
                 {/* Product tab */}
                 <div hidden={activeTab !== 'product'}>
-                  <div className="mb-2">
-                    <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                  <div className="mb-2 space-y-6">
+                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                       <Package className="h-5 w-5 text-indigo-600" />
-                      Basic Information
+                      Basic Information & Farmo Presets
                     </h3>
+
+                    {/* Category Selector */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-slate-700">Category</label>
+                      <div className="flex gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setCategory('men')}
+                          className={`flex-1 py-2.5 px-4 rounded-lg border font-medium text-sm flex items-center justify-center gap-2 transition-all ${category === 'men' ? 'bg-blue-50 border-blue-600 text-blue-700 shadow-xs font-semibold' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
+                        >
+                          <span className="text-lg">👨</span> Men's Apparel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCategory('women')}
+                          className={`flex-1 py-2.5 px-4 rounded-lg border font-medium text-sm flex items-center justify-center gap-2 transition-all ${category === 'women' ? 'bg-pink-50 border-pink-600 text-pink-700 shadow-xs font-semibold' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
+                        >
+                          <span className="text-lg">👩</span> Women's Apparel
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Quick Farmo Presets */}
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                          Load {category === 'men' ? "Men's" : "Women's"} Farmo Silhouette Blank
+                        </span>
+                        <span className="text-xs text-muted-foreground">Click to auto-fill</span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {FARMO_PRESETS.filter(p => p.category === category).map(preset => (
+                          <button
+                            key={preset.name}
+                            type="button"
+                            onClick={() => applyPreset(preset)}
+                            className="text-left p-2.5 rounded-lg border bg-white hover:border-indigo-500 hover:bg-indigo-50/50 transition-all text-xs font-medium shadow-2xs group"
+                          >
+                            <div className="font-semibold text-slate-800 group-hover:text-indigo-700">{preset.label}</div>
+                            <div className="text-[10px] text-muted-foreground font-mono mt-0.5">${preset.singlePrice.toFixed(2)} unit</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-1 gap-6">
                       <div className="space-y-2">
-                        <label className="text-sm font-semibold text-slate-700">Product Name</label>
+                        <label className="text-sm font-semibold text-slate-700">Product / Silhouette Name</label>
                         <input 
                           value={productName} 
                           onChange={e => setProductName(e.target.value)} 
-                          placeholder="e.g. Classic Oversized Hoodie" 
+                          placeholder="e.g. Men's Oversized Boxy T-Shirt" 
                           className="w-full border px-4 py-3 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all" 
                         />
                       </div>

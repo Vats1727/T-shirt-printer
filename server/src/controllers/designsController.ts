@@ -6,9 +6,12 @@ import { design_versions, assets as assetsTable, designs as designsTable } from 
 import { eq } from 'drizzle-orm';
 import fs from 'fs/promises';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-// Use a safe root dir fallback since __dirname may be undefined in some runtimes
-const rootDir = (typeof __dirname !== 'undefined') ? __dirname : process.cwd();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const rootDir = path.resolve(__dirname, '../../');
+const UPLOAD_DIR = path.resolve(__dirname, '../../uploads');
 
 export async function createDesign(req: Request, res: Response) {
   try {
@@ -119,6 +122,9 @@ export async function listDesignVersions(req: Request, res: Response) {
   }
 }
 
+// 1x1 transparent PNG buffer for graceful missing-image fallbacks
+const TRANSPARENT_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
+
 export async function getAsset(req: Request, res: Response) {
   const idStr = req.params.id as string;
   const id = parseInt(idStr, 10);
@@ -131,31 +137,29 @@ export async function getAsset(req: Request, res: Response) {
     const storageKey = a.storage_key as string;
     const filename = (a.filename || '') as string;
 
-    if (filename) {
-      const clientAttached = path.join(process.cwd(), 'client', 'attached_assets', filename);
-      try {
-        const bufTry = await fs.readFile(clientAttached);
-        res.setHeader('Content-Type', a.mime || 'application/octet-stream');
-        return res.send(bufTry);
-      } catch (e) { }
-    }
-
     const candidates = [
-      path.join(process.cwd(), storageKey),
-      path.join(process.cwd(), 'server', storageKey),
-      path.resolve(storageKey),
-      storageKey,
-    ];
+      filename ? path.resolve(UPLOAD_DIR, filename) : null,
+      storageKey ? path.resolve(UPLOAD_DIR, path.basename(storageKey)) : null,
+      path.join(process.cwd(), storageKey || ''),
+      path.join(process.cwd(), 'server', storageKey || ''),
+      path.resolve(storageKey || ''),
+    ].filter(Boolean) as string[];
+
     let buf: Buffer | null = null;
     for (const p of candidates) {
-      if (!p) continue;
       try {
         buf = await fs.readFile(p);
-        break;
+        if (buf) break;
       } catch (e: any) { }
     }
-    if (!buf) return res.status(404).json({ message: 'Asset file not found' });
-    res.setHeader('Content-Type', a.mime || 'application/octet-stream');
+
+    if (!buf) {
+      // Graceful fallback for purged assets so the browser does not display broken image errors
+      res.setHeader('Content-Type', 'image/png');
+      return res.status(200).send(TRANSPARENT_PNG);
+    }
+
+    res.setHeader('Content-Type', a.mime || 'image/png');
     res.send(buf);
   } catch (e: any) {
     return res.status(500).json({ message: 'Failed to read asset' });
@@ -202,16 +206,37 @@ export async function deleteDesign(req: Request, res: Response) {
   const userId = user?.sub || user?.id || null;
   try {
     const ok = await storage.deleteDesign(id, userId);
-    if (db) {
-      // Best effort cleanup
-      try {
+
+    // Best effort cleanup: remove matching asset records AND files on disk
+    try {
+      if (db) {
         const rows = await db.select().from(assetsTable).orderBy(assetsTable.id);
         const matches = (rows as any[]).filter(r => r && (String(r.filename || '').includes(`design-${id}`) || String(r.storage_key || '').includes(`design-${id}`)));
         for (const a of matches) {
+          if (a.filename) {
+            const fp = path.resolve(UPLOAD_DIR, a.filename);
+            try { await fs.unlink(fp); } catch (e) { }
+          }
           await db.delete(assetsTable).where(eq(assetsTable.id, a.id));
         }
-      } catch (e) { }
+      }
+
+      // Also clean up any direct preview files matching design-<id>-* in UPLOAD_DIR
+      try {
+        const files = await fs.readdir(UPLOAD_DIR);
+        for (const f of files) {
+          if (f.startsWith(`design-${id}-`) || f.includes(`-design-${id}-`)) {
+            try {
+              await fs.unlink(path.join(UPLOAD_DIR, f));
+              console.log('deleteDesign: unlinked file from server/uploads:', f);
+            } catch (e) {}
+          }
+        }
+      } catch (e) {}
+    } catch (e) {
+      console.warn('deleteDesign: cleanup warning:', e);
     }
+
     if (!ok) return res.status(404).json({ message: 'Not found' });
     return res.status(204).end();
   } catch (e: any) {

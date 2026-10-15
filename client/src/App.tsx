@@ -23,6 +23,7 @@ import SupplierOrder from '@/pages/supplier/Order';
 import SupplierProductOrder from '@/pages/supplier/ProductOrder';
 import SupplierSavedDesigns from '@/pages/supplier/SavedDesigns';
 import SupplierCreateListing from '@/pages/supplier/listings/CreateListing';
+import SupplierStoreCustomizer from '@/pages/supplier/StoreCustomizer';
 import SupplierProfile from '@/pages/supplier/Profile';
 import SupplierRoute from '@/components/SupplierRoute';
 import StorePage from '@/pages/store/Store';
@@ -46,6 +47,8 @@ function Router() {
       <SupplierRoute path="/supplier/dashboard" component={SupplierDashboard} />
       <SupplierRoute path="/supplier/saved-designs/:designerId?" component={SupplierSavedDesigns} />
       <SupplierRoute path="/supplier/listings/create" component={SupplierCreateListing} />
+      <SupplierRoute path="/supplier/customize-store" component={SupplierStoreCustomizer} />
+      <SupplierRoute path="/supplier/store-settings" component={SupplierStoreCustomizer} />
       <SupplierRoute path="/supplier/order" component={SupplierOrder} />
       <SupplierRoute path="/supplier/product/:id" component={SupplierProductOrder} />
       <SupplierRoute path="/supplier/profile" component={SupplierProfile} />

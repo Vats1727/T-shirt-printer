@@ -2,9 +2,14 @@ import { Request, Response } from 'express';
 import * as assetStore from '../services/assetStore';
 import fs from 'fs/promises';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { db } from '../../db';
 import { assets as assetsTable } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const UPLOAD_DIR = path.resolve(__dirname, '../../uploads');
 
 export async function uploadAsset(req: Request, res: Response) {
   try {
@@ -25,8 +30,8 @@ export async function uploadAsset(req: Request, res: Response) {
       const id = (result as any).id;
       return res.status(201).json({ id, url: `/api/assets/${id}`, filename: result.filename });
     }
-    // fallback: return client copy path
-    return res.status(201).json({ id: null, url: `/attached_assets/${result.filename}`, filename: result.filename });
+    // fallback: return uploads copy path
+    return res.status(201).json({ id: null, url: `/uploads/${result.filename}`, filename: result.filename });
   } catch (e: any) {
     console.error('uploadAsset error', e?.message || e);
     return res.status(500).json({ message: 'Failed to upload asset' });
@@ -35,42 +40,49 @@ export async function uploadAsset(req: Request, res: Response) {
 
 export async function deleteAsset(req: Request, res: Response) {
   const user = (req as any).user;
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   if (Number.isNaN(id)) return res.status(400).json({ message: 'Invalid id' });
 
   try {
-    // If DB configured, try to find the asset row first
+    // If DB configured, find the asset row
     let row: any = null;
     if (db) {
       const userId = user?.sub || user?.id || null;
-      const rows = await db.select().from(assetsTable).where(
-        and(
-          eq(assetsTable.id, id),
-          eq(assetsTable.uploader_id, userId)
-        )
-      );
+      const isAdmin = user?.role === 'admin' || user?.role === 'portal_admin';
+      const rows = isAdmin
+        ? await db.select().from(assetsTable).where(eq(assetsTable.id, id))
+        : await db.select().from(assetsTable).where(
+            and(
+              eq(assetsTable.id, id),
+              eq(assetsTable.uploader_id, userId)
+            )
+          );
       row = (rows as any[])[0];
       if (!row) return res.status(404).json({ message: 'Asset not found or not owned by you' });
     }
 
-    // If there is a filename or storage_key, attempt to remove files
+    // Unlink physical file from server/uploads
     try {
-      if (row && row.filename) {
-        const clientPath = path.join(process.cwd(), 'client', 'attached_assets', row.filename || '');
-        try { await fs.unlink(clientPath); } catch (e) { }
+      const candidates = new Set<string>();
+      if (row?.filename) {
+        candidates.add(path.resolve(UPLOAD_DIR, row.filename));
+        candidates.add(path.resolve(process.cwd(), 'uploads', row.filename));
+        candidates.add(path.resolve(process.cwd(), 'server', 'uploads', row.filename));
       }
-      if (row && row.storage_key) {
-        const storageCandidates = [
-          path.join(process.cwd(), row.storage_key),
-          path.join(process.cwd(), 'server', row.storage_key),
-          path.resolve(row.storage_key),
-        ];
-        for (const p of storageCandidates) {
-          try { await fs.unlink(p); } catch (e) { }
-        }
+      if (row?.storage_key) {
+        candidates.add(path.resolve(UPLOAD_DIR, path.basename(row.storage_key)));
+        candidates.add(path.resolve(process.cwd(), row.storage_key));
+        candidates.add(path.resolve(process.cwd(), 'server', row.storage_key));
+      }
+
+      for (const p of candidates) {
+        try {
+          await fs.unlink(p);
+          console.log('deleteAsset: physically unlinked file:', p);
+        } catch (e) {}
       }
     } catch (e) {
-      // best-effort file deletion; continue to DB delete
+      console.warn('deleteAsset: file cleanup warning:', e);
     }
 
     if (db) {
@@ -78,7 +90,6 @@ export async function deleteAsset(req: Request, res: Response) {
       return res.status(204).end();
     }
 
-    // If no DB, but file cleaned up, return 204
     return res.status(204).end();
   } catch (e: any) {
     console.error('deleteAsset error', e?.message || e);

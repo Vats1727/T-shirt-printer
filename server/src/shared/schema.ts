@@ -150,6 +150,7 @@ export const products_full = pgTable("products_full", {
   is_deleted: boolean("is_deleted").notNull().default(false),
   deleted_at: timestamp("deleted_at"),
   created_at: timestamp("created_at").notNull().defaultNow(),
+  category: text("category").notNull().default("men"),
   updated_at: timestamp("updated_at"),
   owner_id: integer("owner_id"),
 });

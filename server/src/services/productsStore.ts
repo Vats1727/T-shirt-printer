@@ -4,6 +4,7 @@ import * as catalog from './catalogStore';
 
 export async function createProduct(payload: {
   name: string;
+  category?: string;
   single_price?: number;
   bulk_min?: number;
   bulk_price?: number;
@@ -33,10 +34,11 @@ export async function createProduct(payload: {
       if (payload.designs.back) designsArray.push({ side: 'back', ...payload.designs.back });
     }
 
+    const category = payload.category || 'men';
     const res = await pool.query(
-      `INSERT INTO products_full (name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory, owner_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id, name, slug, single_price, bulk_min, bulk_price, created_at`,
-      [payload.name, slug, payload.single_price || 0, payload.bulk_min || 100, payload.bulk_price || 0, JSON.stringify(payload.sizes || []), JSON.stringify(payload.colors || []), JSON.stringify(payload.sizeChart || []), JSON.stringify(designsArray), JSON.stringify(payload.inventory || []), payload.owner_id || null]
+      `INSERT INTO products_full (name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory, category, owner_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id, name, slug, category, single_price, bulk_min, bulk_price, created_at`,
+      [payload.name, slug, payload.single_price || 0, payload.bulk_min || 100, payload.bulk_price || 0, JSON.stringify(payload.sizes || []), JSON.stringify(payload.colors || []), JSON.stringify(payload.sizeChart || []), JSON.stringify(designsArray), JSON.stringify(payload.inventory || []), category, payload.owner_id || null]
     );
     return res.rows[0];
   }
@@ -45,11 +47,12 @@ export async function createProduct(payload: {
 
 export async function listProducts(ownerId: number) {
   if (pool) {
-    const query = `SELECT id, name, slug, single_price, bulk_min, bulk_price, created_at, designs FROM products_full WHERE owner_id = $1 AND COALESCE(is_deleted, false) = false ORDER BY id`;
+    const query = `SELECT id, name, slug, single_price, bulk_min, bulk_price, created_at, designs, category FROM products_full WHERE owner_id = $1 AND COALESCE(is_deleted, false) = false ORDER BY id`;
     const r = await pool.query(query, [ownerId]);
     return r.rows.map((row: any) => {
       const single_price = row.single_price !== null ? Number(row.single_price) : 0;
       const bulk_price = row.bulk_price !== null ? Number(row.bulk_price) : 0;
+      const category = row.category || 'men';
       const rawDesigns = row.designs || [];
       let designs: any = {};
       if (Array.isArray(rawDesigns)) {
@@ -64,7 +67,7 @@ export async function listProducts(ownerId: number) {
       } else {
         designs = rawDesigns;
       }
-      return { ...row, single_price, bulk_price, designs };
+      return { ...row, single_price, bulk_price, category, designs };
     });
   }
   return [];
@@ -73,14 +76,15 @@ export async function listProducts(ownerId: number) {
 export async function getProduct(id: number, ownerId?: number) {
   if (pool) {
     const query = ownerId
-      ? 'SELECT id, name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory, is_deleted, deleted_at, updated_at, created_at FROM products_full WHERE id=$1 AND owner_id=$2'
-      : 'SELECT id, name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory, is_deleted, deleted_at, updated_at, created_at FROM products_full WHERE id=$1';
+      ? 'SELECT id, name, slug, category, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory, is_deleted, deleted_at, updated_at, created_at FROM products_full WHERE id=$1 AND owner_id=$2'
+      : 'SELECT id, name, slug, category, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory, is_deleted, deleted_at, updated_at, created_at FROM products_full WHERE id=$1';
     const params = ownerId ? [id, ownerId] : [id];
     const r = await pool.query(query, params);
     const prod = r.rows[0];
     if (!prod) return null;
     prod.single_price = prod.single_price !== null ? Number(prod.single_price) : 0;
     prod.bulk_price = prod.bulk_price !== null ? Number(prod.bulk_price) : 0;
+    prod.category = prod.category || 'men';
 
     // sizes/colors are stored as arrays of ids
     const sizes = prod.sizes || [];
@@ -96,6 +100,7 @@ export async function getProduct(id: number, ownerId?: number) {
 
 export async function updateProduct(id: number, payload: {
   name?: string;
+  category?: string;
   single_price?: number;
   bulk_min?: number;
   bulk_price?: number;
@@ -130,6 +135,10 @@ export async function updateProduct(id: number, payload: {
     await pool.query('UPDATE products_full SET single_price=$1, bulk_min=$2, bulk_price=$3, updated_at=now() WHERE id=$4 AND owner_id=$5', [payload.single_price || 0, payload.bulk_min || 100, payload.bulk_price || 0, id, ownerId]);
     const r = await pool.query('SELECT slug FROM products_full WHERE id=$1', [id]);
     slug = r.rows[0]?.slug || null;
+  }
+
+  if (payload.category) {
+    await pool.query('UPDATE products_full SET category=$1, updated_at=now() WHERE id=$2 AND owner_id=$3', [payload.category, id, ownerId]);
   }
 
   // replace sizes/colors/size_chart/designs/inventory if provided

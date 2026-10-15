@@ -222,145 +222,107 @@ export async function getListingJson(req: Request, res: Response) {
     const row = await listingsStore.getListingBySlug(slug);
     if (!row || !row.published) return res.status(404).json({ message: 'Listing not found' });
 
-    // find preview similar to getPublicListing
-    let previewUrl: string | null = null;
-    const clientBase = process.env.CLIENT_BASE_URL ? String(process.env.CLIENT_BASE_URL).replace(/\/$/, '') : `http://localhost:5173`;
-    let previewAssetId: number | null = null;
-    try {
-      const fs = await import('fs/promises');
-      const path = await import('path');
-      const clientPath = path.join(process.cwd(), 'client', 'attached_assets');
-      const designKey = row.design_key || '';
-      if (designKey) {
-        const patterns = [`${designKey}-front`, `${designKey}`];
-        for (const p of patterns) {
-          try {
-            const files = await fs.readdir(clientPath);
-            const found = files.find(f => f.toLowerCase().startsWith(p.toLowerCase()));
-            if (found) { previewUrl = `${clientBase}/attached_assets/${found}`; break; }
-          } catch (e) { }
-        }
-      }
-    } catch (e) { }
-
-    let preview_group: any = null;
-    if (!previewUrl && row.design_key) {
-      try {
-        const db = await import('../../db');
-        if (db.pool) {
-          const clientDb = await db.pool.connect();
-          try {
-            const likePattern = `%${row.design_key}%`;
-            const r = await clientDb.query('SELECT id, filename, mime, metadata FROM assets WHERE filename ILIKE $1 OR filename ILIKE $2 ORDER BY id', [likePattern, `${row.design_key}%`]);
-            if (r && r.rows && r.rows.length) {
-              const groupsMap: Record<string, any> = {};
-              for (const a of r.rows) {
-                const fn = a.filename || '';
-                const m = String(fn || '').match(/^design-(\d+)-(front|back)\.(png|jpg|jpeg)$/i);
-                const key = m ? `design-${m[1]}` : `asset-${a.id}`;
-                const side = m ? (m[2] === 'back' ? 'back' : 'front') : null;
-                if (!groupsMap[key]) groupsMap[key] = { key, front: null, back: null, any: null };
-                let url = `${clientBase}/api/assets/${a.id}`;
-                try { if (fn) { const fs = await import('fs/promises'); const path = await import('path'); await fs.access(path.join(process.cwd(), 'client', 'attached_assets', fn)); url = `${clientBase}/attached_assets/${fn}`; } } catch (e) { }
-                let meta: any = a.metadata || null;
-                try { if (meta && typeof meta === 'string') meta = JSON.parse(meta); } catch (e) { /* ignore */ }
-                const entry = { id: a.id, filename: fn, url, mime: a.mime, metadata: meta };
-                if (side === 'front') groupsMap[key].front = entry;
-                else if (side === 'back') groupsMap[key].back = entry;
-                else groupsMap[key].any = entry;
-              }
-              const keys = Object.keys(groupsMap);
-              if (keys.length) preview_group = groupsMap[keys[0]];
-              const firstRow = r.rows[0];
-              if (firstRow) previewAssetId = firstRow.id;
-              if (!previewUrl && preview_group) previewUrl = (preview_group.front?.url || preview_group.any?.url || preview_group.back?.url) || null;
-            }
-          } finally { clientDb.release(); }
-        }
-      } catch (e) { }
-    }
-
-    return res.json({ listing: { ...row, preview_url: previewUrl, preview_asset_id: previewAssetId, preview_group } });
+    const { preview_url, preview_asset_id, preview_group } = await resolveListingPreview(row);
+    return res.json({ listing: { ...row, preview_url, preview_asset_id, preview_group } });
   } catch (e: unknown) {
     console.error('getListingJson error', (await import('../utils')).fmtErr(e));
     return res.status(500).json({ message: 'Server error' });
   }
 }
 
+async function resolveListingPreview(row: any) {
+  let preview_url: string | null = null;
+  let preview_asset_id: number | null = null;
+  let preview_group: any = null;
+
+  const designKey = String(row.design_key || '');
+  let numericId: number | null = null;
+  const mId = designKey.match(/design-(\d+)/i);
+  if (mId) numericId = Number(mId[1]);
+
+  try {
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    const uploadsDir = path.resolve(process.cwd(), 'server', 'uploads');
+    const altUploadsDir = path.resolve(process.cwd(), 'uploads');
+    const { pool } = await import('../../db');
+
+    if (designKey && pool) {
+      const clientDb = await pool.connect();
+      try {
+        const likePattern = `%${designKey}%`;
+        const r = await clientDb.query(
+          `SELECT id, filename, mime, metadata FROM assets 
+           WHERE filename ILIKE $1 
+              OR filename ILIKE $2 
+              OR ($3::int IS NOT NULL AND (metadata->>'designId')::int = $3)
+           ORDER BY id`,
+          [likePattern, `${designKey}%`, numericId]
+        );
+
+        if (r && r.rows && r.rows.length) {
+          const groupsMap: Record<string, any> = {};
+          for (const a of r.rows) {
+            const fn = a.filename || '';
+            let meta: any = a.metadata || null;
+            try { if (meta && typeof meta === 'string') meta = JSON.parse(meta); } catch (e) {}
+
+            // Check if file physically exists
+            const candidates = [
+              fn ? path.resolve(uploadsDir, fn) : null,
+              fn ? path.resolve(altUploadsDir, fn) : null,
+            ].filter(Boolean) as string[];
+
+            let exists = false;
+            for (const c of candidates) {
+              try {
+                const st = await fs.stat(c);
+                if (st.isFile() && st.size > 200) { exists = true; break; }
+              } catch (e) {}
+            }
+            if (!exists) continue;
+
+            const sideFromMeta = meta && (meta.side || meta.side_name);
+            const m = String(fn || '').match(/^design-(\d+)-(front|back)\.(png|jpg|jpeg)$/i);
+            const side = sideFromMeta === 'back' ? 'back' : (sideFromMeta === 'front' ? 'front' : (m ? (m[2] === 'back' ? 'back' : 'front') : null));
+            const key = designKey || `asset-${a.id}`;
+
+            if (!groupsMap[key]) groupsMap[key] = { key, front: null, back: null, any: null };
+            const entry = { id: a.id, filename: fn, url: `/api/assets/${a.id}`, mime: a.mime, metadata: meta };
+
+            if (side === 'front') groupsMap[key].front = entry;
+            else if (side === 'back') groupsMap[key].back = entry;
+            else groupsMap[key].any = entry;
+          }
+
+          const keys = Object.keys(groupsMap);
+          if (keys.length) {
+            preview_group = groupsMap[keys[0]];
+            preview_url = (preview_group.front?.url || preview_group.any?.url || preview_group.back?.url) || null;
+            const assetObj = preview_group.front || preview_group.any || preview_group.back;
+            if (assetObj) preview_asset_id = assetObj.id;
+          }
+        }
+      } finally {
+        clientDb.release();
+      }
+    }
+  } catch (e) {
+    console.error('resolveListingPreview error:', e);
+  }
+
+  return { preview_url, preview_asset_id, preview_group };
+}
+
 export async function getListingByIdJson(req: Request, res: Response) {
   try {
     const id = Number(req.params.id || 0);
-    console.log('DEBUG: getListingByIdJson called for id=', id);
     if (!id) return res.status(400).json({ message: 'Missing id' });
     const row = await listingsStore.getListingById(id);
     if (!row) return res.status(404).json({ message: 'Listing not found' });
 
-    // reuse logic from getListingJson to compute preview
-    // find preview similar to getPublicListing
-    let previewUrl: string | null = null;
-    let previewAssetId: number | null = null;
-    const clientBase = process.env.CLIENT_BASE_URL ? String(process.env.CLIENT_BASE_URL).replace(/\/$/, '') : `http://localhost:5173`;
-    try {
-      const fs = await import('fs/promises');
-      const path = await import('path');
-      const clientPath = path.join(process.cwd(), 'client', 'attached_assets');
-      const uploadsPath = path.join(process.cwd(), 'uploads');
-      const designKey = row.design_key || '';
-      if (designKey) {
-        const patterns = [`${designKey}-front`, `${designKey}`];
-        for (const p of patterns) {
-          try {
-            const files = await fs.readdir(clientPath);
-            const found = files.find(f => f.toLowerCase().startsWith(p.toLowerCase()));
-            if (found) { previewUrl = `${clientBase}/attached_assets/${found}`; break; }
-          } catch (e) { }
-          try {
-            const files2 = await fs.readdir(uploadsPath);
-            const found2 = files2.find(f => f.toLowerCase().startsWith(p.toLowerCase()));
-            if (found2) { previewUrl = `${clientBase}/uploads/${found2}`; break; }
-          } catch (e) { }
-        }
-      }
-    } catch (e) { }
-
-    let preview_group: any = null;
-    if (!previewUrl && row.design_key) {
-      try {
-        const db = await import('../../db');
-        if (db.pool) {
-          const clientDb = await db.pool.connect();
-          try {
-            const likePattern = `%${row.design_key}%`;
-            const r = await clientDb.query('SELECT id, filename, mime, metadata FROM assets WHERE filename ILIKE $1 OR filename ILIKE $2 ORDER BY id', [likePattern, `${row.design_key}%`]);
-            if (r && r.rows && r.rows.length) {
-              const groupsMap: Record<string, any> = {};
-              for (const a of r.rows) {
-                const fn = a.filename || '';
-                const m = String(fn || '').match(/^design-(\d+)-(front|back)\.(png|jpg|jpeg)$/i);
-                const key = m ? `design-${m[1]}` : `asset-${a.id}`;
-                const side = m ? (m[2] === 'back' ? 'back' : 'front') : null;
-                if (!groupsMap[key]) groupsMap[key] = { key, front: null, back: null, any: null };
-                let url = `${clientBase}/api/assets/${a.id}`;
-                try { if (fn) { const fs = await import('fs/promises'); const path = await import('path'); await fs.access(path.join(process.cwd(), 'client', 'attached_assets', fn)); url = `${clientBase}/attached_assets/${fn}`; } } catch (e) { }
-                let meta: any = a.metadata || null;
-                try { if (meta && typeof meta === 'string') meta = JSON.parse(meta); } catch (e) { /* ignore */ }
-                const entry = { id: a.id, filename: fn, url, mime: a.mime, metadata: meta };
-                if (side === 'front') groupsMap[key].front = entry;
-                else if (side === 'back') groupsMap[key].back = entry;
-                else groupsMap[key].any = entry;
-              }
-              const keys = Object.keys(groupsMap);
-              if (keys.length) preview_group = groupsMap[keys[0]];
-              const firstRow = r.rows[0];
-              if (firstRow) previewAssetId = firstRow.id;
-              if (!previewUrl && preview_group) previewUrl = (preview_group.front?.url || preview_group.any?.url || preview_group.back?.url) || null;
-            }
-          } finally { clientDb.release(); }
-        }
-      } catch (e) { }
-    }
-
-    return res.json({ listing: { ...row, preview_url: previewUrl, preview_asset_id: previewAssetId, preview_group } });
+    const { preview_url, preview_asset_id, preview_group } = await resolveListingPreview(row);
+    return res.json({ listing: { ...row, preview_url, preview_asset_id, preview_group } });
   } catch (e: unknown) {
     console.error('getListingByIdJson error', (await import('../utils')).fmtErr(e));
     return res.status(500).json({ message: 'Server error' });

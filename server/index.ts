@@ -69,12 +69,15 @@ export const _internal = {
 
     const originalResJson = res.json;
     res.json = function (bodyJson, ...args) {
+      if (res.headersSent) {
+        return res;
+      }
       capturedJsonResponse = bodyJson;
       return originalResJson.apply(res, [bodyJson, ...args]);
     };
 
-    // request timeout: 15 seconds
-    const timeoutMs = 15_000;
+    // request timeout: 60 seconds for heavy image/preview operations
+    const timeoutMs = 60_000;
     const timeout = setTimeout(() => {
       if (!res.headersSent) {
         try {
@@ -85,8 +88,9 @@ export const _internal = {
       }
     }, timeoutMs);
 
+    const cleanup = () => clearTimeout(timeout);
     res.on("finish", () => {
-      clearTimeout(timeout);
+      cleanup();
       const duration = Date.now() - start;
       if (path.startsWith("/api")) {
         let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
@@ -99,6 +103,7 @@ export const _internal = {
         log(logLine);
       }
     });
+    res.on("close", cleanup);
 
     next();
   });
@@ -186,15 +191,18 @@ export const _internal = {
     next();
   });
 
-  // Development-only: serve uploads and client attached assets so preview images
-  // referenced as /uploads/<file> or /attached_assets/<file> are reachable.
+  // Serve uploads and map /attached_assets to the same directory for zero-redundancy
   try {
     const path = await import('path');
     const fs = await import('fs/promises');
-    const uploadsDir = path.join(process.cwd(), 'uploads');
-    const attachedDir = path.join(process.cwd(), 'client', 'attached_assets');
-    try { await fs.access(uploadsDir); app.use('/uploads', (await import('express')).static(uploadsDir)); console.log('DEBUG: serving /uploads from', uploadsDir); } catch (e) {}
-    try { await fs.access(attachedDir); app.use('/attached_assets', (await import('express')).static(attachedDir)); console.log('DEBUG: serving /attached_assets from', attachedDir); } catch (e) {}
+    const uploadsDir = path.resolve(__dirname, 'uploads');
+    try {
+      await fs.access(uploadsDir);
+      const expressStatic = (await import('express')).static;
+      app.use('/uploads', expressStatic(uploadsDir));
+      app.use('/attached_assets', expressStatic(uploadsDir));
+      console.log('DEBUG: serving /uploads and /attached_assets from', uploadsDir);
+    } catch (e) {}
   } catch (e) {
     // ignore static setup errors
   }
@@ -315,37 +323,14 @@ export const _internal = {
 
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
-  // Basic guard to detect repeated crashes and avoid tight crash/restart loops.
-  const recentFatalErrors: number[] = [];
-  function registerFatalError() {
-    const now = Date.now();
-    recentFatalErrors.push(now);
-    // keep only last 60 seconds
-    while (recentFatalErrors.length && recentFatalErrors[0] < now - 60_000) recentFatalErrors.shift();
-    return recentFatalErrors.length;
-  }
 
-  process.on('uncaughtException', (err) => {
-    console.error('UNCaught Exception:', err);
-    const count = registerFatalError();
-    if (count > 3) {
-      console.error('Too many fatal errors in short period, exiting to avoid crash loop');
-      // give logger a moment to flush then exit with non-zero
-      setTimeout(() => process.exit(1), 1000);
-      return;
-    }
-    // If an uncaught exception occurs, attempt a graceful shutdown and exit.
-    shutdown('uncaughtException');
+  // Log uncaught exceptions with full trace, but keep server alive to prevent ECONNREFUSED/ECONNRESET
+  process.on('uncaughtException', (err: any) => {
+    console.error('UNCAUGHT EXCEPTION (Server kept alive):', err?.stack || err);
   });
-  process.on('unhandledRejection', (reason) => {
-    console.error('UNHANDLED REJECTION:', reason);
-    const count = registerFatalError();
-    if (count > 3) {
-      console.error('Too many fatal errors in short period, exiting to avoid crash loop');
-      setTimeout(() => process.exit(1), 1000);
-      return;
-    }
-    // Attempt graceful shutdown but don't rethrow synchronously.
-    shutdown('unhandledRejection');
+
+  // Log unhandled promise rejections, but keep server alive to prevent sudden dropouts
+  process.on('unhandledRejection', (reason: any) => {
+    console.error('UNHANDLED REJECTION (Server kept alive):', reason?.stack || reason);
   });
 })();

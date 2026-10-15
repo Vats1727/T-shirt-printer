@@ -1,97 +1,245 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-// Avoid importing useAuth to keep this page accessible without an AuthProvider.
-// Read auth info directly from localStorage so the page is authentication-free.
+import { Badge } from '@/components/ui/badge';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
+import { 
+  ShoppingBag, 
+  Trash2, 
+  Sparkles, 
+  Store as StoreIcon, 
+  Shirt, 
+  ExternalLink,
+  Paintbrush,
+  Search,
+  SlidersHorizontal,
+  Instagram,
+  Twitter,
+  Globe,
+  Flame,
+  ArrowRight
+} from 'lucide-react';
+import { useLocation } from 'wouter';
 
-function CardPreviewImage({ listing, apiBase, designPayload, overrideColor }:{ listing:any, apiBase:string, designPayload?:any, overrideColor?:string | null }){
-  const resolveFromDesign = () => {
-    if (!designPayload) return null;
-    const meta = designPayload.version?.metadata || designPayload.metadata || {};
-    let byColor: any = meta.preview_by_color || meta.preview?.preview_by_color || meta.preview_by_color || null;
-    // support array or object mapping
-    if (Array.isArray(byColor)) {
-      if (overrideColor && byColor.length) {
-        const found = byColor.find((m:any) => String(m.id) === String(overrideColor) || String(m.hex) === String(overrideColor));
-        if (found) return (found.preview_front || found.front || found.preview || found.url || null);
-      }
-      const first = byColor[0];
-      if (first) return (first.preview_front || first.front || first.preview || first.url || null);
-    } else if (byColor && typeof byColor === 'object') {
-      if (overrideColor && byColor[overrideColor]) return byColor[overrideColor];
-      const foundKey = Object.keys(byColor).find(k => k && overrideColor && k.replace('#','').toLowerCase() === overrideColor.replace('#','').toLowerCase());
-      if (foundKey) return byColor[foundKey];
-      const first = Object.values(byColor)[0];
-      if (first) return first;
-    }
-    if (meta.preview?.front?.url) return meta.preview.front.url;
-    if (meta.preview?.any?.url) return meta.preview.any.url;
-    return null;
+// Theme Presets for Storefront
+const THEME_STYLES: Record<string, {
+  heroBg: string;
+  heroText: string;
+  heroBadge: string;
+  heroBorder: string;
+  accentBtn: string;
+  cardHover: string;
+  announcementBg: string;
+}> = {
+  midnight: {
+    heroBg: 'bg-gradient-to-r from-slate-950 via-indigo-950 to-slate-900',
+    heroText: 'text-white',
+    heroBadge: 'bg-indigo-500/20 border-indigo-400/30 text-indigo-300',
+    heroBorder: 'border-indigo-950/40',
+    accentBtn: 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/30',
+    cardHover: 'hover:border-indigo-400/60',
+    announcementBg: 'bg-gradient-to-r from-indigo-700 via-purple-700 to-indigo-800 text-white'
+  },
+  minimal_light: {
+    heroBg: 'bg-gradient-to-r from-slate-100 via-white to-slate-100',
+    heroText: 'text-slate-900',
+    heroBadge: 'bg-slate-200/80 border-slate-300 text-slate-800',
+    heroBorder: 'border-slate-200',
+    accentBtn: 'bg-slate-900 hover:bg-slate-800 text-white shadow-slate-900/20',
+    cardHover: 'hover:border-slate-400',
+    announcementBg: 'bg-slate-900 text-white'
+  },
+  streetwear_dark: {
+    heroBg: 'bg-gradient-to-r from-neutral-950 via-zinc-900 to-neutral-950',
+    heroText: 'text-white',
+    heroBadge: 'bg-amber-500/20 border-amber-400/30 text-amber-300',
+    heroBorder: 'border-zinc-800',
+    accentBtn: 'bg-amber-500 hover:bg-amber-400 text-black font-extrabold shadow-amber-500/20',
+    cardHover: 'hover:border-amber-400/60',
+    announcementBg: 'bg-amber-500 text-black font-extrabold'
+  },
+  cyber_neon: {
+    heroBg: 'bg-gradient-to-r from-slate-950 via-purple-950 to-cyan-950',
+    heroText: 'text-white',
+    heroBadge: 'bg-cyan-500/20 border-cyan-400/30 text-cyan-300',
+    heroBorder: 'border-purple-900/40',
+    accentBtn: 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-extrabold shadow-cyan-500/30',
+    cardHover: 'hover:border-cyan-400/60',
+    announcementBg: 'bg-gradient-to-r from-cyan-600 to-fuchsia-600 text-white'
+  },
+  sunset_amber: {
+    heroBg: 'bg-gradient-to-r from-slate-900 via-amber-950 to-orange-950',
+    heroText: 'text-white',
+    heroBadge: 'bg-orange-500/20 border-orange-400/30 text-orange-300',
+    heroBorder: 'border-orange-950/40',
+    accentBtn: 'bg-orange-600 hover:bg-orange-500 text-white shadow-orange-600/30',
+    cardHover: 'hover:border-orange-400/60',
+    announcementBg: 'bg-gradient-to-r from-orange-600 to-amber-600 text-white'
+  },
+  emerald_luxury: {
+    heroBg: 'bg-gradient-to-r from-slate-950 via-emerald-950 to-teal-950',
+    heroText: 'text-white',
+    heroBadge: 'bg-emerald-500/20 border-emerald-400/30 text-emerald-300',
+    heroBorder: 'border-emerald-950/40',
+    accentBtn: 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30',
+    cardHover: 'hover:border-emerald-400/60',
+    announcementBg: 'bg-gradient-to-r from-emerald-700 to-teal-800 text-white'
+  }
+};
+
+function StoreCard({ 
+  listing, 
+  supplierId, 
+  isOwner, 
+  onDelete,
+  themeStyle
+}: { 
+  listing: any; 
+  supplierId: string; 
+  isOwner: boolean; 
+  onDelete: (id: number) => void;
+  themeStyle: any;
+}) {
+  const [, setLocation] = useLocation();
+  const [activeSide, setActiveSide] = useState<'front' | 'back'>('front');
+
+  // Resolve preview image URLs
+  const pg = listing.preview_group;
+  const frontImg = pg?.front?.url || (listing.preview_asset_id ? `/api/assets/${listing.preview_asset_id}` : null) || listing.preview_url || '/templates/tshirt.png';
+  const backImg = pg?.back?.url || null;
+  const currentImg = (activeSide === 'back' && backImg) ? backImg : frontImg;
+  const hasBothSides = Boolean(frontImg && backImg);
+
+  const productUrl = `/listing/id/${encodeURIComponent(listing.id)}?supplier=${encodeURIComponent(supplierId)}`;
+
+  const handleCardClick = () => {
+    setLocation(productUrl);
   };
 
-  const resolveFromListing = () => {
-    // prefer explicit preview_group front/any
-    const pg = listing.preview_group;
-    if (pg) {
-      // if metadata includes per-color mapping
-      const tryColor = (side:any) => {
-        const meta = side?.metadata || {};
-        const map = meta.preview_by_color || {};
-        if (overrideColor && map && Object.keys(map).length > 0) {
-          if (map[overrideColor]) return map[overrideColor];
-          const found = Object.keys(map).find(k => k && overrideColor && k.replace('#','').toLowerCase() === overrideColor.replace('#','').toLowerCase());
-          if (found) return map[found];
-        }
-        if (side?.url) return side.url;
-        if (side?.asset_id) return `${apiBase}/api/assets/${side.asset_id}`;
-        return null;
-      };
-      // prefer front
-      return tryColor(pg.front) || tryColor(pg.any) || tryColor(pg.back);
-    }
+  return (
+    <Card 
+      onClick={handleCardClick}
+      className={`group cursor-pointer overflow-hidden border border-slate-200/90 ${themeStyle.cardHover} hover:shadow-xl transition-all duration-300 rounded-3xl bg-white flex flex-col hover:-translate-y-1`}
+    >
+      {/* Mockup Image Area */}
+      <div className="aspect-[4/5] bg-gradient-to-b from-slate-50/80 via-white to-slate-100/50 p-6 flex items-center justify-center relative overflow-hidden">
+        <img
+          src={currentImg}
+          alt={listing.title}
+          className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform duration-500 ease-out drop-shadow-sm"
+          onError={(e: any) => {
+            e.currentTarget.src = '/templates/tshirt.png';
+          }}
+        />
 
-    if (listing.preview_asset_id) return `${apiBase}/api/assets/${listing.preview_asset_id}`;
-    if (listing.preview_url) return listing.preview_url;
-    return null;
-  };
+        {/* Side switcher chips (e.stopPropagation prevents triggering card navigation) */}
+        {hasBothSides && (
+          <div 
+            className="absolute top-3.5 left-3.5 flex bg-white/95 backdrop-blur-md rounded-xl p-1 border border-slate-200/70 shadow-xs z-10 opacity-90 group-hover:opacity-100 transition-opacity"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveSide('front');
+              }}
+              className={`px-2.5 py-0.5 text-[11px] font-bold rounded-lg transition-all ${
+                activeSide === 'front' 
+                  ? 'bg-indigo-600 text-white shadow-xs' 
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Front
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveSide('back');
+              }}
+              className={`px-2.5 py-0.5 text-[11px] font-bold rounded-lg transition-all ${
+                activeSide === 'back' 
+                  ? 'bg-indigo-600 text-white shadow-xs' 
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Back
+            </button>
+          </div>
+        )}
 
-  const fromDesign = resolveFromDesign();
-  const onErrorFallback = (e:any, candidate?: string | null) => {
-    try {
-      const el = e?.currentTarget as HTMLImageElement | null;
-      if (!el) return;
-      if (el.dataset?.triedApiFallback === '1') return;
-      el.dataset.triedApiFallback = '1';
-      // try listing preview_group asset id
-      const pg = listing.preview_group;
-      if (pg) {
-        const asset = pg.front || pg.any || pg.back;
-        if (asset && asset.id) { el.src = `${apiBase}/api/assets/${asset.id}`; return; }
-      }
-      if (listing.preview_asset_id) { el.src = `${apiBase}/api/assets/${listing.preview_asset_id}`; return; }
-      // last resort: try candidate provided
-      if (candidate) el.src = candidate;
-    } catch (err) {
-      // ignore
-    }
-  };
+        {/* Price Badge */}
+        <div className="absolute top-3.5 right-3.5 z-10">
+          <Badge className="bg-white/95 backdrop-blur-md text-slate-900 border border-slate-200 font-extrabold shadow-sm px-2.5 py-1 text-sm">
+            ${Number(listing.price || 29.99).toFixed(2)}
+          </Badge>
+        </div>
 
-  if (fromDesign) return <img src={fromDesign} className="max-h-full" alt={listing.title} onError={(e:any)=>onErrorFallback(e, listing.preview_url || undefined)} />;
-  const fromListing = resolveFromListing();
-  if (fromListing) return <img src={fromListing} className="max-h-full" alt={listing.title} onError={(e:any)=>onErrorFallback(e, null)} />;
-  return <img src={'/templates/tshirt.png'} className="max-h-full" alt={listing.title} onError={(e:any)=>onErrorFallback(e, null)} />;
+        {/* Hover Quick Action Indicator */}
+        <div className="absolute inset-x-0 bottom-0 py-2.5 bg-gradient-to-t from-slate-900/60 to-transparent flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-xs font-bold gap-1">
+          <span>Click to View Product</span>
+          <ArrowRight className="size-3.5" />
+        </div>
+      </div>
+
+      <CardContent className="p-5 flex flex-col flex-grow justify-between gap-4">
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-1.5 text-[11px] text-indigo-600 font-bold uppercase tracking-wider">
+            <Shirt className="size-3.5" />
+            <span>Custom Apparel</span>
+          </div>
+          <h3 className="font-extrabold text-base text-slate-900 group-hover:text-indigo-600 transition-colors leading-snug line-clamp-1">
+            {listing.title}
+          </h3>
+          {listing.description && (
+            <p className="text-slate-500 text-xs line-clamp-2 leading-relaxed">
+              {listing.description}
+            </p>
+          )}
+        </div>
+
+        <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2 mt-auto">
+          <span className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl bg-slate-900 group-hover:bg-indigo-600 text-white text-xs font-extrabold transition-colors shadow-xs">
+            <ShoppingBag className="size-3.5" />
+            View & Order
+          </span>
+
+          {isOwner && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(listing.id);
+              }}
+              className="p-2.5 rounded-xl border border-rose-200 text-rose-500 hover:bg-rose-50 hover:text-rose-700 transition-colors z-10"
+              title="Delete Listing"
+            >
+              <Trash2 className="size-4" />
+            </button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
+
 export default function StorePage() {
+  const [, setLocation] = useLocation();
   const rawPath = (typeof window !== 'undefined' && window.location && window.location.pathname) ? window.location.pathname : '';
   const supplierId = (rawPath.split('/').filter(Boolean).pop() || '');
   const [listings, setListings] = useState<any[]>([]);
+  const [designer, setDesigner] = useState<any>(null);
+  const [storeSettings, setStoreSettings] = useState<any>({});
   const [loading, setLoading] = useState(true);
-  const [designPayloads, setDesignPayloads] = useState<Record<string, any>>({});
-  const [previewOverrides, setPreviewOverrides] = useState<Record<string, string | null>>({});
   const [user, setUser] = useState<any>(null);
   const [token, setToken] = useState<string | null>(null);
+
+  // Filters & Search
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [sortBy, setSortBy] = useState('newest');
 
   useEffect(() => {
     try {
@@ -105,128 +253,294 @@ export default function StorePage() {
     (async () => {
       setLoading(true);
       try {
-        // use relative API path so Vite dev proxy or same-origin server handles it
         const res = await fetch(`/api/store/${encodeURIComponent(supplierId)}`);
         if (!res.ok) {
           setListings([]);
-          setLoading(false);
           return;
         }
         const js = await res.json();
-          setListings(js.listings || []);
+        setListings(js.listings || []);
+        setDesigner(js.designer || null);
+        setStoreSettings(js.store_settings || {});
       } catch (e) {
         setListings([]);
-      } finally { setLoading(false); }
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [supplierId]);
 
-  // fetch design payloads for listings that reference a design id
-  useEffect(() => {
-    const toFetch = listings.filter(l => (l.design_id || l.design_key) && !designPayloads[l.id]);
-    if (toFetch.length === 0) return;
-    (async () => {
-      const copy: Record<string, any> = { ...designPayloads };
-      await Promise.all(toFetch.map(async (l:any) => {
-        try {
-          // Prefer explicit numeric design_id, else try to extract from design_key like 'design-61'
-          let idToFetch: number | null = null;
-          if (l.design_id) idToFetch = Number(l.design_id);
-          else if (l.design_key) {
-            const m = String(l.design_key).match(/design-(\d+)/i);
-            if (m) idToFetch = Number(m[1]);
-          }
-          if (idToFetch) {
-            const res = await fetch(`/api/designs/${encodeURIComponent(String(idToFetch))}`);
-            if (!res.ok) return;
-            const js = await res.json();
-            copy[l.id] = js;
-          }
-        } catch (e) {
-          // ignore
+  const isOwner = Boolean(user && (user.role === 'supplier' || user.role === 'designer') && String(user.id) === String(supplierId));
+
+  const handleDeleteListing = async (id: number) => {
+    if (!confirm('Are you sure you want to remove this listing from your storefront?')) return;
+    try {
+      const res = await fetch(`/api/supplier/listings/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: token ? `Bearer ${token}` : '',
+          'Content-Type': 'application/json'
         }
-      }));
-      setDesignPayloads(copy);
-    })();
-  }, [listings]);
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => res.statusText || '');
+        alert('Failed to delete listing: ' + (txt || res.status));
+        return;
+      }
+      setListings(prev => prev.filter(x => Number(x.id) !== Number(id)));
+    } catch (err: any) {
+      alert('Failed to delete listing: ' + (err?.message || err));
+    }
+  };
 
-  const API_BASE = (import.meta as any).env?.VITE_API_BASE || `${window.location.protocol}//${window.location.hostname}:5000`;
+  // Determine active theme
+  const activeThemeKey = storeSettings?.theme || 'midnight';
+  const themeStyle = THEME_STYLES[activeThemeKey] || THEME_STYLES.midnight;
 
-  if (loading) return <div className="p-6">Loading...</div>;
+  // Filter & sort listings
+  const filteredListings = useMemo(() => {
+    let list = [...listings];
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(l => 
+        (l.title && l.title.toLowerCase().includes(q)) ||
+        (l.description && l.description.toLowerCase().includes(q))
+      );
+    }
+
+    if (selectedCategory !== 'all') {
+      const cat = selectedCategory.toLowerCase();
+      list = list.filter(l => {
+        const t = (l.title || '').toLowerCase();
+        const d = (l.description || '').toLowerCase();
+        return t.includes(cat) || d.includes(cat);
+      });
+    }
+
+    if (sortBy === 'price-asc') {
+      list.sort((a, b) => Number(a.price || 0) - Number(b.price || 0));
+    } else if (sortBy === 'price-desc') {
+      list.sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
+    } else {
+      list.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+    }
+
+    return list;
+  }, [listings, searchQuery, selectedCategory, sortBy]);
+
+  // Designer profile info
+  const storeTitle = storeSettings?.store_name || (designer?.name ? `${designer.name}'s Collection` : 'Designer Storefront');
+  const storeTagline = storeSettings?.tagline || 'Exclusive custom apparel crafted with precision and printed on high quality blanks.';
+  const announcementText = storeSettings?.announcement || '';
+  const showAnnouncement = storeSettings?.show_announcement && announcementText;
 
   return (
-    <div>
+    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
       <Header />
-      <div className="p-6">
-        <h1 className="text-2xl font-bold mb-4">Supplier Store</h1>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {listings.length === 0 && <div className="text-sm text-muted-foreground">No published listings</div>}
-          {listings.map((p:any) => (
-            <Card key={p.id} className="overflow-hidden">
-            <CardContent className="p-4">
-              <div className="flex gap-2 items-stretch mb-3">
-                <div className="h-40 flex items-center justify-center bg-gray-50 rounded mb-3 overflow-hidden w-full">
-                  <CardPreviewImage
-                    listing={p}
-                    apiBase={API_BASE}
-                    designPayload={designPayloads[p.id]}
-                    overrideColor={previewOverrides[p.id]}
-                  />
-                </div>
-              </div>
-              <div className="mb-2"><div className="font-semibold text-lg">{p.title}</div></div>
-              <div className="text-sm mb-3">{p.description}</div>
-              { (p.preview_group && ( (p.preview_group.front?.metadata?.selected_colors || p.preview_group.back?.metadata?.selected_colors || p.preview_group.any?.metadata?.selected_colors) || []).length > 0) ? (
-                <div className="mb-3 flex items-center gap-2">
-                  { (p.preview_group.front?.metadata?.selected_colors || p.preview_group.back?.metadata?.selected_colors || p.preview_group.any?.metadata?.selected_colors || []).map((c:any, idx:number) => (
-                    <button
-                      key={idx}
-                      title={c?.name || c?.id}
-                      className={`w-6 h-6 rounded-full border ${previewOverrides[p.id] === (c?.hex || c?.id) ? 'ring-2 ring-sky-500' : ''}`}
-                      style={{ background: c?.hex || '#ddd' }}
-                      onMouseEnter={() => setPreviewOverrides(prev => ({ ...prev, [p.id]: (c?.hex || c?.id) }))}
-                      onMouseLeave={() => setPreviewOverrides(prev => ({ ...prev, [p.id]: null }))}
-                      onClick={() => setPreviewOverrides(prev => ({ ...prev, [p.id]: (c?.hex || c?.id) }))}
-                    />
-                  ))}
-                </div>
-              ) : null }
-              <div className="mt-4 flex gap-2 items-center">
-                <a href={`${window.location.origin.replace(/\/$/, '')}/listing/id/${encodeURIComponent(p.id)}?supplier=${encodeURIComponent(supplierId)}`} target="_blank" rel="noreferrer" className="px-3 py-1 bg-gray-100 rounded text-sm">View</a>
-                <a href={`${window.location.origin.replace(/\/$/, '')}/listing/id/${encodeURIComponent(p.id)}?supplier=${encodeURIComponent(supplierId)}`} target="_blank" rel="noreferrer" className="px-3 py-1 bg-black text-white rounded text-sm">Buy</a>
-                {user && user.role === 'supplier' && String(user.id) === String(p.supplier_id || supplierId) && (
-                  <button
-                    onClick={async () => {
-                      const apiBase = window.location.port === '5173' ? 'http://localhost:5000' : '';
-                      if (!confirm('Delete this listing? This cannot be undone.')) return;
-                      try {
-                        const res = await fetch(`${apiBase}/api/supplier/listings/${encodeURIComponent(p.id)}`, {
-                          method: 'DELETE',
-                          headers: {
-                            Authorization: token ? `Bearer ${token}` : '',
-                            'Content-Type': 'application/json'
-                          }
-                        });
-                        if (!res.ok) {
-                          const txt = await res.text().catch(() => res.statusText || '');
-                          alert('Failed to delete listing: ' + (txt || res.status));
-                          return;
-                        }
-                        setListings(prev => prev.filter(x => String(x.id) !== String(p.id)));
-                      } catch (err:any) {
-                        alert('Failed to delete listing: ' + (err?.message || err));
-                      }
-                    }}
-                    className="px-3 py-1 bg-red-600 text-white rounded text-sm"
+
+      {/* Top Announcement Bar if enabled by designer */}
+      {showAnnouncement && (
+        <div className={`${themeStyle.announcementBg} py-2.5 px-4 text-center text-xs font-bold tracking-wide flex items-center justify-center gap-2 shadow-xs`}>
+          <Flame className="size-4 animate-pulse" />
+          <span>{announcementText}</span>
+        </div>
+      )}
+
+      {/* Hero Storefront Banner */}
+      <div className={`${themeStyle.heroBg} ${themeStyle.heroText} py-14 px-6 border-b ${themeStyle.heroBorder} relative overflow-hidden transition-all duration-300`}>
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-8 relative z-10">
+          
+          <div className="space-y-3 max-w-2xl">
+            <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-bold uppercase tracking-wider ${themeStyle.heroBadge}`}>
+              <Sparkles className="size-3.5" />
+              Verified Designer Collection
+            </div>
+            
+            <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight leading-tight">
+              {storeTitle}
+            </h1>
+            
+            <p className="text-slate-300 text-sm md:text-base leading-relaxed">
+              {storeTagline}
+            </p>
+
+            {/* Social Links if configured */}
+            {(storeSettings?.social_instagram || storeSettings?.social_twitter || storeSettings?.social_website) && (
+              <div className="flex items-center gap-3 pt-2">
+                {storeSettings.social_instagram && (
+                  <a 
+                    href={storeSettings.social_instagram.startsWith('http') ? storeSettings.social_instagram : `https://instagram.com/${storeSettings.social_instagram.replace('@', '')}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/10"
+                    title="Instagram"
                   >
-                    Delete
-                  </button>
+                    <Instagram className="size-4" />
+                  </a>
+                )}
+                {storeSettings.social_twitter && (
+                  <a 
+                    href={storeSettings.social_twitter.startsWith('http') ? storeSettings.social_twitter : `https://twitter.com/${storeSettings.social_twitter.replace('@', '')}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/10"
+                    title="Twitter / X"
+                  >
+                    <Twitter className="size-4" />
+                  </a>
+                )}
+                {storeSettings.social_website && (
+                  <a 
+                    href={storeSettings.social_website.startsWith('http') ? storeSettings.social_website : `https://${storeSettings.social_website}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/10"
+                    title="Portfolio / Website"
+                  >
+                    <Globe className="size-4" />
+                  </a>
                 )}
               </div>
-            </CardContent>
-          </Card>
-          ))}
+            )}
+          </div>
+
+          {/* Right Action Console */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <div className="px-5 py-3 rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 text-center shadow-lg">
+              <span className="block text-3xl font-black text-white">{listings.length}</span>
+              <span className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider">Available Pieces</span>
+            </div>
+
+            {isOwner && (
+              <div className="flex flex-col gap-2 w-full sm:w-auto">
+                <Button
+                  onClick={() => setLocation('/supplier/customize-store')}
+                  className="px-4 py-3 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs backdrop-blur-md border border-white/20 shadow-md transition-all flex items-center justify-center gap-2"
+                >
+                  <Paintbrush className="size-4" />
+                  Redesign My Store
+                </Button>
+
+                <Button
+                  onClick={() => setLocation('/supplier/listings/create')}
+                  className={`px-4 py-3 rounded-xl font-bold text-xs shadow-lg transition-all flex items-center justify-center gap-1.5 ${themeStyle.accentBtn}`}
+                >
+                  <StoreIcon className="size-4" />
+                  + Add New Listing
+                </Button>
+              </div>
+            )}
+          </div>
+
         </div>
       </div>
+
+      {/* Filter and Search Bar */}
+      <div className="border-b border-slate-200 bg-white shadow-xs">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          
+          {/* Categories */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
+            {['all', 't-shirt', 'hoodie', 'sweatshirt'].map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold capitalize transition-all whitespace-nowrap ${
+                  selectedCategory === cat
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                }`}
+              >
+                {cat === 'all' ? 'All Pieces' : cat}
+              </button>
+            ))}
+          </div>
+
+          {/* Search & Sort Controls */}
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1 sm:w-64">
+              <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search storefront..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-transparent bg-slate-50/50"
+              />
+            </div>
+
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
+            >
+              <option value="newest">Newest First</option>
+              <option value="price-asc">Price: Low to High</option>
+              <option value="price-desc">Price: High to Low</option>
+            </select>
+          </div>
+
+        </div>
+      </div>
+
+      {/* Products Grid */}
+      <main className="max-w-7xl mx-auto px-6 py-10 flex-grow w-full">
+        {loading ? (
+          <div className="py-24 flex flex-col items-center justify-center gap-3 text-slate-400">
+            <div className="size-10 border-4 border-indigo-600/20 border-t-indigo-600 rounded-full animate-spin" />
+            <p className="text-sm font-medium animate-pulse">Loading storefront items...</p>
+          </div>
+        ) : filteredListings.length === 0 ? (
+          <div className="py-24 text-center max-w-md mx-auto space-y-4">
+            <div className="size-16 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto border border-indigo-100">
+              <ShoppingBag className="size-8" />
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-xl font-bold text-slate-800">
+                {listings.length === 0 ? 'No Products in Store Yet' : 'No Matching Garments Found'}
+              </h2>
+              <p className="text-sm text-slate-500">
+                {listings.length === 0 
+                  ? "This designer hasn't published any public apparel listings yet. Check back soon!" 
+                  : "Try clearing your search or category filter to discover more products."}
+              </p>
+            </div>
+            {isOwner && listings.length === 0 && (
+              <Button
+                onClick={() => setLocation('/supplier/listings/create')}
+                className="mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs"
+              >
+                + Create Your First Listing
+              </Button>
+            )}
+            {listings.length > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => { setSearchQuery(''); setSelectedCategory('all'); }}
+                className="mt-2 text-xs"
+              >
+                Clear Filters
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {filteredListings.map((listing) => (
+              <StoreCard
+                key={listing.id}
+                listing={listing}
+                supplierId={supplierId}
+                isOwner={isOwner}
+                onDelete={handleDeleteListing}
+                themeStyle={themeStyle}
+              />
+            ))}
+          </div>
+        )}
+      </main>
+
       <Footer />
     </div>
   );
