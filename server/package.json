@@ -4,7 +4,7 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "dev": "cross-env NODE_ENV=development tsx --watch index.ts",
+    "dev": "npm run server:dev",
     "server:dev": "cross-env NODE_ENV=development SKIP_VITE=1 tsx --watch index.ts",
     "client:dev": "node ./node_modules/vite/bin/vite.js --config ../client/vite.config.ts",
     "build": "tsx script/build.ts",
