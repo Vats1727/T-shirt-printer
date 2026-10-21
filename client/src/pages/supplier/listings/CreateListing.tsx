@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLocation } from 'wouter';
+import { encodeId } from '@shared/obfuscate';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +16,7 @@ import {
   Globe, 
   Lock, 
   Eye, 
-  DollarSign, 
+  IndianRupee, 
   TrendingUp, 
   ShoppingBag, 
   Tag, 
@@ -127,7 +128,7 @@ export default function CreateListing() {
   }
 
   const supplierId = user?.id || (user as any)?.sub || '';
-  const storeUrl = `${window.location.origin}/store/${encodeURIComponent(String(supplierId))}`;
+  const storeUrl = `${window.location.origin}/store/${encodeId(supplierId)}`;
   const singleListingUrl = createdListing?.slug ? `${window.location.origin}/listing/${encodeURIComponent(createdListing.slug)}` : storeUrl;
 
   const getPreviewImage = (d: any, side: 'front' | 'back') => {
@@ -245,7 +246,7 @@ export default function CreateListing() {
           <Card className="shadow-sm border-slate-200/80 bg-white">
             <CardHeader className="pb-4">
               <div className="flex items-center gap-2 text-emerald-600 font-semibold text-sm">
-                <DollarSign className="size-4" />
+                <IndianRupee className="size-4" />
                 <span>Pricing & Margins</span>
               </div>
               <CardTitle className="text-xl">Set Your Retail Price</CardTitle>
@@ -254,9 +255,9 @@ export default function CreateListing() {
             <CardContent className="space-y-5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Retail Price ($)</label>
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Retail Price (₹)</label>
                   <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-semibold">$</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-semibold">₹</span>
                     <Input 
                       type="number"
                       step="0.50"
@@ -271,7 +272,7 @@ export default function CreateListing() {
                 <div className="space-y-2">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Base Production Cost</label>
                   <div className="h-11 flex items-center px-4 rounded-md bg-slate-100/80 border border-slate-200 text-slate-600 font-mono font-medium">
-                    ${baseCost.toFixed(2)} (Print + Garment)
+                    ₹{baseCost.toFixed(2)} (Print + Garment)
                   </div>
                 </div>
               </div>
@@ -289,7 +290,7 @@ export default function CreateListing() {
                 </div>
                 <div className="text-right">
                   <span className="text-2xl font-black text-emerald-700">
-                    +${profit.toFixed(2)}
+                    +₹{profit.toFixed(2)}
                   </span>
                   <Badge variant="outline" className="ml-2 bg-emerald-100/50 border-emerald-200 text-emerald-800 text-xs font-bold">
                     {marginPercent}% margin
@@ -484,7 +485,7 @@ export default function CreateListing() {
                 <div className="mt-4 text-center">
                   <h4 className="font-bold text-slate-900 text-sm">{title || 'Untitled Product'}</h4>
                   <div className="flex items-center justify-center gap-2 mt-1">
-                    <span className="text-lg font-extrabold text-indigo-600">${retailPrice.toFixed(2)}</span>
+                    <span className="text-lg font-extrabold text-indigo-600">₹{retailPrice.toFixed(2)}</span>
                     <Badge variant="outline" className="text-[10px] bg-slate-50">
                       {visibility === 'public' ? 'Live on Store' : 'Draft Only'}
                     </Badge>
@@ -522,7 +523,7 @@ export default function CreateListing() {
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-slate-400 font-medium">Retail Price:</span>
-              <span className="font-bold text-emerald-600">${retailPrice.toFixed(2)}</span>
+              <span className="font-bold text-emerald-600">₹{retailPrice.toFixed(2)}</span>
             </div>
           </div>
 

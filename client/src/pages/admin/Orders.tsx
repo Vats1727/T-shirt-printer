@@ -43,7 +43,7 @@ export default function AdminOrders() {
                       {o.supplier && <div className="text-xs text-muted-foreground">Supplier: {o.supplier.name || o.supplier.email}</div>}
                     </div>
                     <div className="text-right">
-                      <div className="text-sm">Total: <strong>${(o.total||0).toFixed ? (o.total).toFixed(2) : o.total}</strong></div>
+                      <div className="text-sm">Total: <strong>₹{(o.total||0).toFixed ? (o.total).toFixed(2) : o.total}</strong></div>
                       <div className="text-xs text-muted-foreground">Status: {o.status || 'pending'}</div>
                     </div>
                   </div>
@@ -55,7 +55,7 @@ export default function AdminOrders() {
                         <div>Qty: <strong>{it.quantity}</strong></div>
                         <div>Size: <strong>{it.size}</strong></div>
                         <div>Color: <strong>{it.color?.name || it.color || ''}</strong></div>
-                        <div>Line: <strong>${(it.line_total || 0).toFixed(2)}</strong></div>
+                        <div>Line: <strong>₹{(it.line_total || 0).toFixed(2)}</strong></div>
                       </div>
                     )) : <div className="text-sm text-muted-foreground">No items</div>}
                   </div>
@@ -78,7 +78,7 @@ export default function AdminOrders() {
                 <div className="text-sm space-y-2">
                   <div>Placed: {new Date(selected.created_at).toLocaleString()}</div>
                   <div>Supplier: {selected.supplier ? (selected.supplier.name || selected.supplier.email) : '—'}</div>
-                  <div>Total: <strong>${(selected.total || 0).toFixed(2)}</strong></div>
+                  <div>Total: <strong>₹{(selected.total || 0).toFixed(2)}</strong></div>
                   <div className="pt-2">Items:</div>
                   {selected.items.map((it:any, idx:number) => (
                     <div key={idx} className="border rounded p-2 mt-2 bg-white">
@@ -86,8 +86,8 @@ export default function AdminOrders() {
                       <div>Size: {it.size}</div>
                       <div>Color: {it.color?.name || it.color}</div>
                       <div>Qty: {it.quantity}</div>
-                      <div>Unit price: ${(it.unit_price || 0).toFixed(2)}</div>
-                      <div>Line total: ${(it.line_total || 0).toFixed(2)}</div>
+                      <div>Unit price: ₹{(it.unit_price || 0).toFixed(2)}</div>
+                      <div>Line total: ₹{(it.line_total || 0).toFixed(2)}</div>
                       {it.design_snapshot && (
                         <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 items-start">
                           <div className="w-full">

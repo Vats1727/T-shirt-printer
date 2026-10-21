@@ -2,10 +2,12 @@
   "extends": "../server/tsconfig.json",
   "compilerOptions": {
     "baseUrl": "./",
+    "jsx": "react-jsx",
+    "types": ["vite/client", "node"],
     "paths": {
       "@/*": ["src/*"],
       "@shared/*": ["../server/shared/*"]
     }
   },
-  "include": ["src/**/*", "vite-env.d.ts"]
+  "include": ["src/**/*"]
 }

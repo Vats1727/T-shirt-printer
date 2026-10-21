@@ -6,12 +6,26 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { ShieldCheck, Clock, AlertTriangle, Users } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { encodeId } from '@shared/obfuscate';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export default function AdminDashboard() {
   const [, setLocation] = useLocation();
   const { token, user } = useAuth();
+  const { toast } = useToast();
 
   const [products, setProducts] = useState<any[]>([]);
+  const [productToDelete, setProductToDelete] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -39,21 +53,20 @@ export default function AdminDashboard() {
     } catch (e) { }
   }
 
-  async function deleteProduct(id: number) {
-    if (!confirm('Delete this product? This is a soft delete and can be restored in the DB.')) return;
-    setError(null);
-    setMessage(null);
+  async function executeDeleteProduct(id: number) {
     try {
       const res = await fetch(`/api/admin/products/${id}`, { method: 'DELETE', headers: { Authorization: token ? `Bearer ${token}` : '' } });
       if (!res.ok) {
         const js = await res.json().catch(() => ({}));
-        setError(js.message || 'Failed to delete product');
+        toast({ title: 'Delete Failed', description: js.message || 'Failed to delete product', variant: 'destructive' });
       } else {
-        setMessage('Product deleted');
+        toast({ title: 'Product Deleted', description: 'Product has been removed from catalog.' });
         fetchProducts();
       }
     } catch (err: any) {
-      setError(err?.message || 'Failed to delete');
+      toast({ title: 'Error', description: err?.message || 'Failed to delete', variant: 'destructive' });
+    } finally {
+      setProductToDelete(null);
     }
   }
 
@@ -80,14 +93,14 @@ export default function AdminDashboard() {
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'men' | 'women'>('all');
   const [cardSides, setCardSides] = useState<Record<number, 'front' | 'back'>>({});
 
-  const filteredProducts = products.filter(p => {
+  const filteredProducts = products.filter((p: any) => {
     if (selectedCategory === 'all') return true;
     const cat = p.category || (p.slug?.includes('women') ? 'women' : 'men');
     return cat === selectedCategory;
   });
 
-  const menCount = products.filter(p => (p.category || (p.slug?.includes('women') ? 'women' : 'men')) === 'men').length;
-  const womenCount = products.filter(p => (p.category || (p.slug?.includes('women') ? 'women' : 'men')) === 'women').length;
+  const menCount = products.filter((p: any) => (p.category || (p.slug?.includes('women') ? 'women' : 'men')) === 'men').length;
+  const womenCount = products.filter((p: any) => (p.category || (p.slug?.includes('women') ? 'women' : 'men')) === 'women').length;
 
   return (
     <div className="max-w-7xl mx-auto p-8 space-y-8 animate-in fade-in duration-500">
@@ -190,7 +203,7 @@ export default function AdminDashboard() {
         {!loading && filteredProducts.length === 0 && <div className="text-sm text-muted-foreground py-8 text-center bg-gray-50 rounded-lg border border-dashed">No products found in this category.</div>}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mt-4">
-          {filteredProducts.map(p => {
+          {filteredProducts.map((p: any) => {
             const formatPrice = (v: any) => {
               const n = Number(v);
               return isNaN(n) ? '0.00' : n.toFixed(2);
@@ -218,14 +231,14 @@ export default function AdminDashboard() {
                       <div className="absolute top-2.5 right-2.5 z-10 flex bg-white/90 backdrop-blur rounded-full p-0.5 shadow-sm border border-slate-200 text-[11px] font-medium">
                         <button
                           type="button"
-                          onClick={(e) => { e.stopPropagation(); setCardSides(prev => ({ ...prev, [p.id]: 'front' })); }}
+                          onClick={(e: React.MouseEvent) => { e.stopPropagation(); setCardSides((prev: Record<number, 'front' | 'back'>) => ({ ...prev, [p.id]: 'front' })); }}
                           className={`px-2 py-0.5 rounded-full transition-all ${currentSide === 'front' ? 'bg-indigo-600 text-white shadow-xs font-semibold' : 'text-slate-600 hover:text-slate-900'}`}
                         >
                           Front
                         </button>
                         <button
                           type="button"
-                          onClick={(e) => { e.stopPropagation(); setCardSides(prev => ({ ...prev, [p.id]: 'back' })); }}
+                          onClick={(e: React.MouseEvent) => { e.stopPropagation(); setCardSides((prev: Record<number, 'front' | 'back'>) => ({ ...prev, [p.id]: 'back' })); }}
                           className={`px-2 py-0.5 rounded-full transition-all ${currentSide === 'back' ? 'bg-indigo-600 text-white shadow-xs font-semibold' : 'text-slate-600 hover:text-slate-900'}`}
                         >
                           Back
@@ -250,7 +263,7 @@ export default function AdminDashboard() {
                   <div className="text-sm mb-4 space-y-1 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
                     <div className="flex justify-between">
                       <span className="text-slate-600">Single unit:</span>
-                      <strong>${formatPrice(p.single_price)}</strong>
+                      <strong>₹{formatPrice(p.single_price)}</strong>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-600">Bulk min qty:</span>
@@ -258,21 +271,43 @@ export default function AdminDashboard() {
                     </div>
                     <div className="flex justify-between text-indigo-700">
                       <span>Bulk price:</span>
-                      <strong>${formatPrice(p.bulk_price)}</strong>
+                      <strong>₹{formatPrice(p.bulk_price)}</strong>
                     </div>
                   </div>
                 </div>
 
                 <div className="flex gap-2 pt-2 border-t border-slate-100">
-                  <button disabled={blocked} onClick={() => setLocation('/admin/clothes?productId=' + p.id)} className={`flex-1 py-1.5 ${blocked ? 'bg-gray-200 text-gray-500' : 'bg-indigo-600 hover:bg-indigo-700 text-white'} rounded-md text-sm font-medium transition`}>Edit</button>
+                  <button disabled={blocked} onClick={() => setLocation('/admin/clothes?productId=' + encodeId(p.id))} className={`flex-1 py-1.5 ${blocked ? 'bg-gray-200 text-gray-500' : 'bg-indigo-600 hover:bg-indigo-700 text-white'} rounded-md text-sm font-medium transition`}>Edit</button>
                   <button disabled={blocked} onClick={() => { navigator.clipboard?.writeText(window.location.origin + '/product/' + p.slug); }} className={`px-3 py-1.5 ${blocked ? 'bg-gray-100 text-gray-400' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'} rounded-md text-sm font-medium transition`}>Copy URL</button>
-                  <button disabled={blocked} onClick={() => deleteProduct(p.id)} className={`px-3 py-1.5 ${blocked ? 'bg-gray-200 text-gray-500' : 'bg-red-50 hover:bg-red-100 text-red-600'} rounded-md text-sm font-medium transition`}>Delete</button>
+                  <button disabled={blocked} onClick={() => setProductToDelete(p.id)} className={`px-3 py-1.5 ${blocked ? 'bg-gray-200 text-gray-500' : 'bg-red-50 hover:bg-red-100 text-red-600'} rounded-md text-sm font-medium transition`}>Delete</button>
                 </div>
               </div>
             );
           })}
         </div>
       </div>
+
+      <AlertDialog open={productToDelete !== null} onOpenChange={open => { if (!open) setProductToDelete(null); }}>
+        <AlertDialogContent className="rounded-2xl shadow-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-lg font-bold text-slate-900">Delete Product</AlertDialogTitle>
+            <AlertDialogDescription className="text-sm text-slate-600 mt-2">
+              Are you sure you want to remove this product from your catalog? This will soft delete the product.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (productToDelete !== null) executeDeleteProduct(productToDelete);
+              }}
+              className="bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

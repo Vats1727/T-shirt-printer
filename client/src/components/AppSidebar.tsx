@@ -1,6 +1,7 @@
 import React from 'react';
 import { useLocation, Link } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
+import { encodeId } from '@shared/obfuscate';
 import {
     Home,
     ShoppingBag,
@@ -54,7 +55,7 @@ export function AppSidebar() {
         {
             title: 'Saved Designs',
             icon: LayoutTemplate,
-            url: `/supplier/saved-designs/${user?.id || (user as any)?.sub || ''}`,
+            url: `/supplier/saved-designs/${encodeId(user?.id || (user as any)?.sub)}`,
             active: location.includes('saved-designs'),
             hidden: !isDesigner
         },

@@ -17,6 +17,15 @@ export async function createColor(req: Request, res: Response) {
   return res.status(201).json(color);
 }
 
+export async function deleteColor(req: Request, res: Response) {
+  const user = (req as any).user;
+  const ownerId = user?.sub || user?.id || null;
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ message: 'id required' });
+  await catalog.deleteColor(id, ownerId);
+  return res.status(200).json({ ok: true });
+}
+
 export async function listSizes(req: Request, res: Response) {
   const user = (req as any).user;
   const ownerId = user?.sub || user?.id || null;

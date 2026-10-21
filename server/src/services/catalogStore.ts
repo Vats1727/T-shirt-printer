@@ -40,7 +40,13 @@ export async function listColors(ownerId?: number | null): Promise<Color[]> {
   if (pool) {
     const query = ownerId ? 'SELECT id, name, hex, owner_id FROM colors WHERE owner_id = $1 OR owner_id IS NULL ORDER BY id' : 'SELECT id, name, hex, owner_id FROM colors ORDER BY id';
     const res = await pool.query(query, ownerId ? [ownerId] : []);
-    return res.rows as Color[];
+    const seen = new Set<string>();
+    return (res.rows as Color[]).filter(c => {
+      const key = `${(c.name || '').toLowerCase().trim()}-${(c.hex || '').toLowerCase().trim()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
   const items = await readJson<Color>(colorsFile);
   if (ownerId) return items.filter(i => i.owner_id === ownerId);
@@ -48,16 +54,40 @@ export async function listColors(ownerId?: number | null): Promise<Color[]> {
 }
 
 export async function createColor(payload: { name: string; hex: string; owner_id?: number | null }): Promise<Color> {
-  if (db) {
-    const [row] = await db.insert('colors').values(payload).returning();
-    return row as Color;
+  if (pool) {
+    const existing = await pool.query(
+      'SELECT id, name, hex, owner_id FROM colors WHERE lower(hex) = lower($1) AND (owner_id = $2 OR owner_id IS NULL) LIMIT 1',
+      [payload.hex.trim(), payload.owner_id || null]
+    );
+    if (existing.rows.length > 0) {
+      return existing.rows[0] as Color;
+    }
+    const res = await pool.query(
+      'INSERT INTO colors (name, hex, owner_id) VALUES ($1, $2, $3) RETURNING id, name, hex, owner_id',
+      [payload.name.trim(), payload.hex.trim(), payload.owner_id || null]
+    );
+    return res.rows[0] as Color;
   }
   const items = await readJson<Color>(colorsFile);
+  const found = items.find(i => i.hex.toLowerCase() === payload.hex.toLowerCase() && (i.owner_id === payload.owner_id || !i.owner_id));
+  if (found) return found;
   const id = (items.reduce((m, x) => Math.max(m, x.id || 0), 0) || 0) + 1;
   const color = { id, ...payload };
   items.push(color);
   await writeJson(colorsFile, items);
   return color;
+}
+
+export async function deleteColor(color_id: number, ownerId?: number | null): Promise<boolean> {
+  if (pool) {
+    const query = ownerId ? 'DELETE FROM colors WHERE id=$1 AND owner_id=$2' : 'DELETE FROM colors WHERE id=$1';
+    await pool.query(query, ownerId ? [color_id, ownerId] : [color_id]);
+    return true;
+  }
+  const items = await readJson<Color>(colorsFile);
+  const remaining = items.filter(i => !(i.id === color_id && (!ownerId || i.owner_id === ownerId)));
+  await writeJson(colorsFile, remaining);
+  return true;
 }
 
 export async function listSizes(ownerId?: number | null): Promise<Size[]> {

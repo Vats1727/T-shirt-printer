@@ -27,17 +27,34 @@ export default defineConfig({
     },
     proxy: {
       "/api": {
-        target: "http://localhost:5000",
+        target: "http://127.0.0.1:5000",
         changeOrigin: true,
         secure: false,
+        configure: (proxy) => {
+          proxy.on("error", (err, _req, res: any) => {
+            if (res && !res.headersSent && typeof res.writeHead === "function") {
+              try {
+                res.writeHead(503, { "Content-Type": "application/json" });
+                res.end(
+                  JSON.stringify({
+                    message: "Backend server is starting up or temporarily unavailable. Please retry in a moment.",
+                    code: (err as any)?.code || "BACKEND_UNAVAILABLE",
+                  })
+                );
+              } catch {
+                // Ignore write errors if socket closed
+              }
+            }
+          });
+        },
       },
       "/attached_assets": {
-        target: "http://localhost:5000",
+        target: "http://127.0.0.1:5000",
         changeOrigin: true,
         secure: false,
       },
       "/uploads": {
-        target: "http://localhost:5000",
+        target: "http://127.0.0.1:5000",
         changeOrigin: true,
         secure: false,
       },

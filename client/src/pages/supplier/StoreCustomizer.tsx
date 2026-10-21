@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,10 +19,14 @@ import {
   Check, 
   ArrowLeft,
   Eye,
-  Shirt
+  Shirt,
+  Upload,
+  Camera,
+  Trash2
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { useLocation } from 'wouter';
+import { encodeId } from '@shared/obfuscate';
 
 const THEME_OPTIONS = [
   {
@@ -81,13 +85,16 @@ export default function StoreCustomizer() {
   const [tagline, setTagline] = useState('');
   const [theme, setTheme] = useState('midnight');
   const [showAnnouncement, setShowAnnouncement] = useState(true);
-  const [announcement, setAnnouncement] = useState('🔥 NEW DROP AVAILABLE • FREE SHIPPING OVER $50');
+  const [announcement, setAnnouncement] = useState('🔥 NEW DROP AVAILABLE • FREE SHIPPING OVER ₹500');
   const [instagram, setInstagram] = useState('');
   const [twitter, setTwitter] = useState('');
   const [website, setWebsite] = useState('');
+  const [logoUrl, setLogoUrl] = useState('');
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   const designerId = user?.id || (user as any)?.sub;
-  const storeUrl = designerId ? `/store/${designerId}` : '/store';
+  const storeUrl = designerId ? `/store/${encodeId(designerId)}` : '/store';
 
   useEffect(() => {
     (async () => {
@@ -103,10 +110,11 @@ export default function StoreCustomizer() {
           setTagline(s.tagline || 'Exclusive custom apparel crafted with precision and printed on high quality blanks.');
           setTheme(s.theme || 'midnight');
           setShowAnnouncement(s.show_announcement ?? true);
-          setAnnouncement(s.announcement || '🔥 NEW DROP AVAILABLE • FREE SHIPPING OVER $50');
+          setAnnouncement(s.announcement || '🔥 NEW DROP AVAILABLE • FREE SHIPPING OVER ₹500');
           setInstagram(s.social_instagram || '');
           setTwitter(s.social_twitter || '');
           setWebsite(s.social_website || '');
+          setLogoUrl(s.logo_url || '');
         }
       } catch (e) {
         console.error('Failed to load store settings', e);
@@ -115,6 +123,72 @@ export default function StoreCustomizer() {
       }
     })();
   }, [token]);
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: 'Invalid File',
+        description: 'Please select a valid image file (PNG, JPG, SVG, WebP).',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast({
+        title: 'File Too Large',
+        description: 'Logo image must be smaller than 10MB.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setUploadingLogo(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const dataUrl = reader.result as string;
+          const res = await fetch('/api/assets', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: token ? `Bearer ${token}` : '',
+            },
+            body: JSON.stringify({
+              dataUrl,
+              filename: file.name,
+              metadata: { type: 'store_logo' },
+            }),
+          });
+
+          if (!res.ok) throw new Error('Failed to upload logo asset');
+          const assetData = await res.json();
+          setLogoUrl(assetData.url);
+
+          toast({
+            title: 'Logo Uploaded',
+            description: 'Store logo preview updated. Click "Save & Publish Store" to commit changes.',
+          });
+        } catch (err: any) {
+          toast({
+            title: 'Upload Failed',
+            description: err?.message || 'Unable to upload logo.',
+            variant: 'destructive',
+          });
+        } finally {
+          setUploadingLogo(false);
+          if (logoInputRef.current) logoInputRef.current.value = '';
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch {
+      setUploadingLogo(false);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -129,6 +203,7 @@ export default function StoreCustomizer() {
           social_instagram: instagram.trim(),
           social_twitter: twitter.trim(),
           social_website: website.trim(),
+          logo_url: logoUrl,
           updated_at: new Date().toISOString()
         }
       };
@@ -258,6 +333,72 @@ export default function StoreCustomizer() {
                   className="rounded-xl border-slate-200 resize-none text-xs"
                 />
               </div>
+
+              {/* Store Logo Upload Field */}
+              <div className="pt-3 border-t border-slate-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Store Brand Logo
+                  </label>
+                  <span className="text-[10px] text-slate-400">PNG, JPG, SVG up to 10MB</span>
+                </div>
+
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleLogoUpload}
+                />
+
+                <div className="flex items-center gap-4 p-3 bg-slate-50/80 rounded-xl border border-slate-200">
+                  {logoUrl ? (
+                    <div className="size-14 rounded-lg bg-slate-900 border border-slate-800 p-1 flex items-center justify-center shrink-0">
+                      <img
+                        src={logoUrl}
+                        alt="Store Logo"
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    </div>
+                  ) : (
+                    <div className="size-14 rounded-lg bg-slate-200 border border-slate-300 flex items-center justify-center text-slate-400 shrink-0">
+                      <Store className="size-6" />
+                    </div>
+                  )}
+
+                  <div className="space-y-1.5 flex-1 min-w-0">
+                    <div className="text-xs font-semibold text-slate-800 truncate">
+                      {logoUrl ? 'Custom brand logo active' : 'Default typography badge'}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => logoInputRef.current?.click()}
+                        disabled={uploadingLogo}
+                        className="text-xs h-7 px-2.5 rounded-lg border-slate-300"
+                      >
+                        <Upload className="size-3 mr-1" />
+                        <span>{uploadingLogo ? 'Uploading...' : logoUrl ? 'Change Logo' : 'Upload Logo'}</span>
+                      </Button>
+
+                      {logoUrl && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setLogoUrl('')}
+                          className="text-xs h-7 px-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg"
+                        >
+                          <Trash2 className="size-3 mr-1" />
+                          <span>Remove</span>
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -342,7 +483,7 @@ export default function StoreCustomizer() {
                 <Input
                   value={announcement}
                   onChange={(e) => setAnnouncement(e.target.value)}
-                  placeholder="e.g. 🔥 FREE SHIPPING ON ORDERS OVER $50 • LIMITED TIME"
+                  placeholder="e.g. 🔥 FREE SHIPPING ON ORDERS OVER ₹500 • LIMITED TIME"
                   className="rounded-xl border-slate-200 text-xs"
                 />
               </div>
@@ -414,6 +555,25 @@ export default function StoreCustomizer() {
               </Badge>
             </div>
 
+            {/* Live Storefront Mock Navbar */}
+            <div className="bg-slate-950 px-4 py-2.5 flex items-center justify-between text-white border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                {logoUrl ? (
+                  <img src={logoUrl} alt="Store Logo" className="h-6 w-auto max-w-[120px] object-contain rounded" />
+                ) : (
+                  <div className="size-6 rounded-md bg-indigo-600 flex items-center justify-center text-white">
+                    <Store className="size-3.5" />
+                  </div>
+                )}
+                <span className="font-bold text-xs tracking-tight text-white">{storeName || 'Signature Threads'}</span>
+              </div>
+              <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                <span>All Garments</span>
+                <span>T-Shirts</span>
+                <span>Hoodies</span>
+              </div>
+            </div>
+
             {/* Announcement Bar Preview */}
             {showAnnouncement && (
               <div className="bg-indigo-600 text-white py-2 px-3 text-center text-[11px] font-bold tracking-wide flex items-center justify-center gap-1.5">
@@ -462,7 +622,7 @@ export default function StoreCustomizer() {
                   <div>
                     <span className="block text-[10px] font-bold text-indigo-600 uppercase">Custom Apparel</span>
                     <span className="block text-xs font-bold text-slate-900 truncate">Men's T-Shirt</span>
-                    <span className="block text-xs font-extrabold text-slate-900 mt-1">$29.99</span>
+                    <span className="block text-xs font-extrabold text-slate-900 mt-1">₹29.99</span>
                   </div>
                 </div>
 
@@ -474,7 +634,7 @@ export default function StoreCustomizer() {
                   <div>
                     <span className="block text-[10px] font-bold text-indigo-600 uppercase">Custom Apparel</span>
                     <span className="block text-xs font-bold text-slate-900 truncate">Pullover Hoodie</span>
-                    <span className="block text-xs font-extrabold text-slate-900 mt-1">$44.99</span>
+                    <span className="block text-xs font-extrabold text-slate-900 mt-1">₹44.99</span>
                   </div>
                 </div>
               </div>

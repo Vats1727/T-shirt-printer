@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, Link } from 'wouter';
-import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
+import { encodeId, decodeId } from '@shared/obfuscate';
 import { 
   ShoppingBag, 
   ArrowLeft, 
@@ -51,15 +51,17 @@ export default function StoreProduct() {
     (async () => {
       setLoading(true);
       try {
-        const url = byId ? `${API_BASE}/api/listing/id/${encodeURIComponent(slug)}` : `${API_BASE}/api/listing/${encodeURIComponent(slug)}`;
+        const resolvedId = byId ? decodeId(slug) : slug;
+        const url = byId ? `${API_BASE}/api/listing/id/${encodeURIComponent(resolvedId)}` : `${API_BASE}/api/listing/${encodeURIComponent(slug)}`;
         const res = await fetch(url);
         if (!res.ok) {
           // Fallback if supplier query param provided
           if (supplierQuery && byId) {
-            const r2 = await fetch(`${API_BASE}/api/store/${encodeURIComponent(supplierQuery)}`);
+            const resolvedSupplier = decodeId(supplierQuery) || supplierQuery;
+            const r2 = await fetch(`${API_BASE}/api/store/${encodeURIComponent(resolvedSupplier)}`);
             if (r2.ok) {
               const js2 = await r2.json();
-              const found = (js2.listings || []).find((x: any) => String(x.id) === String(slug));
+              const found = (js2.listings || []).find((x: any) => String(x.id) === String(resolvedId));
               if (found) {
                 setListing(found);
                 setLoading(false);
@@ -84,7 +86,6 @@ export default function StoreProduct() {
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col">
-        <Header />
         <div className="flex-1 flex flex-col items-center justify-center p-12">
           <div className="size-12 border-4 border-indigo-600/20 border-t-indigo-600 rounded-full animate-spin mb-4" />
           <p className="text-slate-500 font-medium">Loading garment details...</p>
@@ -97,7 +98,6 @@ export default function StoreProduct() {
   if (!listing) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col">
-        <Header />
         <div className="flex-1 max-w-xl mx-auto px-6 py-20 text-center">
           <div className="size-16 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-4 border border-amber-200">
             <ShoppingBag className="size-8" />
@@ -123,10 +123,11 @@ export default function StoreProduct() {
   const hasBothSides = Boolean(frontImg && backImg);
 
   const priceValue = Number(listing.price || 29.99);
-  const formattedPrice = `$${priceValue.toFixed(2)}`;
-  const originalPrice = `$${(priceValue * 1.25).toFixed(2)}`;
+  const formattedPrice = `₹${priceValue.toFixed(2)}`;
+  const originalPrice = `₹${(priceValue * 1.25).toFixed(2)}`;
 
-  const storeUrl = listing.supplier_id ? `/store/${listing.supplier_id}` : '/store';
+  const resolvedSupplierId = listing.supplier_id || decodeId(supplierQuery);
+  const storeUrl = resolvedSupplierId ? `/store/${encodeId(resolvedSupplierId)}` : '/store';
 
   const handleAddToCart = () => {
     setAddedToCart(true);
@@ -151,8 +152,6 @@ export default function StoreProduct() {
 
   return (
     <div className="min-h-screen bg-slate-50/70 text-slate-900 flex flex-col font-sans">
-      <Header />
-
       {/* Breadcrumb Bar */}
       <div className="border-b border-slate-200/80 bg-white/80 backdrop-blur-md sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between text-xs text-slate-500">
@@ -328,7 +327,7 @@ export default function StoreProduct() {
                 </Badge>
               </div>
               <span className="text-xs font-medium text-indigo-700 bg-indigo-100/70 px-2.5 py-1 rounded-full">
-                Free shipping over $50
+                Free shipping over ₹500
               </span>
             </div>
 
@@ -402,7 +401,7 @@ export default function StoreProduct() {
                   ) : (
                     <>
                       <ShoppingBag className="size-4" />
-                      Add to Cart • {(priceValue * quantity).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                      Add to Cart • ₹{(priceValue * quantity).toFixed(2)}
                     </>
                   )}
                 </Button>

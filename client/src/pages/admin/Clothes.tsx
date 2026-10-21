@@ -2,9 +2,20 @@ import React, { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter, CardDescription } from '@/components/ui/card';
-import { Plus, Trash2, Save, ArrowLeft, Upload, CheckCircle, Package, Ruler, Palette, DollarSign } from 'lucide-react';
+import { Plus, Trash2, Save, ArrowLeft, Upload, CheckCircle, Package, Ruler, Palette, IndianRupee } from 'lucide-react';
 import { DesignCanvas } from '@/components/design/DesignCanvas';
 import { useToast } from '@/hooks/use-toast';
+import { decodeId } from '@shared/obfuscate';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export default function AdminClothes() {
   const { token } = useAuth();
@@ -27,7 +38,15 @@ export default function AdminClothes() {
   const [productSaved, setProductSaved] = useState(false);
   const [category, setCategory] = useState<'men' | 'women'>('men');
 
-  // Sections enabled when product is saved OR a product name is present (allows continuing without saving immediately)
+  // Confirmation modal dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void;
+  }>({ open: false, title: '', description: '', onConfirm: () => {} });
+
+  // Sections enabled when product is saved OR a product name is present
   const sectionsEnabled = productSaved || productName.trim() !== '';
 
   const FARMO_PRESETS = [
@@ -47,7 +66,7 @@ export default function AdminClothes() {
 
   function applyPreset(preset: typeof FARMO_PRESETS[0]) {
     setProductName(preset.name);
-    setCategory(preset.category);
+    setCategory(preset.category as 'men' | 'women');
     setProduct(preset.template);
     setSinglePrice(preset.singlePrice);
     setBulkMin(preset.bulkMin);
@@ -81,20 +100,20 @@ export default function AdminClothes() {
   const [bulkMin, setBulkMin] = useState<number>(100);
   const [bulkPrice, setBulkPrice] = useState<number | ''>('');
 
-  const [error, setError] = useState<string | null>(null);
-
   useEffect(() => { fetchData(); loadEditingProduct(); }, [token, product]);
+
   async function fetchData() {
-    setError(null);
     try {
-      // colors and sizes are global
       const c = await fetch('/api/admin/colors', { headers: { Authorization: token ? `Bearer ${token}` : '' } });
-      if (c.ok) setColors(await c.json()); else throw new Error('Failed to load colors');
+      if (c.ok) {
+        setColors(await c.json());
+      } else {
+        throw new Error('Failed to load colors');
+      }
 
       const s = await fetch('/api/admin/sizes', { headers: { Authorization: token ? `Bearer ${token}` : '' } });
       if (s.ok) setSizes(await s.json()); else throw new Error('Failed to load sizes');
 
-      // fetch size chart for selected product
       const sc = await fetch(`/api/admin/size-chart?product=${encodeURIComponent(product)}`, { headers: { Authorization: token ? `Bearer ${token}` : '' } });
       if (sc.ok) setSizeChart(await sc.json()); else setSizeChart([]);
 
@@ -106,7 +125,11 @@ export default function AdminClothes() {
         setInventory([]);
       }
     } catch (err: any) {
-      setError(err?.message || 'Failed to load admin data');
+      toast({
+        title: 'Error Loading Catalog',
+        description: err?.message || 'Failed to load catalog data.',
+        variant: 'destructive',
+      });
     }
   }
 
@@ -116,7 +139,7 @@ export default function AdminClothes() {
       const params = new URLSearchParams(window.location.search);
       const idStr = params.get('productId');
       if (!idStr) return;
-      const id = Number(idStr);
+      const id = decodeId(idStr);
       if (!id) return;
       setEditingProductId(id);
 
@@ -124,7 +147,6 @@ export default function AdminClothes() {
       if (!res.ok) return;
       const p = await res.json();
 
-      // populate form fields
       setProductName(p.name || '');
       if (p.category) setCategory(p.category);
       setSinglePrice(p.single_price ?? 0);
@@ -133,11 +155,8 @@ export default function AdminClothes() {
       setSelectedSizes(p.sizes || []);
       setSelectedColors(p.colors || []);
 
-      // size chart
       setSizeChart(p.sizeChart || []);
 
-      // populate designs: map returned designs (ordered) into front/back
-      // populate designs: map returned designs (ordered) into front/back
       const designsMap: any = { 
         front: { image: null, imageScale: 100, imageRotation: 0, imagePosition: { x: 200, y: 200 }, slogan: '', color: '#000000', template: 'tshirt' }, 
         back: { image: null, imageScale: 100, imageRotation: 0, imagePosition: { x: 200, y: 200 }, slogan: '', color: '#000000', template: 'tshirt' } 
@@ -168,22 +187,17 @@ export default function AdminClothes() {
         });
 
         if (Array.isArray(rawDesigns)) {
-          // Handle array format
           const front = rawDesigns.find((d: any) => d && d.side === 'front');
           const back = rawDesigns.find((d: any) => d && d.side === 'back');
           if (front) designsMap.front = mapRow(front);
           if (back) designsMap.back = mapRow(back);
-          
-          // Fallback if sides aren't labeled
           if (!front && rawDesigns[0]) designsMap.front = mapRow(rawDesigns[0]);
           if (!back && rawDesigns[1]) designsMap.back = mapRow(rawDesigns[1]);
         } else if (typeof rawDesigns === 'object') {
-          // Handle object format
           if (rawDesigns.front) designsMap.front = mapRow(rawDesigns.front);
           if (rawDesigns.back) designsMap.back = mapRow(rawDesigns.back);
         }
         
-        // If we loaded multipliers (0-1), convert to percentages (0-100+) for UI sliders
         if (designsMap.front.image && designsMap.front.imageScale <= 1.5) designsMap.front.imageScale *= 100;
         else if (!designsMap.front.image && designsMap.front.imageScale <= 1.5) designsMap.front.imageScale = 100;
         if (designsMap.back.image && designsMap.back.imageScale <= 1.5) designsMap.back.imageScale *= 100;
@@ -192,92 +206,53 @@ export default function AdminClothes() {
       setDesigns(designsMap);
       setFrontFilename(designsMap.front.image ? 'front-image' : null);
       setBackFilename(designsMap.back.image ? 'back-image' : null);
-      // ensure preview shows front when loading
       setDesignSide('front');
       setProductSaved(true);
     } catch (e) {
-      // ignore load errors silently
+      // ignore load errors
     }
   }
 
-  async function addColor(e: React.FormEvent) {
-    e.preventDefault();
-    const res = await fetch('/api/admin/colors', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' }, body: JSON.stringify({ name: colorName, hex: colorHex }) });
-    if (!res.ok) {
-      const js = await res.json().catch(() => ({}));
-      setError(js.message || 'Error adding color');
-    }
-    else { 
-      setColorName(''); 
-      setColorHex('#000000'); 
-      await fetchData(); 
-      toast({ title: 'Success', description: 'New color added successfully.' });
-    }
-  }
-
-  async function addSize(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    const res = await fetch('/api/admin/sizes', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' }, body: JSON.stringify({ label: sizeLabel }) });
-    if (!res.ok) {
-      const js = await res.json().catch(() => ({}));
-      setError(js.message || 'Error adding size');
-    } else { 
-      setSizeLabel(''); 
-      await fetchData(); 
-      toast({ title: 'Success', description: 'New size added successfully.' });
-    }
-  }
-
-  async function saveSizeChart(size_id: number, chest: string, length: string, shoulder: string) {
-    setError(null);
-    const res = await fetch('/api/admin/size-chart', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' }, body: JSON.stringify({ product, size_id, chest, length, shoulder }) });
-    if (!res.ok) {
-      const js = await res.json().catch(() => ({}));
-      setError(js.message || 'Error saving size chart');
-    } else { 
-      toast({ title: 'Success', description: 'Size chart updated successfully.' });
-      await fetchData(); 
-    }
-  }
-
-  async function deleteSize(size_id: number) {
-    if (!confirm('Delete size? This will remove it from all products.')) return;
-    const res = await fetch('/api/admin/sizes/' + size_id, { method: 'DELETE', headers: { Authorization: token ? `Bearer ${token}` : '' } });
-    if (!res.ok) setError('Failed to delete size'); 
-    else { 
-      toast({ title: 'Deleted', description: 'Size has been removed.' });
-      await fetchData(); 
-    }
-  }
-
-  async function deleteSizeChartRow(size_id: number) {
-    if (!confirm('Remove size chart entry for this product?')) return;
-    const res = await fetch(`/api/admin/size-chart?product=${encodeURIComponent(product)}&size_id=${size_id}`, { method: 'DELETE', headers: { Authorization: token ? `Bearer ${token}` : '' } });
-    if (!res.ok) setError('Failed to delete size chart'); 
-    else { 
-      toast({ title: 'Removed', description: 'Size chart entry for this product removed.' });
-      await fetchData(); 
-    }
-  }
-
-  async function upsertInventoryRow(color_id: number, size_id: number, quantity: number, price: number, product: string = 'tshirt') {
-    const res = await fetch('/api/admin/inventory', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' }, body: JSON.stringify({ product, color_id, size_id, quantity, price }) });
-    if (!res.ok) setError('Error updating inventory');
-    else { 
-      toast({ title: 'Updated', description: 'Inventory stock levels saved.' });
-      await fetchData(); 
-    }
+  function promptDeleteProduct() {
+    if (!editingProductId) return;
+    setConfirmDialog({
+      open: true,
+      title: 'Delete Product',
+      description: 'Are you sure you want to remove this product from your catalog? This will soft delete the product.',
+      onConfirm: async () => {
+        try {
+          const res = await fetch(`/api/admin/products/${editingProductId}`, {
+            method: 'DELETE',
+            headers: { Authorization: token ? `Bearer ${token}` : '' }
+          });
+          if (res.ok) {
+            toast({ title: 'Product Deleted', description: 'Product has been removed from catalog.' });
+            setEditingProductId(null);
+            setProductName('');
+            setProductSaved(false);
+            setSelectedSizes([]);
+            setSelectedColors([]);
+            setTimeout(() => setLocation('/admin/dashboard'), 800);
+          } else {
+            toast({ title: 'Delete Failed', description: 'Could not delete product.', variant: 'destructive' });
+          }
+        } catch (err: any) {
+          toast({ title: 'Error', description: err?.message || 'Failed to delete product', variant: 'destructive' });
+        }
+      }
+    });
   }
 
   async function handleSaveAll(e: React.FormEvent) {
     e.preventDefault();
     if (!productName.trim()) {
-      setError('Set product name first');
+      toast({
+        title: 'Product Name Required',
+        description: 'Please set a product name before saving.',
+        variant: 'destructive',
+      });
       return;
     }
-
-    setError(null);
 
     // Collect size chart values from inputs
     const sizeChartPayload = sizes.map((s: any) => {
@@ -312,7 +287,11 @@ export default function AdminClothes() {
 
       if (!res.ok) {
         const js = await res.json().catch(() => ({}));
-        setError(js.message || 'Failed to save product');
+        toast({
+          title: 'Failed to Save Product',
+          description: js.message || 'Error occurred while saving.',
+          variant: 'destructive',
+        });
       } else {
         const data = await res.json();
         setProductSaved(true);
@@ -323,13 +302,16 @@ export default function AdminClothes() {
           description: editingProductId ? 'Changes saved successfully.' : 'New product added to catalog.' 
         });
 
-        // Redirect to dashboard after saving
         setTimeout(() => {
           setLocation('/admin/dashboard');
-        }, 1500);
+        }, 1200);
       }
     } catch (err: any) {
-      setError(err?.message || 'Failed to save');
+      toast({
+        title: 'Save Failed',
+        description: err?.message || 'Could not complete save.',
+        variant: 'destructive',
+      });
     }
   }
 
@@ -341,7 +323,7 @@ export default function AdminClothes() {
           <p className="text-sm text-muted-foreground mt-1">Follow the steps to create a product, design front/back, assign sizes & colors, and define pricing.</p>
         </div>
         <div>
-          <button type="button" onClick={() => setLocation('/admin/dashboard')} className="inline-flex items-center gap-2 px-3 py-2 bg-gray-100 rounded">
+          <button type="button" onClick={() => setLocation('/admin/dashboard')} className="inline-flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded text-sm transition">
             <ArrowLeft className="h-4 w-4" /> Back to Dashboard
           </button>
         </div>
@@ -418,7 +400,7 @@ export default function AdminClothes() {
                             className="text-left p-2.5 rounded-lg border bg-white hover:border-indigo-500 hover:bg-indigo-50/50 transition-all text-xs font-medium shadow-2xs group"
                           >
                             <div className="font-semibold text-slate-800 group-hover:text-indigo-700">{preset.label}</div>
-                            <div className="text-[10px] text-muted-foreground font-mono mt-0.5">${preset.singlePrice.toFixed(2)} unit</div>
+                            <div className="text-[10px] text-muted-foreground font-mono mt-0.5">₹{preset.singlePrice.toFixed(2)} unit</div>
                           </button>
                         ))}
                       </div>
@@ -458,37 +440,36 @@ export default function AdminClothes() {
                                 if (!f) return;
                                 setDesignSide('front');
                                 const reader = new FileReader();
-                                  reader.onload = async () => {
-                                    const dataUrl = reader.result as string;
-                                    try {
-                                      const res = await fetch('/api/assets', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' }, body: JSON.stringify({ dataUrl, filename: f.name }) });
-                                      if (res.ok) {
-                                        const js = await res.json();
-                                        const url = js?.url || `/attached_assets/${js?.filename}`;
-                                        const img = new Image();
-                                        img.onload = () => {
-                                          const aspectRatio = img.height / img.width;
-                                          // Fits the image within a 400x400 coordinate space (90% coverage)
+                                reader.onload = async () => {
+                                  const dataUrl = reader.result as string;
+                                  try {
+                                    const res = await fetch('/api/assets', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' }, body: JSON.stringify({ dataUrl, filename: f.name }) });
+                                    if (res.ok) {
+                                      const js = await res.json();
+                                      const url = js?.url || `/attached_assets/${js?.filename}`;
+                                      const img = new Image();
+                                      img.onload = () => {
+                                        const aspectRatio = img.height / img.width;
+                                        const fitScale = Math.min(0.9, 0.9 / aspectRatio);
+                                        const scalePct = Math.round(fitScale * 100);
+                                        setDesigns((d: any) => ({ ...d, front: { ...d.front, image: url, imageScale: scalePct, imagePosition: { x: 200, y: 200 } } }));
+                                      };
+                                      img.onerror = () => {
+                                        const fimg = new Image();
+                                        fimg.onload = () => {
+                                          const aspectRatio = fimg.height / fimg.width;
                                           const fitScale = Math.min(0.9, 0.9 / aspectRatio);
                                           const scalePct = Math.round(fitScale * 100);
-                                          setDesigns((d: any) => ({ ...d, front: { ...d.front, image: url, imageScale: scalePct, imagePosition: { x: 200, y: 200 } } }));
+                                          setDesigns((d: any) => ({ ...d, front: { ...d.front, image: dataUrl, imageScale: scalePct, imagePosition: { x: 200, y: 200 } } }));
                                         };
-                                        img.onerror = () => {
-                                          const fimg = new Image();
-                                          fimg.onload = () => {
-                                            const aspectRatio = fimg.height / fimg.width;
-                                            const fitScale = Math.min(0.9, 0.9 / aspectRatio);
-                                            const scalePct = Math.round(fitScale * 100);
-                                            setDesigns((d: any) => ({ ...d, front: { ...d.front, image: dataUrl, imageScale: scalePct, imagePosition: { x: 200, y: 200 } } }));
-                                          };
-                                          fimg.src = dataUrl;
-                                        };
-                                        img.src = url;
-                                        return;
-                                      }
-                                    } catch (err) {}
-                                    const img = new Image(); img.onload = () => { const aspectRatio = img.height / img.width; const fitScale = Math.min(0.9, 0.9 / aspectRatio); const scalePct = Math.round(fitScale * 100); setDesigns((d: any) => ({ ...d, front: { ...d.front, image: dataUrl, imageScale: scalePct, imagePosition: { x: 200, y: 200 } } })); }; img.src = dataUrl;
-                                  };
+                                        fimg.src = dataUrl;
+                                      };
+                                      img.src = url;
+                                      return;
+                                    }
+                                  } catch (err) {}
+                                  const img = new Image(); img.onload = () => { const aspectRatio = img.height / img.width; const fitScale = Math.min(0.9, 0.9 / aspectRatio); const scalePct = Math.round(fitScale * 100); setDesigns((d: any) => ({ ...d, front: { ...d.front, image: dataUrl, imageScale: scalePct, imagePosition: { x: 200, y: 200 } } })); }; img.src = dataUrl;
+                                };
                                 reader.readAsDataURL(f);
                               }} />
                             </label>
@@ -507,36 +488,36 @@ export default function AdminClothes() {
                                 if (!f) return;
                                 setDesignSide('back');
                                 const reader = new FileReader();
-                                  reader.onload = async () => {
-                                    const dataUrl = reader.result as string;
-                                    try {
-                                      const res = await fetch('/api/assets', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' }, body: JSON.stringify({ dataUrl, filename: f.name }) });
-                                      if (res.ok) {
-                                        const js = await res.json();
-                                        const url = js?.url || `/attached_assets/${js?.filename}`;
-                                        const img = new Image();
-                                        img.onload = () => {
-                                          const aspectRatio = img.height / img.width;
+                                reader.onload = async () => {
+                                  const dataUrl = reader.result as string;
+                                  try {
+                                    const res = await fetch('/api/assets', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' }, body: JSON.stringify({ dataUrl, filename: f.name }) });
+                                    if (res.ok) {
+                                      const js = await res.json();
+                                      const url = js?.url || `/attached_assets/${js?.filename}`;
+                                      const img = new Image();
+                                      img.onload = () => {
+                                        const aspectRatio = img.height / img.width;
+                                        const fitScale = Math.min(0.9, 0.9 / aspectRatio);
+                                        const scalePct = Math.round(fitScale * 100);
+                                        setDesigns((d: any) => ({ ...d, back: { ...d.back, image: url, imageScale: scalePct, imagePosition: { x: 200, y: 200 } } }));
+                                      };
+                                      img.onerror = () => {
+                                        const fimg = new Image();
+                                        fimg.onload = () => {
+                                          const aspectRatio = fimg.height / fimg.width;
                                           const fitScale = Math.min(0.9, 0.9 / aspectRatio);
                                           const scalePct = Math.round(fitScale * 100);
-                                          setDesigns((d: any) => ({ ...d, back: { ...d.back, image: url, imageScale: scalePct, imagePosition: { x: 200, y: 200 } } }));
+                                          setDesigns((d: any) => ({ ...d, back: { ...d.back, image: dataUrl, imageScale: scalePct, imagePosition: { x: 200, y: 200 } } }));
                                         };
-                                        img.onerror = () => {
-                                          const fimg = new Image();
-                                          fimg.onload = () => {
-                                            const aspectRatio = fimg.height / fimg.width;
-                                            const fitScale = Math.min(0.9, 0.9 / aspectRatio);
-                                            const scalePct = Math.round(fitScale * 100);
-                                            setDesigns((d: any) => ({ ...d, back: { ...d.back, image: dataUrl, imageScale: scalePct, imagePosition: { x: 200, y: 200 } } }));
-                                          };
-                                          fimg.src = dataUrl;
-                                        };
-                                        img.src = url;
-                                        return;
-                                      }
-                                    } catch (err) {}
-                                    const img = new Image(); img.onload = () => { const aspectRatio = img.height / img.width; const fitScale = Math.min(0.9, 0.9 / aspectRatio); const scalePct = Math.round(fitScale * 100); setDesigns((d: any) => ({ ...d, back: { ...d.back, image: dataUrl, imageScale: scalePct, imagePosition: { x: 200, y: 200 } } })); }; img.src = dataUrl;
-                                  };
+                                        fimg.src = dataUrl;
+                                      };
+                                      img.src = url;
+                                      return;
+                                    }
+                                  } catch (err) {}
+                                  const img = new Image(); img.onload = () => { const aspectRatio = img.height / img.width; const fitScale = Math.min(0.9, 0.9 / aspectRatio); const scalePct = Math.round(fitScale * 100); setDesigns((d: any) => ({ ...d, back: { ...d.back, image: dataUrl, imageScale: scalePct, imagePosition: { x: 200, y: 200 } } })); }; img.src = dataUrl;
+                                };
                                 reader.readAsDataURL(f);
                               }} />
                             </label>
@@ -544,7 +525,6 @@ export default function AdminClothes() {
                           </div>
                         </div>
                       </div>
-
                     </div>
                   </section>
                 </div>
@@ -705,19 +685,18 @@ export default function AdminClothes() {
                     <div className={`${sectionsEnabled ? '' : 'opacity-60 pointer-events-none'}`}>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
                         <div>
-                          <label className="block text-sm font-medium mb-1">Single unit price</label>
-                          <input type="number" value={singlePrice as any} onChange={e => setSinglePrice(e.target.value === '' ? '' : Number(e.target.value))} className="border px-3 py-2 rounded w-full" placeholder="0.00" />
+                          <label className="block text-sm font-medium mb-1">Single unit price (₹)</label>
+                          <input type="number" step="0.01" value={singlePrice as any} onChange={e => setSinglePrice(e.target.value === '' ? '' : Number(e.target.value))} className="border px-3 py-2 rounded w-full" placeholder="0.00" />
                         </div>
                         <div>
                           <label className="block text-sm font-medium mb-1">Bulk minimum qty</label>
                           <input type="number" value={bulkMin} onChange={e => setBulkMin(Number(e.target.value))} className="border px-3 py-2 rounded w-full" />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium mb-1">Bulk price</label>
-                          <input type="number" value={bulkPrice as any} onChange={e => setBulkPrice(e.target.value === '' ? '' : Number(e.target.value))} className="border px-3 py-2 rounded w-full" placeholder="0.00" />
+                          <label className="block text-sm font-medium mb-1">Bulk price (₹)</label>
+                          <input type="number" step="0.01" value={bulkPrice as any} onChange={e => setBulkPrice(e.target.value === '' ? '' : Number(e.target.value))} className="border px-3 py-2 rounded w-full" placeholder="0.00" />
                         </div>
                       </div>
-
                     </div>
                   </section>
                 </div>
@@ -733,8 +712,8 @@ export default function AdminClothes() {
                 <CardDescription className="text-sm text-muted-foreground">Preview your design and submit when ready.</CardDescription>
               </CardHeader>
               <CardContent>
-            <div className="p-4 flex items-center justify-center bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 overflow-hidden w-full max-w-[420px] mx-auto aspect-square">
-              <DesignCanvas
+                <div className="p-4 flex items-center justify-center bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 overflow-hidden w-full max-w-[420px] mx-auto aspect-square">
+                  <DesignCanvas
                     side={designSide}
                     slogan={designs[designSide].slogan}
                     color={designs[designSide].color}
@@ -766,28 +745,18 @@ export default function AdminClothes() {
                   >
                     <Save className="h-4 w-4" /> Save product
                   </button>
-                  {editingProductId && <button type="button" onClick={async () => {
-                    if (!confirm('Delete this product? This is a soft delete and will hide it from lists.')) return;
-                    try {
-                      const res = await fetch(`/api/admin/products/${editingProductId}`, { method: 'DELETE', headers: { Authorization: token ? `Bearer ${token}` : '' } });
-                      if (!res.ok) {
-                        const js = await res.json().catch(() => ({}));
-                        setError(js.message || 'Failed to delete product');
-                      } else {
-                        toast({ title: 'Deleted', description: 'Product has been removed.' });
-                        setEditingProductId(null);
-                        setProductName(''); setProductSaved(false);
-                        setSelectedSizes([]); setSelectedColors([]);
-                      }
-                    } catch (err: any) {
-                      setError(err?.message || 'Failed to delete');
-                    }
-                  }} className="w-full sm:flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 bg-red-600 text-white rounded shadow-md">Delete product</button>}
+                  {editingProductId && (
+                    <button
+                      type="button"
+                      onClick={promptDeleteProduct}
+                      className="w-full sm:flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 bg-red-600 text-white rounded shadow-md"
+                    >
+                      Delete product
+                    </button>
+                  )}
                 </div>
               </CardFooter>
             </Card>
-
-            {error && <div className="text-sm font-medium text-red-600 bg-red-50 p-3 rounded-lg border border-red-100 flex items-center gap-2 mt-4 animate-in fade-in zoom-in-95"><Trash2 className="h-4 w-4" /> {error}</div>}
           </aside>
         </div>
       </form>
@@ -796,10 +765,35 @@ export default function AdminClothes() {
       <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-lg px-4 sm:hidden">
         <div className="bg-white border shadow-lg rounded-lg p-3 flex gap-3">
           <button onClick={() => (document.getElementById('save-product-btn') as HTMLButtonElement | null)?.click()} className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded shadow-md">Save</button>
-          {editingProductId && <button onClick={async () => { if (!confirm('Delete this product?')) return; const res = await fetch(`/api/admin/products/${editingProductId}`, { method: 'DELETE', headers: { Authorization: token ? `Bearer ${token}` : '' } }); if (res.ok) { toast({ title: 'Deleted', description: 'Product has been removed.' }); setEditingProductId(null); setProductName(''); setProductSaved(false); setSelectedSizes([]); setSelectedColors([]); } else { setError('Failed to delete'); } }} className="px-4 py-3 bg-red-600 text-white rounded">Delete</button>}
+          {editingProductId && (
+            <button onClick={promptDeleteProduct} className="px-4 py-3 bg-red-600 text-white rounded">Delete</button>
+          )}
         </div>
       </div>
 
+      {/* Styled Project Alert Dialog (Replaces native browser confirm()) */}
+      <AlertDialog open={confirmDialog.open} onOpenChange={open => setConfirmDialog(prev => ({ ...prev, open }))}>
+        <AlertDialogContent className="rounded-2xl shadow-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-lg font-bold text-slate-900">{confirmDialog.title}</AlertDialogTitle>
+            <AlertDialogDescription className="text-sm text-slate-600 mt-2">
+              {confirmDialog.description}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                confirmDialog.onConfirm();
+                setConfirmDialog(prev => ({ ...prev, open: false }));
+              }}
+              className="bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold"
+            >
+              Confirm
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

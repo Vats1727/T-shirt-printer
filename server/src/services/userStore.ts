@@ -163,15 +163,17 @@ export async function getStoreSettings(userId: number) {
 }
 
 export async function updateStoreSettings(userId: number, settings: any) {
+  const current = await getStoreSettings(userId);
+  const merged = { ...(current?.store_settings || {}), ...(settings || {}) };
   const pool = getPool();
   if (pool) {
-    await pool.query('UPDATE users SET store_settings = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(settings || {}), userId]);
+    await pool.query('UPDATE users SET store_settings = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(merged), userId]);
     return true;
   }
   const users = await readUsers();
   const idx = users.findIndex(u => u.id === userId);
   if (idx !== -1) {
-    users[idx].store_settings = settings || {};
+    users[idx].store_settings = merged;
     await writeUsers(users);
     return true;
   }

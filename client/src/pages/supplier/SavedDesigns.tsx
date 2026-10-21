@@ -6,13 +6,28 @@ import { Button } from '@/components/ui/button';
 import { DesignCanvas } from '@/components/design/DesignCanvas';
 import { useLocation } from 'wouter';
 import { Trash2, ExternalLink, Eye, Copy, Check } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { decodeId } from '@shared/obfuscate';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export default function SavedDesignsPage({ params }: { params?: { designerId?: string } }) {
   const { token } = useAuth();
+  const { toast } = useToast();
   const [, setLocation] = useLocation();
-  const designerIdToLoad = params?.designerId;
+  const rawDesignerId = params?.designerId;
+  const designerIdToLoad = rawDesignerId ? decodeId(rawDesignerId) || rawDesignerId : undefined;
   const [designs, setDesigns] = useState<Array<any>>([]);
   const [deletingIds, setDeletingIds] = useState<number[]>([]);
+  const [designToDelete, setDesignToDelete] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [activeDesign, setActiveDesign] = useState<any | null>(null);
@@ -99,7 +114,14 @@ export default function SavedDesignsPage({ params }: { params?: { designerId?: s
   const [copiedAll, setCopiedAll] = useState(false);
   
   const copyAllData = () => {
-    if (!designs || designs.length === 0) return alert('No designs to copy');
+    if (!designs || designs.length === 0) {
+      toast({
+        title: 'No Designs',
+        description: 'There are no designs available to copy.',
+        variant: 'destructive',
+      });
+      return;
+    }
     
     const allData = designs.map(design => {
       const dataToCopy = {
@@ -126,11 +148,14 @@ export default function SavedDesignsPage({ params }: { params?: { designerId?: s
     const jsonString = JSON.stringify(allData, null, 2);
     navigator.clipboard.writeText(jsonString);
     setCopiedAll(true);
+    toast({
+      title: 'Copied',
+      description: 'All designs copied to clipboard.',
+    });
     setTimeout(() => setCopiedAll(false), 2000);
   };
 
-  const deleteDesign = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this design?')) return;
+  const executeDeleteDesign = async (id: number) => {
     setDeletingIds(prev => [...prev, id]);
     try {
       const res = await fetch(`/api/designs/${id}`, {
@@ -139,13 +164,26 @@ export default function SavedDesignsPage({ params }: { params?: { designerId?: s
       });
       if (res.ok) {
         setDesigns(prev => prev.filter(d => d.id !== id));
+        toast({
+          title: 'Design Deleted',
+          description: 'The design has been removed.',
+        });
       } else {
-        alert('Failed to delete design');
+        toast({
+          title: 'Delete Failed',
+          description: 'Failed to delete design.',
+          variant: 'destructive',
+        });
       }
-    } catch (e) {
-      alert('Error deleting design');
+    } catch (e: any) {
+      toast({
+        title: 'Error',
+        description: e?.message || 'Error deleting design.',
+        variant: 'destructive',
+      });
     } finally {
       setDeletingIds(prev => prev.filter(dId => dId !== id));
+      setDesignToDelete(null);
     }
   };
 
@@ -252,7 +290,7 @@ export default function SavedDesignsPage({ params }: { params?: { designerId?: s
                         variant="ghost" 
                         size="icon" 
                         className="h-8 w-8 text-slate-400 hover:text-red-500 hover:bg-red-50"
-                        onClick={() => deleteDesign(design.id)}
+                        onClick={() => setDesignToDelete(design.id)}
                         disabled={deletingIds.includes(design.id)}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -350,7 +388,7 @@ export default function SavedDesignsPage({ params }: { params?: { designerId?: s
                         template={activeDesign.template || 'tshirt'}
                         templateColor={activeDesign.templateColor || '#ffffff'}
                         showTemplate={true}
-                        imageTintColor={previewColor}
+                        imageTintColor={previewColor || undefined}
                         tintImage={true}
                         image={((): any => {
                            const sideData = activeDesign.version?.sides?.find((s:any)=>s.name===previewSide);
@@ -418,6 +456,29 @@ export default function SavedDesignsPage({ params }: { params?: { designerId?: s
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Styled Project Alert Dialog for Deleting Saved Designs */}
+      <AlertDialog open={designToDelete !== null} onOpenChange={open => { if (!open) setDesignToDelete(null); }}>
+        <AlertDialogContent className="rounded-2xl shadow-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-lg font-bold text-slate-900">Delete Design</AlertDialogTitle>
+            <AlertDialogDescription className="text-sm text-slate-600 mt-2">
+              Are you sure you want to delete this saved design? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (designToDelete !== null) executeDeleteDesign(designToDelete);
+              }}
+              className="bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

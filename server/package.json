@@ -5,7 +5,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "npm run server:dev",
-    "server:dev": "cross-env NODE_ENV=development SKIP_VITE=1 tsx --watch index.ts",
+    "server:dev": "cross-env NODE_ENV=development SKIP_VITE=1 tsx watch --exclude uploads --exclude \"*.json\" index.ts",
     "client:dev": "node ./node_modules/vite/bin/vite.js --config ../client/vite.config.ts",
     "build": "tsx script/build.ts",
     "start": "npm run server:dev",

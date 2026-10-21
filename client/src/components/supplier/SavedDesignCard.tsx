@@ -85,7 +85,7 @@ export default function SavedDesignCard({ sd, onView, onUse }: Props) {
     if (v === undefined || v === null) return '—';
     const n = Number(v);
     if (isNaN(n)) return String(v);
-    return new Intl.NumberFormat(undefined, {style: 'currency', currency: 'USD', maximumFractionDigits: 0}).format(n);
+    return `₹${n.toLocaleString('en-IN')}`;
   };
 
   return (

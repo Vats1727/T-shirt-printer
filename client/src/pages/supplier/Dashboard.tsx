@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Plus, LayoutTemplate, Store, Copy, ExternalLink, Package, Check, ChevronRight, Paintbrush } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { encodeId } from '@shared/obfuscate';
 
 export default function SupplierDashboard() {
   const { token, user, updateUser } = useAuth();
@@ -108,7 +109,7 @@ export default function SupplierDashboard() {
 
   const openStore = () => {
     const sid = (user && (user.id || (user as any).sub)) ? (user.id || (user as any).sub) : '';
-    const url = sid ? `${CLIENT_ORIGIN}/store/${encodeURIComponent(String(sid))}` : `${CLIENT_ORIGIN}/store`;
+    const url = sid ? `${CLIENT_ORIGIN}/store/${encodeId(sid)}` : `${CLIENT_ORIGIN}/store`;
     window.open(url, '_blank');
   };
 
@@ -133,7 +134,7 @@ export default function SupplierDashboard() {
               Choose Print Provider
             </Button>
           )}
-          <Button variant="outline" onClick={() => setLocation(`/supplier/saved-designs/${user?.id || (user as any)?.sub || ''}`)} className="gap-2 border-primary/20 hover:bg-primary/5 text-primary">
+          <Button variant="outline" onClick={() => setLocation(`/supplier/saved-designs/${encodeId(user?.id || (user as any)?.sub)}`)} className="gap-2 border-primary/20 hover:bg-primary/5 text-primary">
             <LayoutTemplate className="size-4" />
             Saved Designs
           </Button>
@@ -195,7 +196,7 @@ export default function SupplierDashboard() {
                   />
                   <div className="absolute top-3 right-3">
                     <Badge variant="secondary" className="bg-white/80 backdrop-blur-md shadow-sm border-none font-bold text-indigo-600">
-                      ${Number(p.single_price || 0).toFixed(2)}
+                      ₹{Number(p.single_price || 0).toFixed(2)}
                     </Badge>
                   </div>
                 </div>
@@ -257,7 +258,7 @@ export default function SupplierDashboard() {
 
                 <div className="p-4 pt-0 mt-auto">
                   <Button 
-                    onClick={() => setLocation('/supplier/product/' + p.id)} 
+                    onClick={() => setLocation('/supplier/product/' + encodeId(p.id))} 
                     className="w-full bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-100 group/btn transition-all active:scale-[0.98]"
                   >
                     Start Designing

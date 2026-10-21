@@ -7,12 +7,13 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { ChevronLeft, Save, Palette, Type, Image as ImageIcon, DollarSign, Loader2 } from 'lucide-react';
+import { ChevronLeft, Save, Palette, Type, Image as ImageIcon, IndianRupee, Loader2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { decodeId } from '@shared/obfuscate';
 
 export default function SupplierProductOrder() {
   const [match, params] = useRoute('/supplier/product/:id');
-  const id = params?.id ? Number(params.id) : null;
+  const id = params?.id ? decodeId(params.id) : null;
   const [, setLocation] = useLocation();
 
   const { token } = useAuth();
@@ -295,7 +296,7 @@ export default function SupplierProductOrder() {
   // out so it can be re-enabled later.
   /*
   async function placeOrder() {
-    if (!selectedColor) return alert('Choose a color');
+    if (!selectedColor) return;
     // gather items from sizeQuantities
     const items: Array<any> = [];
     let totalQty = 0;
@@ -305,7 +306,7 @@ export default function SupplierProductOrder() {
         totalQty += qn;
       }
     }
-    if (totalQty <= 0) return alert('Choose at least one size and quantity');
+    if (totalQty <= 0) return;
 
     // pricing: if bulk order and meets bulk_min, prefer bulk_price, else single_price
     const unitPrice = (orderType === 'bulk' && product.bulk_min && totalQty >= Number(product.bulk_min) && product.bulk_price) ? Number(product.bulk_price) : Number(product.single_price || 0);
@@ -388,9 +389,9 @@ export default function SupplierProductOrder() {
       product: product?.slug || String(product?.id || 'tshirt'),
       template: frontState.template || product?.template || 'tshirt',
       templateColor: frontState.templateColor || '#ffffff',
-      // convert dollars to integer cents
+      // convert rupees to paise
       price_cents: Math.round(Number(priceInput || 0) * 100),
-      currency: 'USD',
+      currency: 'INR',
       version: {
         versionName: 'supplier-save',
         sides: [buildSide(frontState, 'front'), buildSide(backState, 'back')],
@@ -610,7 +611,7 @@ export default function SupplierProductOrder() {
                     <span className="hidden sm:inline">Logo</span>
                   </TabsTrigger>
                   <TabsTrigger value="price" className="gap-2 data-[state=active]:bg-white data-[state=active]:text-indigo-600 data-[state=active]:shadow-sm" disabled={selectedColors.length === 0}>
-                    <DollarSign className="size-4" />
+                    <IndianRupee className="size-4" />
                     <span className="hidden sm:inline">Price</span>
                   </TabsTrigger>
                 </TabsList>
@@ -792,7 +793,7 @@ export default function SupplierProductOrder() {
                     <div className="space-y-2">
                       <label className="text-sm font-semibold italic text-indigo-900">Retail Price (for your Listing)</label>
                       <div className="relative">
-                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-indigo-600/60" />
+                        <IndianRupee className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-indigo-600/60" />
                         <Input 
                           type="number" 
                           step="0.01" 
@@ -818,10 +819,10 @@ export default function SupplierProductOrder() {
               slogan={slogan}
               color={color}
               template={template || product.template || 'tshirt'}
-              templateImage={templateImage}
+              templateImage={templateImage || undefined}
               showTemplate={true}
               templateColor={templateColor}
-              imageTintColor={imageTintColor}
+              imageTintColor={imageTintColor || undefined}
               tintImage={false}
               forceTemplateFill={false}
               textSize={textSize}
@@ -875,10 +876,10 @@ export default function SupplierProductOrder() {
           slogan={frontState.slogan}
           color={frontState.color}
           template={frontState.template || product.template}
-          templateImage={frontState.templateImage}
+          templateImage={frontState.templateImage || undefined}
           showTemplate={true}
           templateColor={frontState.templateColor}
-          imageTintColor={frontState.imageTintColor}
+          imageTintColor={frontState.imageTintColor || undefined}
           tintImage={false}
           forceTemplateFill={false}
           textSize={frontState.textSize}
@@ -897,10 +898,10 @@ export default function SupplierProductOrder() {
           slogan={backState.slogan}
           color={backState.color}
           template={backState.template || product.template}
-          templateImage={backState.templateImage}
+          templateImage={backState.templateImage || undefined}
           showTemplate={true}
           templateColor={backState.templateColor}
-          imageTintColor={backState.imageTintColor}
+          imageTintColor={backState.imageTintColor || undefined}
           tintImage={false}
           forceTemplateFill={false}
           textSize={backState.textSize}

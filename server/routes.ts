@@ -81,6 +81,7 @@ export async function registerRoutes(
   // Admin endpoints (protected)
   app.get('/api/admin/colors', requireAuth, requireRole('print_provider'), safe(adminCtrl.listColors));
   app.post('/api/admin/colors', requireAuth, requireRole('print_provider'), safe(adminCtrl.createColor));
+  app.delete('/api/admin/colors/:id', requireAuth, requireRole('print_provider'), safe(adminCtrl.deleteColor));
 
   app.get('/api/admin/sizes', requireAuth, requireRole('print_provider'), safe(adminCtrl.listSizes));
   app.post('/api/admin/sizes', requireAuth, requireRole('print_provider'), safe(adminCtrl.createSize));
@@ -158,7 +159,9 @@ export async function registerRoutes(
 
   // JSON endpoint to fetch listings for a supplier storefront
   app.get('/api/store/:supplierId', safe(async (req, res) => {
-    const supplierId = req.params.supplierId;
+    const { decodeId } = await import('./shared/obfuscate');
+    const rawParam = req.params.supplierId;
+    const supplierId = decodeId(rawParam) || rawParam;
     const listings = await (await import('./src/services/listingsStore')).listListingsBySupplier(supplierId);
     const enhanced: any[] = [];
     const fs = await import('fs/promises');

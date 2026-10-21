@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import * as listingsStore from '../services/listingsStore';
+import { fmtErr } from '../utils';
 
 export async function createListing(req: Request, res: Response) {
   const user = (req as any).user;
@@ -26,7 +27,7 @@ export async function createListing(req: Request, res: Response) {
     }
     return res.status(201).json({ id, slug: row?.slug || null, published_url: publishedUrl });
   } catch (e: unknown) {
-    console.error('createListing error', (await import('../utils')).fmtErr(e));
+    console.error('createListing error', fmtErr(e));
     return res.status(500).json({ message: 'Failed to create listing' });
   }
 }
@@ -38,7 +39,7 @@ export async function listListings(req: Request, res: Response) {
     const rows = await listingsStore.listListingsBySupplier(user.sub || user.id || null);
     return res.json({ listings: rows });
   } catch (e: unknown) {
-    console.error('listListings error', (await import('../utils')).fmtErr(e));
+    console.error('listListings error', fmtErr(e));
     return res.status(500).json({ message: 'Failed to list listings' });
   }
 }
@@ -147,7 +148,7 @@ export async function getPublicListing(req: Request, res: Response) {
     res.set('Content-Type','text/html; charset=utf-8');
     return res.send(html);
   } catch (e: unknown) {
-    console.error('getPublicListing error', (await import('../utils')).fmtErr(e));
+    console.error('getPublicListing error', fmtErr(e));
     return res.status(500).send('Server error');
   }
 }
@@ -210,7 +211,7 @@ export async function getSupplierStore(req: Request, res: Response) {
     res.set('Content-Type','text/html; charset=utf-8');
     return res.send(html);
   } catch (e: unknown) {
-    console.error('getSupplierStore error', (await import('../utils')).fmtErr(e));
+    console.error('getSupplierStore error', fmtErr(e));
     return res.status(500).send('Server error');
   }
 }
@@ -225,7 +226,7 @@ export async function getListingJson(req: Request, res: Response) {
     const { preview_url, preview_asset_id, preview_group } = await resolveListingPreview(row);
     return res.json({ listing: { ...row, preview_url, preview_asset_id, preview_group } });
   } catch (e: unknown) {
-    console.error('getListingJson error', (await import('../utils')).fmtErr(e));
+    console.error('getListingJson error', fmtErr(e));
     return res.status(500).json({ message: 'Server error' });
   }
 }
@@ -316,7 +317,8 @@ async function resolveListingPreview(row: any) {
 
 export async function getListingByIdJson(req: Request, res: Response) {
   try {
-    const id = Number(req.params.id || 0);
+    const { decodeId } = await import('../../shared/obfuscate');
+    const id = decodeId(req.params.id);
     if (!id) return res.status(400).json({ message: 'Missing id' });
     const row = await listingsStore.getListingById(id);
     if (!row) return res.status(404).json({ message: 'Listing not found' });
@@ -324,7 +326,7 @@ export async function getListingByIdJson(req: Request, res: Response) {
     const { preview_url, preview_asset_id, preview_group } = await resolveListingPreview(row);
     return res.json({ listing: { ...row, preview_url, preview_asset_id, preview_group } });
   } catch (e: unknown) {
-    console.error('getListingByIdJson error', (await import('../utils')).fmtErr(e));
+    console.error('getListingByIdJson error', fmtErr(e));
     return res.status(500).json({ message: 'Server error' });
   }
 }
@@ -332,7 +334,8 @@ export async function getListingByIdJson(req: Request, res: Response) {
 export async function deleteListing(req: Request, res: Response) {
   const user = (req as any).user;
   if (!user) return res.status(401).json({ message: 'Not authenticated' });
-  const id = Number(req.params.id || 0);
+  const { decodeId } = await import('../../shared/obfuscate');
+  const id = decodeId(req.params.id);
   if (!id) return res.status(400).json({ message: 'Missing id' });
   try {
     console.log('deleteListing attempt', { id, userId: user.sub || user.id || null });
@@ -342,7 +345,7 @@ export async function deleteListing(req: Request, res: Response) {
     if (!ok) return res.status(404).json({ message: 'Listing not found or not owned by you' });
     return res.json({ ok: true });
   } catch (e: unknown) {
-    console.error('deleteListing error', (await import('../utils')).fmtErr(e));
+    console.error('deleteListing error', fmtErr(e));
     return res.status(500).json({ message: 'Failed to delete listing' });
   }
 }

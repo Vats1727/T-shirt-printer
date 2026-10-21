@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
+import { encodeId, decodeId } from '@shared/obfuscate';
 import { 
   ShoppingBag, 
   Trash2, 
@@ -21,6 +22,17 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { useLocation } from 'wouter';
+import { useToast } from '@/hooks/use-toast';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 // Theme Presets for Storefront
 const THEME_STYLES: Record<string, {
@@ -111,7 +123,7 @@ function StoreCard({
   const currentImg = (activeSide === 'back' && backImg) ? backImg : frontImg;
   const hasBothSides = Boolean(frontImg && backImg);
 
-  const productUrl = `/listing/id/${encodeURIComponent(listing.id)}?supplier=${encodeURIComponent(supplierId)}`;
+  const productUrl = `/listing/id/${encodeId(listing.id)}${supplierId ? `?supplier=${encodeId(supplierId)}` : ''}`;
 
   const handleCardClick = () => {
     setLocation(productUrl);
@@ -173,7 +185,7 @@ function StoreCard({
         {/* Price Badge */}
         <div className="absolute top-3.5 right-3.5 z-10">
           <Badge className="bg-white/95 backdrop-blur-md text-slate-900 border border-slate-200 font-extrabold shadow-sm px-2.5 py-1 text-sm">
-            ${Number(listing.price || 29.99).toFixed(2)}
+            ₹{Number(listing.price || 29.99).toFixed(2)}
           </Badge>
         </div>
 
@@ -228,7 +240,8 @@ function StoreCard({
 export default function StorePage() {
   const [, setLocation] = useLocation();
   const rawPath = (typeof window !== 'undefined' && window.location && window.location.pathname) ? window.location.pathname : '';
-  const supplierId = (rawPath.split('/').filter(Boolean).pop() || '');
+  const rawParam = (rawPath.split('/').filter(Boolean).pop() || '');
+  const supplierId = decodeId(rawParam) || rawParam;
   const [listings, setListings] = useState<any[]>([]);
   const [designer, setDesigner] = useState<any>(null);
   const [storeSettings, setStoreSettings] = useState<any>({});
@@ -270,10 +283,15 @@ export default function StorePage() {
     })();
   }, [supplierId]);
 
-  const isOwner = Boolean(user && (user.role === 'supplier' || user.role === 'designer') && String(user.id) === String(supplierId));
+  const isOwner = Boolean(
+    user && 
+    (user.role === 'supplier' || user.role === 'designer') && 
+    (String(user.id) === String(supplierId) || Number(user.id) === Number(supplierId))
+  );
+  const [listingToDelete, setListingToDelete] = useState<number | null>(null);
+  const { toast } = useToast();
 
-  const handleDeleteListing = async (id: number) => {
-    if (!confirm('Are you sure you want to remove this listing from your storefront?')) return;
+  const executeDeleteListing = async (id: number) => {
     try {
       const res = await fetch(`/api/supplier/listings/${encodeURIComponent(id)}`, {
         method: 'DELETE',
@@ -284,12 +302,26 @@ export default function StorePage() {
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => res.statusText || '');
-        alert('Failed to delete listing: ' + (txt || res.status));
+        toast({
+          title: 'Delete Failed',
+          description: txt || 'Failed to remove listing from storefront.',
+          variant: 'destructive',
+        });
         return;
       }
       setListings(prev => prev.filter(x => Number(x.id) !== Number(id)));
+      toast({
+        title: 'Listing Removed',
+        description: 'Product listing removed from storefront.',
+      });
     } catch (err: any) {
-      alert('Failed to delete listing: ' + (err?.message || err));
+      toast({
+        title: 'Error',
+        description: err?.message || 'Error deleting listing.',
+        variant: 'destructive',
+      });
+    } finally {
+      setListingToDelete(null);
     }
   };
 
@@ -337,7 +369,17 @@ export default function StorePage() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-      <Header />
+      {/* Redesigned Storefront Header & Brand Bar */}
+      <Header
+        storeSettings={storeSettings}
+        storeTitle={storeTitle}
+        isOwner={isOwner}
+        onLogoUpdated={(newLogoUrl) => setStoreSettings((prev: any) => ({ ...prev, logo_url: newLogoUrl }))}
+        selectedCategory={selectedCategory}
+        onSelectCategory={setSelectedCategory}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+      />
 
       {/* Top Announcement Bar if enabled by designer */}
       {showAnnouncement && (
@@ -405,33 +447,26 @@ export default function StorePage() {
             )}
           </div>
 
-          {/* Right Action Console */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-            <div className="px-5 py-3 rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 text-center shadow-lg">
-              <span className="block text-3xl font-black text-white">{listings.length}</span>
-              <span className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider">Available Pieces</span>
+          {/* Right Action Console (Designer Controls) */}
+          {isOwner && (
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2.5">
+              <Button
+                onClick={() => setLocation('/supplier/customize-store')}
+                className="px-4 py-2.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs backdrop-blur-md border border-white/20 shadow-md transition-all flex items-center justify-center gap-2"
+              >
+                <Paintbrush className="size-4" />
+                Redesign My Store
+              </Button>
+
+              <Button
+                onClick={() => setLocation('/supplier/listings/create')}
+                className={`px-4 py-2.5 rounded-xl font-bold text-xs shadow-lg transition-all flex items-center justify-center gap-1.5 ${themeStyle.accentBtn}`}
+              >
+                <StoreIcon className="size-4" />
+                + Add New Listing
+              </Button>
             </div>
-
-            {isOwner && (
-              <div className="flex flex-col gap-2 w-full sm:w-auto">
-                <Button
-                  onClick={() => setLocation('/supplier/customize-store')}
-                  className="px-4 py-3 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs backdrop-blur-md border border-white/20 shadow-md transition-all flex items-center justify-center gap-2"
-                >
-                  <Paintbrush className="size-4" />
-                  Redesign My Store
-                </Button>
-
-                <Button
-                  onClick={() => setLocation('/supplier/listings/create')}
-                  className={`px-4 py-3 rounded-xl font-bold text-xs shadow-lg transition-all flex items-center justify-center gap-1.5 ${themeStyle.accentBtn}`}
-                >
-                  <StoreIcon className="size-4" />
-                  + Add New Listing
-                </Button>
-              </div>
-            )}
-          </div>
+          )}
 
         </div>
       </div>
@@ -533,7 +568,7 @@ export default function StorePage() {
                 listing={listing}
                 supplierId={supplierId}
                 isOwner={isOwner}
-                onDelete={handleDeleteListing}
+                onDelete={(id) => setListingToDelete(id)}
                 themeStyle={themeStyle}
               />
             ))}
@@ -541,7 +576,37 @@ export default function StorePage() {
         )}
       </main>
 
-      <Footer />
+      <Footer
+        storeSettings={storeSettings}
+        storeTitle={storeTitle}
+        storeTagline={storeTagline}
+        isOwner={isOwner}
+        onLogoUpdated={(newLogoUrl) => setStoreSettings((prev: any) => ({ ...prev, logo_url: newLogoUrl }))}
+        onSelectCategory={setSelectedCategory}
+      />
+
+      {/* Styled Project Alert Dialog for Deleting Listings */}
+      <AlertDialog open={listingToDelete !== null} onOpenChange={open => { if (!open) setListingToDelete(null); }}>
+        <AlertDialogContent className="rounded-2xl shadow-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-lg font-bold text-slate-900">Remove Listing</AlertDialogTitle>
+            <AlertDialogDescription className="text-sm text-slate-600 mt-2">
+              Are you sure you want to remove this product listing from your storefront?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (listingToDelete !== null) executeDeleteListing(listingToDelete);
+              }}
+              className="bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold"
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

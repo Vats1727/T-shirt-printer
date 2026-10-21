@@ -7,3 +7,10 @@ export function slugify(text: string) {
     .replace(/\s+/g, '-')
     .toLowerCase();
 }
+
+export function fmtErr(err: unknown): string {
+  if (err instanceof Error) {
+    return err.stack || err.message;
+  }
+  return String(err);
+}

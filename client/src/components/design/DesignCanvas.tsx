@@ -10,9 +10,9 @@ interface DesignCanvasProps {
   /** When provided, draw a horizontal gradient using these colors instead of a single `templateColor` */
   templateColors?: string[];
   /** Optional override image to use as the shirt/template for this canvas (admin-provided full-shirt image) */
-  templateImage?: string;
+  templateImage?: string | null;
   /** An optional tint color to apply only to user images; if unset `color` is used instead */
-  imageTintColor?: string;
+  imageTintColor?: string | null;
   textSize?: number;
   textRotation?: number;
   textPosition?: { x: number; y: number };
@@ -58,8 +58,8 @@ export function DesignCanvas({
   backgroundImage = undefined,
   showTemplate = false,
   exportCanvasRef,
-}: DesignCanvasProps & { showTemplate?: boolean, exportCanvasRef?: React.RefObject<HTMLCanvasElement> }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+}: DesignCanvasProps & { showTemplate?: boolean, exportCanvasRef?: React.Ref<HTMLCanvasElement> }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const tshirtRef = useRef<HTMLImageElement | null>(null);
   // Optional separate mask image (silhouette only) used to clip templateColor so card/background art isn't colored
   const maskRef = useRef<HTMLImageElement | null>(null);
@@ -424,7 +424,16 @@ export function DesignCanvas({
       style={{ width: '100%', maxWidth: width, aspectRatio: `${width}/${height}` }}
     >
       <canvas
-        ref={(el) => { canvasRef.current = el; if (exportCanvasRef && typeof exportCanvasRef === 'object') { try { (exportCanvasRef as any).current = el; } catch(e) {} } }}
+        ref={(el) => {
+          (canvasRef as React.MutableRefObject<HTMLCanvasElement | null>).current = el;
+          if (exportCanvasRef) {
+            if (typeof exportCanvasRef === 'function') {
+              (exportCanvasRef as any)(el);
+            } else if (typeof exportCanvasRef === 'object' && exportCanvasRef !== null && 'current' in exportCanvasRef) {
+              try { (exportCanvasRef as any).current = el; } catch (e) {}
+            }
+          }
+        }}
         width={width}
         height={height}
         className="block touch-none w-full h-full"
