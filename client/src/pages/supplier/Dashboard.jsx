@@ -18,6 +18,7 @@ export default function SupplierDashboard() {
   const [selectedProvider, setSelectedProvider] = useState(null);
   const [savingProvider, setSavingProvider] = useState(false);
   const [providerDialogOpen, setProviderDialogOpen] = useState(false);
+  const [cardSides, setCardSides] = useState({});
   useEffect(() => {
     fetch("/api/public/providers").then((res) => res.json()).then((data) => setProviders(data)).catch(() => {
     });
@@ -76,14 +77,43 @@ export default function SupplierDashboard() {
         </div>
       </div>;
   }
-  const getPreviewUrl = (d) => {
-    if (!d) return "/templates/tshirt.png";
-    let img = d.image || d.image_data || d.image_url || d.image_src || d.filename || d.file_name || null;
-    if (!img && typeof d === "string") img = d;
-    if (!img) return "/templates/tshirt.png";
+
+  const normalizeImage = (raw) => {
+    if (!raw) return null;
+    let img = raw?.image || raw?.image_data || raw?.image_url || raw?.image_src || raw?.filename || raw?.file_name || null;
+    if (!img && typeof raw === "string") img = raw;
+    if (!img) return null;
     img = String(img);
     if (img.startsWith("data:") || img.startsWith("http") || img.startsWith("/")) return img;
     return `/attached_assets/${img}`;
+  };
+
+  const getProductPreview = (p, side = "front") => {
+    if (!p) return "/templates/tshirt.png";
+
+    const rawDesigns = p.designs;
+    let frontImg = null;
+    let backImg = null;
+
+    if (Array.isArray(rawDesigns)) {
+      const frontObj = rawDesigns.find((d) => d && String(d.side || "").toLowerCase() === "front");
+      const backObj = rawDesigns.find((d) => d && String(d.side || "").toLowerCase() === "back");
+      frontImg = normalizeImage(frontObj) || (rawDesigns[0] ? normalizeImage(rawDesigns[0]) : null);
+      backImg = normalizeImage(backObj) || (rawDesigns[1] ? normalizeImage(rawDesigns[1]) : null);
+    } else if (rawDesigns && typeof rawDesigns === "object") {
+      frontImg = normalizeImage(rawDesigns.front) || (rawDesigns[0] ? normalizeImage(rawDesigns[0]) : null);
+      backImg = normalizeImage(rawDesigns.back) || (rawDesigns[1] ? normalizeImage(rawDesigns[1]) : null);
+    }
+
+    if (!frontImg && p.front_image) frontImg = normalizeImage(p.front_image);
+    if (!backImg && p.back_image) backImg = normalizeImage(p.back_image);
+    if (!frontImg && p.image) frontImg = normalizeImage(p.image);
+
+    if (!frontImg && p.designs_list && p.designs_list[0]) frontImg = normalizeImage(p.designs_list[0]);
+    if (!backImg && p.designs_list && p.designs_list[1]) backImg = normalizeImage(p.designs_list[1]);
+
+    const target = side === "back" ? (backImg || frontImg) : (frontImg || backImg);
+    return target || "/templates/tshirt.png";
   };
   const copyToClipboard = (slug) => {
     const url = `${window.location.origin}/product/${slug}`;
@@ -164,10 +194,22 @@ export default function SupplierDashboard() {
             {catalog.products?.map((p) => <Card key={p.id} className="group overflow-hidden border-border/40 hover:border-primary/40 transition-all duration-300 hover:shadow-xl hover:shadow-primary/5 flex flex-col h-full bg-card/50 backdrop-blur-sm">
                 <div className="aspect-[4/5] relative overflow-hidden bg-muted/30 p-6 flex items-center justify-center">
                   <img
-    src={getPreviewUrl(p.designs?.[0])}
-    className="max-h-full object-contain group-hover:scale-110 transition-transform duration-500 ease-out"
-    alt={p.name}
-  />
+                    src={getProductPreview(p, cardSides[p.id] || "front")}
+                    className="max-h-full object-contain group-hover:scale-105 transition-transform duration-500 ease-out"
+                    alt={p.name}
+                    onError={(e) => {
+                      if (e.currentTarget.dataset.retried) return;
+                      e.currentTarget.dataset.retried = "true";
+                      const currentSrc = e.currentTarget.src || "";
+                      if (currentSrc.includes('/uploads/')) {
+                        e.currentTarget.src = currentSrc.replace('/uploads/', '/attached_assets/');
+                      } else if (currentSrc.includes('/attached_assets/')) {
+                        e.currentTarget.src = currentSrc.replace('/attached_assets/', '/uploads/');
+                      } else {
+                        e.currentTarget.src = "/templates/tshirt.png";
+                      }
+                    }}
+                  />
                   <div className="absolute top-3 right-3">
                     <Badge variant="secondary" className="bg-white/80 backdrop-blur-md shadow-sm border-none font-bold text-indigo-600">
                       ₹{Number(p.single_price || 0).toFixed(2)}
@@ -194,33 +236,40 @@ export default function SupplierDashboard() {
                     <div className="flex flex-col gap-1">
                       <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Sizes</span>
                       <div className="flex flex-wrap gap-1.5 mt-1">
-                        {p.sizes && p.sizes.length ? p.sizes.map((id) => {
-    const sizeObj = catalog.sizes.find((s) => s.id === Number(id) || String(s.id) === String(id));
-    if (!sizeObj) return null;
-    return <Badge key={id} variant="outline" className="text-[10px] px-2 py-0 min-w-8 justify-center bg-slate-50/50">
-                              {sizeObj.label}
-                            </Badge>;
-  }) : <span className="text-xs text-muted-foreground">None</span>}
+                        {p.sizes && p.sizes.length ? p.sizes.map((item, idx) => {
+                          const sid = typeof item === 'object' && item !== null ? (item.id || item.size_id || item.label) : item;
+                          const sizeObj = (catalog?.sizes || []).find((s) => s.id === Number(sid) || String(s.id) === String(sid) || s.label?.toLowerCase() === String(sid).toLowerCase());
+                          const label = sizeObj?.label || (typeof sid === 'string' ? sid : (sizeObj ? sizeObj.label : sid));
+                          return (
+                            <Badge key={idx} variant="outline" className="text-[10px] px-2 py-0 min-w-8 justify-center bg-slate-50/50 font-semibold text-slate-700">
+                              {label}
+                            </Badge>
+                          );
+                        }) : <span className="text-xs text-muted-foreground">None</span>}
                       </div>
                     </div>
 
                     <div className="flex flex-col gap-1">
                       <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Colors</span>
                       <div className="flex flex-wrap gap-2 mt-1">
-                        {p.colors && p.colors.length ? p.colors.map((id) => {
-    const c = catalog.colors.find((col) => col.id === Number(id) || String(col.id) === String(id));
-    if (!c) return null;
-    return <div key={id} className="group/color relative">
+                        {p.colors && p.colors.length ? p.colors.map((item, idx) => {
+                          const cid = typeof item === 'object' && item !== null ? (item.id || item.color_id || item.hex) : item;
+                          const c = (catalog?.colors || []).find((col) => col.id === Number(cid) || String(col.id) === String(cid) || col.hex === String(cid) || col.name?.toLowerCase() === String(cid).toLowerCase());
+                          const hex = c?.hex || (typeof cid === 'string' && cid.startsWith('#') ? cid : '#ccc');
+                          const name = c?.name || (typeof cid === 'string' ? cid : 'Color');
+                          return (
+                            <div key={idx} className="group/color relative">
                               <span
-      className="w-5 h-5 rounded-full block border-2 border-white shadow-sm ring-1 ring-border shadow-inner"
-      style={{ background: c.hex || "#ccc" }}
-      title={c.name}
-    />
+                                className="w-5 h-5 rounded-full block border-2 border-white shadow-sm ring-1 ring-border shadow-inner"
+                                style={{ background: hex }}
+                                title={name}
+                              />
                               <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[10px] bg-black text-white px-1.5 py-0.5 rounded opacity-0 group-hover/color:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
-                                {c.name}
+                                {name}
                               </span>
-                            </div>;
-  }) : <span className="text-xs text-muted-foreground">None</span>}
+                            </div>
+                          );
+                        }) : <span className="text-xs text-muted-foreground">None</span>}
                       </div>
                     </div>
                   </div>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { useLocation, Link } from 'wouter';
 import { useAuth } from '@/context/AuthContext';
+import { useQuery } from '@tanstack/react-query';
 import { encodeId } from '@/utils/idEncoder';
 import {
   Home,
@@ -13,7 +14,9 @@ import {
   HelpCircle,
   Package,
   Paintbrush,
-  LayoutTemplate
+  LayoutTemplate,
+  UserCheck,
+  Users
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { Button } from '@/components/ui/button';
@@ -28,20 +31,91 @@ import {
 } from '@/components/ui/sidebar';
 
 export function AppSidebar() {
-  const [location] = useLocation();
-  const { user, logout } = useAuth();
+  const [location, setLocation] = useLocation();
+  const { user, token, logout } = useAuth();
   const [isCollapsed, setIsCollapsed] = React.useState(false);
 
   const isAdmin = user?.role === 'admin' || user?.role === 'print_provider';
   const isPortalAdmin = user?.role === 'portal_admin';
   const isDesigner = user?.role === 'designer' || user?.role === 'supplier';
 
+  // Real-time query for Portal Admin to track pending provider registration requests
+  const { data: providersRaw } = useQuery({
+    queryKey: ['/api/portal/providers'],
+    queryFn: async () => {
+      const res = await fetch('/api/portal/providers', {
+        headers: { Authorization: token ? `Bearer ${token}` : '' }
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: isPortalAdmin && !!token,
+    refetchInterval: 10000 // Automatically poll every 10s for incoming registration requests
+  });
+
+  const providers = Array.isArray(providersRaw) ? providersRaw : providersRaw?.providers || [];
+  const pendingRequestsCount = providers.filter(
+    (p) => (p.role === 'print_provider' || p.role === 'admin' || p.role === 'designer') && (p.status || 'pending').toLowerCase() === 'pending'
+  ).length;
+
+  // Real-time query for Print Provider to track pending orders requiring fulfillment
+  const { data: adminOrdersRaw } = useQuery({
+    queryKey: ['/api/admin/orders'],
+    queryFn: async () => {
+      const res = await fetch('/api/admin/orders', {
+        headers: { Authorization: token ? `Bearer ${token}` : '' }
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: isAdmin && !!token,
+    refetchInterval: 10000 // Automatically poll every 10s for incoming orders
+  });
+
+  const adminOrders = Array.isArray(adminOrdersRaw)
+    ? adminOrdersRaw
+    : (Array.isArray(adminOrdersRaw?.orders) ? adminOrdersRaw.orders : []);
+
+  const pendingOrdersCount = adminOrders.filter((o) => {
+    const s = (o.status || '').toLowerCase();
+    return !s || ['pending', 'placed', 'processing', 'in_production'].includes(s);
+  }).length;
+
   const menuItems = [
     {
       title: 'Dashboard',
       icon: Home,
       url: isPortalAdmin ? '/portal/dashboard' : (isAdmin ? '/admin/dashboard' : '/supplier/dashboard'),
-      active: location.includes('dashboard')
+      active: isPortalAdmin ? location === '/portal/dashboard' : (isAdmin ? location === '/admin/dashboard' : location === '/supplier/dashboard')
+    },
+    {
+      title: 'Requests',
+      icon: UserCheck,
+      url: '/portal/requests',
+      active: location.startsWith('/portal/requests'),
+      badge: pendingRequestsCount > 0 ? pendingRequestsCount : null,
+      hidden: !isPortalAdmin
+    },
+    {
+      title: 'Blank Garments',
+      icon: Package,
+      url: '/admin/clothes',
+      active: location.includes('clothes'),
+      hidden: !isAdmin
+    },
+    {
+      title: 'Associated Designers',
+      icon: Users,
+      url: '/admin/designers',
+      active: location.includes('designers'),
+      hidden: !isAdmin
+    },
+    {
+      title: 'Designer Designs',
+      icon: LayoutTemplate,
+      url: '/admin/designer-designs',
+      active: location.includes('designer-designs'),
+      hidden: !isAdmin
     },
     {
       title: 'Customize Store',
@@ -61,14 +135,8 @@ export function AppSidebar() {
       title: isAdmin ? 'Orders' : 'My Orders',
       icon: ShoppingBag,
       url: isAdmin ? '/admin/orders' : '/supplier/orders',
-      active: location.includes('orders'),
-      hidden: isPortalAdmin
-    },
-    {
-      title: 'Products',
-      icon: Package,
-      url: isAdmin ? '/admin/dashboard' : '/supplier/dashboard',
-      active: location.includes('products') || (isAdmin && location === '/admin/dashboard'),
+      active: location.startsWith('/admin/orders') || location.startsWith('/supplier/order') || location.startsWith('/orders') || location === '/order',
+      badge: isAdmin && pendingOrdersCount > 0 ? pendingOrdersCount : null,
       hidden: isPortalAdmin
     },
     {
@@ -110,15 +178,41 @@ export function AppSidebar() {
                 isActive={item.active}
                 tooltip={isCollapsed ? item.title : undefined}
                 className={cn(
-                  'flex items-center gap-3 px-3 py-2 rounded-md transition-colors',
+                  'flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-sm',
                   item.active
-                    ? 'bg-primary text-primary-foreground'
-                    : 'hover:bg-accent hover:text-accent-foreground'
+                    ? '!bg-indigo-600 !text-white font-semibold shadow-xs'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                 )}
               >
-                <Link href={item.url} className="flex items-center gap-3 w-full">
-                  <item.icon className="size-5" />
-                  {!isCollapsed && <span className="text-sm font-medium">{item.title}</span>}
+                <Link
+                  href={item.url}
+                  onClick={() => setLocation(item.url)}
+                  className={cn(
+                    'flex items-center gap-3 w-full relative',
+                    item.active ? '!text-white' : ''
+                  )}
+                >
+                  <div className="relative flex items-center justify-center">
+                    <item.icon className={cn('size-5 shrink-0', item.active ? 'text-white' : 'text-slate-500')} />
+                    {isCollapsed && item.badge != null && (
+                      <span className="absolute -top-1 -right-1.5 w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-white animate-pulse" />
+                    )}
+                  </div>
+                  {!isCollapsed && (
+                    <>
+                      <span className={cn('text-sm flex-1 text-left', item.active ? 'font-bold text-white' : 'font-medium text-slate-700')}>
+                        {item.title}
+                      </span>
+                      {item.badge != null && (
+                        <span className={cn(
+                          'px-2 py-0.5 text-[11px] font-bold rounded-full animate-pulse shadow-xs',
+                          item.active ? 'bg-amber-400 text-amber-950 font-black' : 'bg-amber-500 text-white'
+                        )}>
+                          {item.badge}
+                        </span>
+                      )}
+                    </>
+                  )}
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

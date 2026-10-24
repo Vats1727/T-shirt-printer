@@ -38,11 +38,13 @@ router.delete('/products/:id', productController.deleteProduct);
 
 // Designers & Profile
 router.get('/designers', userController.listDesigners);
+router.get('/designer-designs', productController.listProviderDesigns);
 router.get('/profile', userController.getProfile);
 router.patch('/profile', userController.updateProfile);
 
 // Admin Orders
 router.get('/orders', orderController.listAdminOrders);
 router.get('/orders/:id', orderController.getAdminOrder);
+router.patch('/orders/:id/status', orderController.updateOrderStatus);
 
 export default router;

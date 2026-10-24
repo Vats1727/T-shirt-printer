@@ -8,7 +8,13 @@ export default function SupplierRoute({ path, component: Component }) {
     <Route path={path}>
       {(params) => {
         const { user } = useAuth();
-        if (!user || (user.role !== 'designer' && user.role !== 'supplier')) {
+        if (!user) {
+          return <Redirect to="/supplier/login" />;
+        }
+        if (user.role === 'print_provider' || user.role === 'admin') {
+          return <Redirect to="/admin/orders" />;
+        }
+        if (user.role !== 'designer' && user.role !== 'supplier') {
           return <Redirect to="/supplier/login" />;
         }
         return (

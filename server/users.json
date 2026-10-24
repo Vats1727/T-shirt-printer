@@ -1,45 +1,32 @@
 [
   {
-    "id": 1,
-    "username": "admin",
-    "role": "print_provider",
-    "createdAt": "2026-01-14T15:35:09.089Z",
-    "password": "$2a$10$IXLbigCOEu6qaQ1SImUa5Os14pUVzD9Kz3QP4YyCKscYeX9p.6AWW",
-    "status": "active",
-    "subscription_tier": "business"
-  },
-  {
-    "id": 2,
-    "username": "supplier1",
-    "role": "designer",
-    "createdAt": "2026-01-14T15:35:09.327Z",
-    "password": "$2a$10$D7d78hPiSxN457DshI4KN.4Mw331aB6jyEIjUH.kUzQd/LEDG5Ko.",
-    "associated_provider_id": 7
-  },
-  {
-    "id": 3,
-    "name": "Admin User",
-    "email": "admin@test.local",
-    "role": "print_provider",
-    "password": "$2b$10$0XIHarH86kntmrsN9ahYleBe.2Bk7H.gjeFC5LeTZo69pYAp7cHRG",
-    "createdAt": "2026-01-15T05:10:25.031Z",
-    "status": "suspended"
-  },
-  {
-    "id": 4,
-    "name": "Admin",
-    "email": "admin@gmail.com",
-    "role": "print_provider",
-    "password": "$2b$10$wdbIx7BHHXfuQA92xuFi5uITyd/UeSuiIdrvBQy.X3cdcUreWp2lm",
-    "createdAt": "2026-01-15T05:12:23.989Z"
-  },
-  {
-    "id": 5,
+    "id": 6,
     "name": "Portal Admin",
     "email": "portaladmin@gmail.com",
     "role": "portal_admin",
     "password": "$2b$10$EAcHdI5H/sZQLCB8iIX3r.Ie4CiI1krimkglUe4/DVj35DUMF.em6",
     "status": "active",
-    "createdAt": "2026-10-21T10:21:59.362Z"
+    "associated_provider_id": null,
+    "createdAt": "2026-03-10T15:52:01.605Z"
+  },
+  {
+    "id": 7,
+    "name": "Print Provider One",
+    "email": "printproviderone@gmail.com",
+    "role": "print_provider",
+    "password": "$2b$10$Und93lboiEq3PcOMI.bJZuNclCNUh9RoyyWPpA8bRmrsqxtgv57de",
+    "status": "active",
+    "associated_provider_id": null,
+    "createdAt": "2026-03-10T16:11:39.048Z"
+  },
+  {
+    "id": 8,
+    "name": "Designerone",
+    "email": "designerone@gmail.com",
+    "role": "designer",
+    "password": "$2b$10$/td5oi26KrLtLoTcSYXHze/erSx3CS0paOdylpJ30K8wQyWWekIky",
+    "status": "active",
+    "associated_provider_id": 12,
+    "createdAt": "2026-03-11T09:31:10.289Z"
   }
 ]

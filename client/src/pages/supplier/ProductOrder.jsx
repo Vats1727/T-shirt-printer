@@ -7,14 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { ChevronLeft, Save, Palette, Type, Image as ImageIcon, IndianRupee, Loader2 } from "lucide-react";
+import { ChevronLeft, Save, Check, Palette, Type, Image as ImageIcon, IndianRupee, Loader2, Lock, ShoppingCart, Clock, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { decodeId } from "@/utils/idEncoder";
 export default function SupplierProductOrder() {
   const [match, params] = useRoute("/supplier/product/:id");
   const id = params?.id ? decodeId(params.id) : null;
   const [, setLocation] = useLocation();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [catalog, setCatalog] = useState(null);
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -23,11 +23,17 @@ export default function SupplierProductOrder() {
   const [selectedColors, setSelectedColors] = useState([]);
   const [featuredColor, setFeaturedColor] = useState(null);
   const [selectedSize, setSelectedSize] = useState(null);
+  const [selectedSizes, setSelectedSizes] = useState([]);
   const [sizeQuantities, setSizeQuantities] = useState({});
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
   const [savedDesignId, setSavedDesignId] = useState(null);
   const [versions, setVersions] = useState(null);
+  const [purchaseStatus, setPurchaseStatus] = useState({
+    status: "none",
+    canSave: false,
+    order: null
+  });
   const frontExportRef = useRef(null);
   const backExportRef = useRef(null);
   const [side, setSide] = useState("front");
@@ -97,26 +103,60 @@ export default function SupplierProductOrder() {
       }
       const data = await res.json();
       setCatalog(data);
-      const prod = data.products?.find((p) => Number(p.id) === Number(id));
-      console.debug("SupplierProductOrder: loaded product from catalog", prod);
+      let prod = data.products?.find((p) => Number(p.id) === Number(id));
+      if (!prod || !prod.colors || !prod.colors.length || !prod.sizes || !prod.sizes.length) {
+        try {
+          const pRes = await fetch(`/api/supplier/products/${id}`, { headers: { Authorization: token ? `Bearer ${token}` : "" } });
+          if (pRes.ok) {
+            const singleProd = await pRes.json();
+            prod = { ...prod, ...singleProd };
+          }
+        } catch (e) {}
+      }
+      console.debug("SupplierProductOrder: loaded product", prod);
       setProduct(prod || null);
+      if (prod?.colors && prod.colors.length) {
+        setSelectedColors(prod.colors.map(Number));
+        setFeaturedColor(Number(prod.colors[0]));
+      }
       setLoading(false);
       try {
         setPriceInput(Number(prod?.single_price || 0));
       } catch (e) {
         setPriceInput(0);
       }
-      if (!prod) return;
-      if (prod.sizes && prod.sizes.length) {
+      if (prod?.sizes && prod.sizes.length) {
         setSelectedSize(Number(prod.sizes[0]));
+        setSelectedSizes(prod.sizes.map(Number));
         const init = {};
         for (const s of prod.sizes) init[Number(s)] = 0;
         init[Number(prod.sizes[0])] = 1;
         setSizeQuantities(init);
       }
-      const designsArr = Array.isArray(prod.designs) ? prod.designs : [];
-      const frontDesign = designsArr.find((d) => (d.side || "").toLowerCase() === "front") || designsArr[0] || null;
-      const backDesign = designsArr.find((d) => (d.side || "").toLowerCase() === "back") || null;
+      await fetchPurchaseStatus(prod);
+      let frontDesign = null;
+      let backDesign = null;
+
+      if (Array.isArray(prod.designs)) {
+        frontDesign = prod.designs.find((d) => d && (d.side || "").toLowerCase() === "front") || prod.designs[0] || null;
+        backDesign = prod.designs.find((d) => d && (d.side || "").toLowerCase() === "back") || (prod.designs.length > 1 ? prod.designs[1] : null);
+      } else if (prod.designs && typeof prod.designs === "object") {
+        frontDesign = prod.designs.front || null;
+        backDesign = prod.designs.back || null;
+      }
+
+      if (!frontDesign && (prod.front_image || prod.image)) {
+        frontDesign = { image: prod.front_image || prod.image, side: "front" };
+      }
+      if (!backDesign && prod.back_image) {
+        backDesign = { image: prod.back_image, side: "back" };
+      }
+      if (!frontDesign && prod.designs_list && prod.designs_list[0]) {
+        frontDesign = prod.designs_list[0];
+      }
+      if (!backDesign && prod.designs_list && prod.designs_list[1]) {
+        backDesign = prod.designs_list[1];
+      }
       const firstColorHex = prod.colors && prod.colors.length && data && data.colors ? data.colors.find((c) => Number(c.id) === Number(prod.colors[0]))?.hex : void 0;
       const pickDesignImage = (design) => {
         if (!design) return null;
@@ -211,7 +251,30 @@ export default function SupplierProductOrder() {
     };
     load();
   }, [id, token]);
-  if (!product) return <div className="p-6">Product not found</div>;
+
+  const fetchPurchaseStatus = async (currentProd) => {
+    const prodId = currentProd?.id || id;
+    if (!prodId || (user && user.role !== "designer")) {
+      setPurchaseStatus({ status: "approved", canSave: true });
+      return;
+    }
+    try {
+      const res = await fetch(`/api/supplier/products/${prodId}/purchase-status`, {
+        headers: { Authorization: token ? `Bearer ${token}` : "" }
+      });
+      if (res.ok) {
+        const js = await res.json();
+        setPurchaseStatus(js);
+      }
+    } catch (e) {
+      console.error("Failed to fetch purchase status", e);
+    }
+  };
+
+
+
+
+
   const Banner = () => <div className="mb-4">
       {error && <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded">{error}</div>}
       {message && <div className="p-3 bg-green-50 border border-green-200 text-green-800 rounded">{message} {savedDesignId && <button className="underline ml-2 text-primary" onClick={async () => {
@@ -237,8 +300,10 @@ export default function SupplierProductOrder() {
   }}>View versions</button>}</div>}
     </div>;
   const totalQty = Object.values(sizeQuantities || {}).reduce((s, v) => s + Number(v || 0), 0);
-  const unitPriceForDisplay = orderType === "bulk" && product.bulk_min && totalQty >= Number(product.bulk_min) && product.bulk_price ? Number(product.bulk_price) : Number(product.single_price || 0);
+  const unitPriceForDisplay = orderType === "bulk" && product?.bulk_min && totalQty >= Number(product?.bulk_min) && product?.bulk_price ? Number(product?.bulk_price) : Number(product?.single_price || 0);
   const totalPrice = totalQty > 0 ? unitPriceForDisplay * totalQty : 0;
+
+
   const getSizeLabel = (sid) => {
     if (!catalog || !Array.isArray(catalog.sizes)) return sid;
     const byId = catalog.sizes.find((s) => Number(s.id) === Number(sid));
@@ -262,6 +327,8 @@ export default function SupplierProductOrder() {
     const backPreview = backExportRef.current?.toDataURL?.("image/png") || null;
     const payload = {
       product: product?.slug || String(product?.id || "tshirt"),
+      product_id: product?.id ? Number(product.id) : null,
+      provider_id: (product?.owner_id ? Number(product.owner_id) : null) || (user?.associated_provider_id ? Number(user.associated_provider_id) : null),
       template: frontState.template || product?.template || "tshirt",
       templateColor: frontState.templateColor || "#ffffff",
       // convert rupees to paise
@@ -279,6 +346,10 @@ export default function SupplierProductOrder() {
             const c = getColorObj(Number(cid));
             return { id: Number(cid), hex: c?.hex || null, name: c?.name || null };
           }),
+          selected_sizes: selectedSizes.map((sid) => ({
+            id: Number(sid),
+            label: getSizeLabel(sid)
+          })),
           featured_color: featuredColor ? (() => {
             const c = getColorObj(Number(featuredColor));
             if (!c) return null;
@@ -340,6 +411,10 @@ export default function SupplierProductOrder() {
               preview_front: featuredPreview?.preview_front || null,
               preview_back: featuredPreview?.preview_back || null,
               selected_colors: previewByColor.map((p) => ({ id: p.id, hex: p.hex, name: p.name })),
+              selected_sizes: selectedSizes.map((sid) => ({
+                id: Number(sid),
+                label: getSizeLabel(sid)
+              })),
               featured_color: featuredObj ? { id: Number(featuredObj.id), hex: featuredObj.hex, name: featuredObj.name } : null,
               preview_by_color: previewByColor
             }
@@ -354,8 +429,9 @@ export default function SupplierProductOrder() {
           localStorage.setItem(`supplier:product:${product?.id}:price`, String(priceInput || 0));
         } catch (e) {
         }
-        setMessage("Design saved for " + createdIds.length + " colors. IDs: " + createdIds.join(", "));
+        setMessage("Design saved successfully for " + createdIds.length + " colors!");
         if (createdIds.length) setSavedDesignId(createdIds[0]);
+        setTimeout(() => setLocation("/supplier/dashboard"), 1500);
         return;
       }
       const res = await fetch("/api/designs", {
@@ -383,7 +459,7 @@ export default function SupplierProductOrder() {
       } else if (js.design && js.design.version) {
         setVersions([js.design.version]);
       }
-      setMessage("Design saved (id: " + (did || "unknown") + "). Price stored locally.");
+      setMessage("Design saved successfully! Redirecting...");
       setTimeout(() => setLocation("/supplier/dashboard"), 1500);
     } catch (e) {
       setError(e?.message || "Failed to save design");
@@ -392,36 +468,62 @@ export default function SupplierProductOrder() {
     }
   }
   if (loading) {
-    return <div className="p-12 flex items-center justify-center min-h-[400px]">
+    return (
+      <div className="p-12 flex items-center justify-center min-h-[400px]">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="size-10 text-primary animate-spin" />
           <p className="text-muted-foreground animate-pulse text-sm font-medium">Preparing design environment...</p>
         </div>
-      </div>;
+      </div>
+    );
   }
-  return <div className="max-w-7xl mx-auto p-8 space-y-8 animate-in fade-in duration-500">
+
+  if (!product) {
+    return (
+      <div className="p-12 text-center text-muted-foreground font-medium">
+        Product not found
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto p-8 space-y-8 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b">
         <div className="flex items-center gap-4">
           <Button
-    variant="ghost"
-    size="icon"
-    onClick={() => setLocation("/supplier/dashboard")}
-    className="rounded-full hover:bg-primary/5 hover:text-primary transition-colors"
-  >
+            variant="ghost"
+            size="icon"
+            onClick={() => setLocation("/supplier/dashboard")}
+            className="rounded-full hover:bg-primary/5 hover:text-primary transition-colors"
+          >
             <ChevronLeft className="size-6" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">{product.name}</h1>
-            <p className="text-sm text-muted-foreground">Customize and save your design for {product.slug}</p>
+            <h1 className="text-2xl font-bold tracking-tight">{product?.name || "Product"}</h1>
+            <p className="text-sm text-muted-foreground">Customize and save your design for {product?.slug || ""}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {user?.role === "designer" && (
+            <Button
+              onClick={() => setLocation(`/supplier/product/${params?.id || id}/order`)}
+              variant="outline"
+              className="border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-xs gap-1.5 shadow-xs rounded-xl h-10 font-semibold"
+            >
+              <ShoppingCart className="size-4" />
+              Order Blank Garments
+            </Button>
+          )}
           <Button
-    onClick={saveDesign}
-    disabled={saving || selectedColors.length === 0}
-    className="gap-2 bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-100 min-w-[140px]"
-  >
-            {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+            onClick={saveDesign}
+            disabled={saving || selectedColors.length === 0}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-100 gap-2 min-w-[140px] shadow-sm rounded-xl h-10 font-semibold transition-all"
+          >
+            {saving ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Save className="size-4" />
+            )}
             {saving ? "Saving..." : "Save Design"}
           </Button>
         </div>
@@ -462,7 +564,7 @@ export default function SupplierProductOrder() {
                 <TabsList className="grid grid-cols-4 gap-1 bg-muted/50 p-1">
                   <TabsTrigger value="colors" className="gap-2 data-[state=active]:bg-white data-[state=active]:text-indigo-600 data-[state=active]:shadow-sm">
                     <Palette className="size-4" />
-                    <span className="hidden sm:inline">Colors</span>
+                    <span className="hidden sm:inline">Color and Size</span>
                   </TabsTrigger>
                   <TabsTrigger value="slogan" className="gap-2 data-[state=active]:bg-white data-[state=active]:text-indigo-600 data-[state=active]:shadow-sm" disabled={selectedColors.length === 0}>
                     <Type className="size-4" />
@@ -485,42 +587,127 @@ export default function SupplierProductOrder() {
                       <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground bg-slate-50">Select at least one</Badge>
                     </div>
                     <div className="grid grid-cols-4 sm:grid-cols-6 gap-3">
-                      {product.colors?.map((cid) => {
-    const c = getColorObj(Number(cid));
-    const selected = selectedColors.includes(Number(cid));
-    const isFeatured = featuredColor === Number(cid);
-    return <div key={cid} className="relative group/color">
+                      {product.colors && product.colors.length > 0 ? (
+                        product.colors.map((cid) => {
+                          const c = getColorObj(Number(cid));
+                          const selected = selectedColors.includes(Number(cid));
+                          const isFeatured = featuredColor === Number(cid);
+                          return (
+                            <div key={cid} className="relative group/color">
+                              <button
+                                onClick={() => {
+                                  setSelectedColors((prev) => {
+                                    if (prev.includes(Number(cid))) {
+                                      const filtered = prev.filter((x) => x !== Number(cid));
+                                      if (featuredColor === Number(cid)) setFeaturedColor(filtered.length ? filtered[0] : null);
+                                      return filtered;
+                                    }
+                                    const next = [...prev, Number(cid)];
+                                    if (!featuredColor) setFeaturedColor(Number(cid));
+                                    return next;
+                                  });
+                                  setFrontState((prev) => ({ ...prev, templateColor: c.hex || prev.templateColor, imageTintColor: c.hex || prev.imageTintColor }));
+                                  setBackState((prev) => ({ ...prev, templateColor: c.hex || prev.templateColor, imageTintColor: c.hex || prev.imageTintColor }));
+                                }}
+                                className={`w-full aspect-square rounded-full border-4 transition-all ${selected ? "border-indigo-500 shadow-md scale-105" : "border-white hover:border-gray-200"}`}
+                                style={{ background: c.hex }}
+                                title={c.name}
+                              />
+                              {selected && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setFeaturedColor(Number(cid));
+                                  }}
+                                  className={`absolute -top-1 -right-1 size-5 rounded-full border flex items-center justify-center text-[10px] shadow-sm transition-transform active:scale-90 ${isFeatured ? "bg-indigo-600 text-white border-indigo-700" : "bg-white text-muted-foreground border-gray-200 hover:bg-gray-50"}`}
+                                  title={isFeatured ? "Featured color" : "Mark as featured"}
+                                >
+                                  ★
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="col-span-4 text-xs text-muted-foreground italic py-2">
+                          Standard neutral colors available
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 pt-4 border-t">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <label className="text-sm font-semibold text-foreground italic">Available Sizes</label>
+                        <span className="text-[10px] text-muted-foreground">(Multi-Select)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {product.sizes && product.sizes.length > 1 && (
+                          <>
                             <button
-      onClick={() => {
-        setSelectedColors((prev) => {
-          if (prev.includes(Number(cid))) {
-            const filtered = prev.filter((x) => x !== Number(cid));
-            if (featuredColor === Number(cid)) setFeaturedColor(filtered.length ? filtered[0] : null);
-            return filtered;
-          }
-          const next = [...prev, Number(cid)];
-          if (!featuredColor) setFeaturedColor(Number(cid));
-          return next;
-        });
-        setFrontState((prev) => ({ ...prev, templateColor: c.hex || prev.templateColor, imageTintColor: c.hex || prev.imageTintColor }));
-        setBackState((prev) => ({ ...prev, templateColor: c.hex || prev.templateColor, imageTintColor: c.hex || prev.imageTintColor }));
-      }}
-      className={`w-full aspect-square rounded-full border-4 transition-all ${selected ? "border-indigo-500 shadow-md scale-105" : "border-white hover:border-gray-200"}`}
-      style={{ background: c.hex }}
-      title={c.name}
-    />
-                            {selected && <button
-      onClick={(e) => {
-        e.stopPropagation();
-        setFeaturedColor(Number(cid));
-      }}
-      className={`absolute -top-1 -right-1 size-5 rounded-full border flex items-center justify-center text-[10px] shadow-sm transition-transform active:scale-90 ${isFeatured ? "bg-indigo-600 text-white border-indigo-700" : "bg-white text-muted-foreground border-gray-200 hover:bg-gray-50"}`}
-      title={isFeatured ? "Featured color" : "Mark as featured"}
-    >
-                                ★
-                              </button>}
-                          </div>;
-  })}
+                              type="button"
+                              onClick={() => setSelectedSizes(product.sizes.map(Number))}
+                              className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline"
+                            >
+                              Select All
+                            </button>
+                            <span className="text-slate-300">•</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (product.sizes?.length) {
+                                  setSelectedSizes([Number(product.sizes[0])]);
+                                  setSelectedSize(Number(product.sizes[0]));
+                                }
+                              }}
+                              className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 hover:underline"
+                            >
+                              Reset
+                            </button>
+                          </>
+                        )}
+                        <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground bg-slate-50 ml-1">
+                          {selectedSizes.length} Selected
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {product.sizes && product.sizes.length > 0 ? (
+                        product.sizes.map((sid) => {
+                          const label = getSizeLabel(sid);
+                          const isSelected = selectedSizes.includes(Number(sid));
+                          return (
+                            <button
+                              key={sid}
+                              type="button"
+                              onClick={() => {
+                                const num = Number(sid);
+                                setSelectedSizes((prev) => {
+                                  if (prev.includes(num)) {
+                                    if (prev.length === 1) return prev; // keep at least 1 size
+                                    const next = prev.filter((x) => x !== num);
+                                    if (selectedSize === num) setSelectedSize(next[0]);
+                                    return next;
+                                  }
+                                  return [...prev, num];
+                                });
+                                setSelectedSize(num);
+                              }}
+                              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all border shadow-2xs ${
+                                isSelected
+                                  ? "bg-indigo-600 text-white border-indigo-600 shadow-sm ring-2 ring-indigo-200"
+                                  : "bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                              }`}
+                            >
+                              {isSelected && <Check className="size-3.5" />}
+                              <span>{label}</span>
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Standard Universal Fit</span>
+                      )}
                     </div>
                   </div>
                 </TabsContent>
@@ -723,7 +910,7 @@ export default function SupplierProductOrder() {
           <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 italic text-sm text-slate-500">
             <div className="flex items-center gap-2">
               <div className="size-2 rounded-full bg-indigo-400" />
-              <span>Base Template: <span className="font-semibold text-slate-700 capitalize">{product.template || "Default"}</span></span>
+              <span>Base Template: <span className="font-semibold text-slate-700 capitalize">{product?.template || "Default"}</span></span>
             </div>
             <div className="flex items-center gap-2">
               <div className="size-2 rounded-full bg-indigo-400" />
@@ -741,7 +928,7 @@ export default function SupplierProductOrder() {
     side={"front"}
     slogan={frontState.slogan}
     color={frontState.color}
-    template={frontState.template || product.template}
+    template={frontState.template || product?.template}
     templateImage={frontState.templateImage || void 0}
     showTemplate={true}
     templateColor={frontState.templateColor}
@@ -763,7 +950,7 @@ export default function SupplierProductOrder() {
     side={"back"}
     slogan={backState.slogan}
     color={backState.color}
-    template={backState.template || product.template}
+    template={backState.template || product?.template}
     templateImage={backState.templateImage || void 0}
     showTemplate={true}
     templateColor={backState.templateColor}
@@ -793,5 +980,6 @@ export default function SupplierProductOrder() {
             </pre>
           </CardContent>
         </Card>}
-    </div>;
+    </div>
+  );
 }

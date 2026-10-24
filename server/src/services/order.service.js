@@ -100,10 +100,30 @@ export async function getAdminOrder(orderId, ownerId) {
   return orderModel.getOrderForAdmin(orderId, ownerId);
 }
 
+export async function createDesignerPurchaseRequest(data) {
+  return orderModel.createDesignerPurchaseRequest(data);
+}
+
+export async function getDesignerProductPurchaseStatus(designerId, productId, providerId) {
+  return orderModel.getDesignerProductPurchaseStatus(designerId, productId, providerId);
+}
+
+export async function hasDesignerApprovedPurchase(designerId, productId, providerId) {
+  return orderModel.hasDesignerApprovedPurchase(designerId, productId, providerId);
+}
+
+export async function updateOrderStatus(orderId, status, providerId) {
+  return orderModel.updateOrderStatus(orderId, status, providerId);
+}
+
 export default {
   placeSupplierOrder,
   listSupplierOrders,
   getSupplierOrder,
   listAdminOrders,
-  getAdminOrder
+  getAdminOrder,
+  createDesignerPurchaseRequest,
+  getDesignerProductPurchaseStatus,
+  hasDesignerApprovedPurchase,
+  updateOrderStatus
 };

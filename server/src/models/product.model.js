@@ -205,17 +205,26 @@ export async function getProductById(id, ownerId) {
 
 export async function createProduct(payload) {
   if (pool) {
+    const slug = (payload.slug || payload.name || 'product')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)+/g, '') || 'product';
     const res = await pool.query(
-      `INSERT INTO products_full (title, description, base_price, category, template, owner_id, status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW()) RETURNING *`,
+      `INSERT INTO products_full (name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory, category, owner_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW()) RETURNING *`,
       [
-        payload.title,
-        payload.description || '',
-        payload.base_price || 0,
-        payload.category || 'Apparel',
-        payload.template || 'tshirt',
-        payload.owner_id || null,
-        payload.status || 'active'
+        payload.name || payload.title || 'Untitled Product',
+        slug,
+        payload.single_price || payload.base_price || 0,
+        payload.bulk_min || 100,
+        payload.bulk_price || 0,
+        JSON.stringify(payload.sizes || []),
+        JSON.stringify(payload.colors || []),
+        JSON.stringify(payload.sizeChart || payload.size_chart || []),
+        JSON.stringify(payload.designs || []),
+        JSON.stringify(payload.inventory || []),
+        payload.category || 'men',
+        payload.owner_id || null
       ]
     );
     return res.rows[0];
@@ -233,12 +242,25 @@ export async function updateProduct(id, payload, ownerId) {
     const fields = [];
     const values = [];
     let i = 1;
-    if (payload.title !== undefined) { fields.push(`title = $${i++}`); values.push(payload.title); }
-    if (payload.description !== undefined) { fields.push(`description = $${i++}`); values.push(payload.description); }
-    if (payload.base_price !== undefined) { fields.push(`base_price = $${i++}`); values.push(payload.base_price); }
+    if (payload.name !== undefined || payload.title !== undefined) {
+      fields.push(`name = $${i++}`);
+      values.push(payload.name || payload.title);
+    }
+    if (payload.single_price !== undefined || payload.base_price !== undefined) {
+      fields.push(`single_price = $${i++}`);
+      values.push(payload.single_price !== undefined ? payload.single_price : payload.base_price);
+    }
+    if (payload.bulk_min !== undefined) { fields.push(`bulk_min = $${i++}`); values.push(payload.bulk_min); }
+    if (payload.bulk_price !== undefined) { fields.push(`bulk_price = $${i++}`); values.push(payload.bulk_price); }
     if (payload.category !== undefined) { fields.push(`category = $${i++}`); values.push(payload.category); }
-    if (payload.template !== undefined) { fields.push(`template = $${i++}`); values.push(payload.template); }
-    if (payload.status !== undefined) { fields.push(`status = $${i++}`); values.push(payload.status); }
+    if (payload.sizes !== undefined) { fields.push(`sizes = $${i++}`); values.push(JSON.stringify(payload.sizes)); }
+    if (payload.colors !== undefined) { fields.push(`colors = $${i++}`); values.push(JSON.stringify(payload.colors)); }
+    if (payload.designs !== undefined) { fields.push(`designs = $${i++}`); values.push(JSON.stringify(payload.designs)); }
+    if (payload.sizeChart !== undefined || payload.size_chart !== undefined) {
+      fields.push(`size_chart = $${i++}`);
+      values.push(JSON.stringify(payload.sizeChart || payload.size_chart));
+    }
+    if (payload.inventory !== undefined) { fields.push(`inventory = $${i++}`); values.push(JSON.stringify(payload.inventory)); }
 
     fields.push(`updated_at = NOW()`);
     values.push(id);

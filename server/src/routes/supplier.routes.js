@@ -15,6 +15,10 @@ router.get('/catalog', (req, res, next) => {
   next();
 }, supplierController.getCatalog);
 
+router.get('/products/:id', supplierController.getProduct);
+router.get('/products/:id/purchase-status', orderController.getDesignerProductPurchaseStatus);
+router.post('/orders/purchase-product', orderController.createDesignerPurchaseRequest);
+
 router.get('/saved-designs', supplierController.listSavedDesigns);
 
 // Orders

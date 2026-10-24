@@ -1,4 +1,4 @@
-import { pool } from '../../db.js';
+import { pool } from '../config/database.js';
 import { slugify } from '../utils.js';
 export async function createProduct(payload) {
   const slugBase = slugify(payload.name);
@@ -29,15 +29,38 @@ export async function createProduct(payload) {
 }
 export async function listProducts(ownerId) {
   if (pool) {
-    const query = `SELECT id, name, slug, single_price, bulk_min, bulk_price, created_at, designs, category FROM products_full WHERE owner_id = $1 AND COALESCE(is_deleted, false) = false ORDER BY id`;
-    const r = await pool.query(query, [ownerId]);
+    const query = ownerId
+      ? `SELECT id, name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, created_at, designs, category FROM products_full WHERE owner_id = $1 AND COALESCE(is_deleted, false) = false ORDER BY id`
+      : `SELECT id, name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, created_at, designs, category FROM products_full WHERE COALESCE(is_deleted, false) = false ORDER BY id`;
+    const r = await pool.query(query, ownerId ? [ownerId] : []);
     return r.rows.map((row) => {
       const single_price = row.single_price !== null ? Number(row.single_price) : 0;
       const bulk_price = row.bulk_price !== null ? Number(row.bulk_price) : 0;
       const category = row.category || "men";
+      let sizes = [];
+      try {
+        sizes = Array.isArray(row.sizes) ? row.sizes : (typeof row.sizes === 'string' ? JSON.parse(row.sizes || '[]') : (row.sizes || []));
+      } catch (e) {
+        sizes = [];
+      }
+      let colors = [];
+      try {
+        colors = Array.isArray(row.colors) ? row.colors : (typeof row.colors === 'string' ? JSON.parse(row.colors || '[]') : (row.colors || []));
+      } catch (e) {
+        colors = [];
+      }
+      let size_chart = [];
+      try {
+        size_chart = Array.isArray(row.size_chart) ? row.size_chart : (typeof row.size_chart === 'string' ? JSON.parse(row.size_chart || '[]') : (row.size_chart || []));
+      } catch (e) {
+        size_chart = [];
+      }
       const rawDesigns = row.designs || [];
       let designs = {};
+      let designs_list = [];
+
       if (Array.isArray(rawDesigns)) {
+        designs_list = rawDesigns;
         for (const d of rawDesigns) {
           if (!d) continue;
           const side = (d.side || "").toLowerCase();
@@ -46,10 +69,17 @@ export async function listProducts(ownerId) {
         }
         if (!designs.front && rawDesigns[0]) designs.front = rawDesigns[0];
         if (!designs.back && rawDesigns[1]) designs.back = rawDesigns[1];
-      } else {
+      } else if (rawDesigns && typeof rawDesigns === 'object') {
         designs = rawDesigns;
+        if (rawDesigns.front) designs_list.push({ side: 'front', ...rawDesigns.front });
+        if (rawDesigns.back) designs_list.push({ side: 'back', ...rawDesigns.back });
       }
-      return { ...row, single_price, bulk_price, category, designs };
+
+      const front_image = designs.front?.image || designs.front?.image_url || designs_list[0]?.image || null;
+      const back_image = designs.back?.image || designs.back?.image_url || designs_list[1]?.image || null;
+      const image = front_image || back_image || null;
+
+      return { ...row, single_price, bulk_price, category, sizes, colors, size_chart, designs, designs_list, front_image, back_image, image };
     });
   }
   return [];
@@ -67,9 +97,33 @@ export async function getProduct(id, ownerId) {
     const sizes = prod.sizes || [];
     const colors = prod.colors || [];
     const sizeChart = prod.size_chart || [];
-    const designs = prod.designs || [];
     const inventory = prod.inventory || [];
-    return { ...prod, sizes, colors, sizeChart, designs, inventory };
+
+    const rawDesigns = prod.designs || [];
+    let designs = {};
+    let designs_list = [];
+
+    if (Array.isArray(rawDesigns)) {
+      designs_list = rawDesigns;
+      for (const d of rawDesigns) {
+        if (!d) continue;
+        const side = (d.side || "").toLowerCase();
+        if (side === "front") designs.front = d;
+        else if (side === "back") designs.back = d;
+      }
+      if (!designs.front && rawDesigns[0]) designs.front = rawDesigns[0];
+      if (!designs.back && rawDesigns[1]) designs.back = rawDesigns[1];
+    } else if (rawDesigns && typeof rawDesigns === 'object') {
+      designs = rawDesigns;
+      if (rawDesigns.front) designs_list.push({ side: 'front', ...rawDesigns.front });
+      if (rawDesigns.back) designs_list.push({ side: 'back', ...rawDesigns.back });
+    }
+
+    const front_image = designs.front?.image || designs.front?.image_url || designs_list[0]?.image || null;
+    const back_image = designs.back?.image || designs.back?.image_url || designs_list[1]?.image || null;
+    const image = front_image || back_image || null;
+
+    return { ...prod, sizes, colors, sizeChart, designs, designs_list, front_image, back_image, image, inventory };
   }
   return null;
 }

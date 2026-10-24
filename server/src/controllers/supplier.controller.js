@@ -2,6 +2,7 @@ import productModel from '../models/product.model.js';
 import inventoryModel from '../models/inventory.model.js';
 import userModel from '../models/user.model.js';
 import listingModel from '../models/listing.model.js';
+import * as productsStore from '../services/productsStore.js';
 import { decodeId } from '../utils/idEncoder.js';
 import { pool } from '../config/database.js';
 import path from 'path';
@@ -18,15 +19,28 @@ export async function getCatalog(req, res, next) {
 
     const userId = user.sub || user.id;
     const userRow = await userModel.findById(Number(userId));
-    const ownerId = userRow?.associated_provider_id || (user.role === 'print_provider' ? userId : null);
+    const queryProviderId = req.query.providerId ? Number(req.query.providerId) : null;
+    const ownerId = queryProviderId || userRow?.associated_provider_id || (user.role === 'print_provider' ? userId : null);
 
     const colors = await productModel.listColors(ownerId);
     const sizes = await productModel.listSizes(ownerId);
     const inventory = await inventoryModel.listInventory(ownerId);
     const size_chart = await productModel.listSizeChart(ownerId);
-    const products = await productModel.listProducts(ownerId);
+    const products = await productsStore.listProducts(ownerId);
 
     return res.json({ colors, sizes, inventory, size_chart, products });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getProduct(req, res, next) {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!id) return res.status(400).json({ message: 'Invalid product id' });
+    const product = await productsStore.getProduct(id);
+    if (!product) return res.status(404).json({ message: 'Product not found' });
+    return res.json(product);
   } catch (err) {
     next(err);
   }
@@ -226,6 +240,7 @@ export async function getListingByIdJson(req, res, next) {
 
 export default {
   getCatalog,
+  getProduct,
   listSavedDesigns,
   createListing,
   listListings,

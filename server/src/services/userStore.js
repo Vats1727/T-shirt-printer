@@ -155,7 +155,7 @@ export async function createUser({ name, email, role, password, associated_provi
   const pool = getPool();
   if (pool) {
     try {
-      const initialStatus = role === "print_provider" ? "pending" : "active";
+      const initialStatus = (role === "print_provider" || role === "designer") ? "pending" : "active";
       const res = await pool.query(
         "INSERT INTO users (name, email, password_hash, role, status, associated_provider_id, created_at) VALUES ($1,$2,$3,$4,$5,$6,NOW()) RETURNING id, name, email, role, status, subscription_tier, subscription_expiry, associated_provider_id, created_at",
         [name || null, email, hashed, role, initialStatus, associated_provider_id || null]
@@ -187,7 +187,7 @@ export async function createUser({ name, email, role, password, associated_provi
     email,
     role,
     password: hashed,
-    status: role === "print_provider" ? "pending" : "active",
+    status: (role === "print_provider" || role === "designer") ? "pending" : "active",
     createdAt: (/* @__PURE__ */ new Date()).toISOString()
   };
   users.push(user);

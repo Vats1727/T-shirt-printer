@@ -1,5 +1,6 @@
 import React from 'react';
-import { Switch, Route } from 'wouter';
+import { Switch, Route, Redirect } from 'wouter';
+import { useAuth } from '@/context/AuthContext';
 
 import Home from '@/pages/Home/index.jsx';
 import NotFound from '@/pages/NotFound/index.jsx';
@@ -11,11 +12,14 @@ import AdminClothes from '@/pages/Admin/Clothes.jsx';
 import AdminOrders from '@/pages/Admin/Orders.jsx';
 import AdminProfile from '@/pages/Admin/Profile.jsx';
 import AdminDesigners from '@/pages/Admin/Designers.jsx';
+import AdminDesignerDesigns from '@/pages/Admin/DesignerDesigns.jsx';
 import AdminRoute from '@/routes/AdminRoute.jsx';
 
 import SupplierDashboard from '@/pages/Supplier/Dashboard.jsx';
+import SupplierOrders from '@/pages/Supplier/Orders.jsx';
 import SupplierOrder from '@/pages/Supplier/Order.jsx';
 import SupplierProductOrder from '@/pages/Supplier/ProductOrder.jsx';
+import SupplierProductPurchase from '@/pages/Supplier/ProductPurchase.jsx';
 import SupplierSavedDesigns from '@/pages/Supplier/SavedDesigns.jsx';
 import SupplierCreateListing from '@/pages/Supplier/CreateListing.jsx';
 import SupplierStoreCustomizer from '@/pages/Supplier/StoreCustomizer.jsx';
@@ -26,6 +30,7 @@ import StorePage from '@/pages/Store/Store.jsx';
 import StoreProduct from '@/pages/Store/Product.jsx';
 
 import PortalAdminDashboard from '@/pages/Portal/Dashboard.jsx';
+import PortalAdminRequests from '@/pages/Portal/Requests.jsx';
 import PortalAdminRoute from '@/routes/PortalAdminRoute.jsx';
 
 export function AppRoutes() {
@@ -40,9 +45,30 @@ export function AppRoutes() {
       {/* Admin / Print Provider Protected Routes */}
       <AdminRoute path="/admin/dashboard" component={AdminDashboard} />
       <AdminRoute path="/admin/clothes" component={AdminClothes} />
-      <Route path="/admin/orders" component={AdminOrders} />
+      <AdminRoute path="/admin/orders" component={AdminOrders} />
       <AdminRoute path="/admin/profile" component={AdminProfile} />
       <AdminRoute path="/admin/designers" component={AdminDesigners} />
+      <AdminRoute path="/admin/designer-designs" component={AdminDesignerDesigns} />
+
+      {/* Universal /orders and /order routes */}
+      <Route path="/orders">
+        {() => {
+          const { user } = useAuth();
+          if (user?.role === 'print_provider' || user?.role === 'admin') {
+            return <Redirect to="/admin/orders" />;
+          }
+          return <Redirect to="/supplier/orders" />;
+        }}
+      </Route>
+      <Route path="/order">
+        {() => {
+          const { user } = useAuth();
+          if (user?.role === 'print_provider' || user?.role === 'admin') {
+            return <Redirect to="/admin/orders" />;
+          }
+          return <Redirect to="/supplier/orders" />;
+        }}
+      </Route>
 
       {/* Supplier / Designer Protected Routes */}
       <Route path="/supplier/login" component={Login} />
@@ -51,7 +77,10 @@ export function AppRoutes() {
       <SupplierRoute path="/supplier/listings/create" component={SupplierCreateListing} />
       <SupplierRoute path="/supplier/customize-store" component={SupplierStoreCustomizer} />
       <SupplierRoute path="/supplier/store-settings" component={SupplierStoreCustomizer} />
-      <SupplierRoute path="/supplier/order" component={SupplierOrder} />
+      <SupplierRoute path="/supplier/orders" component={SupplierOrders} />
+      <SupplierRoute path="/supplier/order" component={SupplierOrders} />
+      <SupplierRoute path="/supplier/product/:id/order" component={SupplierProductPurchase} />
+      <SupplierRoute path="/supplier/order-product/:id" component={SupplierProductPurchase} />
       <SupplierRoute path="/supplier/product/:id" component={SupplierProductOrder} />
       <SupplierRoute path="/supplier/profile" component={SupplierProfile} />
 
@@ -62,6 +91,7 @@ export function AppRoutes() {
 
       {/* Portal Admin Protected Routes */}
       <PortalAdminRoute path="/portal/dashboard" component={PortalAdminDashboard} />
+      <PortalAdminRoute path="/portal/requests" component={PortalAdminRequests} />
 
       {/* 404 Catch-All */}
       <Route component={NotFound} />

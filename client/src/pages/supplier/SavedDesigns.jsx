@@ -7,7 +7,7 @@ import { DesignCanvas } from "@/components/common/DesignCanvas";
 import { useLocation } from "wouter";
 import { Trash2, Eye, Copy, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { decodeId } from "@/utils/idEncoder";
+import { decodeId, getMaskedCode } from "@/utils/idEncoder";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -168,7 +168,7 @@ export default function SavedDesignsPage({ params }) {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 mb-1">
-              {designerIdToLoad ? `Designer ${designerIdToLoad}'s Designs` : "Saved Designs"}
+              Saved Designs
             </h1>
             <p className="text-slate-500">Manage and preview your custom creation library.</p>
           </div>
@@ -218,7 +218,7 @@ export default function SavedDesignsPage({ params }) {
                   <div className="relative aspect-square bg-[#f8f9fa] overflow-hidden">
                     {previewImg ? <img
       src={previewImg}
-      alt={design.slogan || `Design ${design.id}`}
+      alt={design.slogan || "Custom Design"}
       onError={(e) => {
         if (e.currentTarget.dataset.retried) return;
         e.currentTarget.dataset.retried = "true";
@@ -262,7 +262,7 @@ export default function SavedDesignsPage({ params }) {
                     <div className="flex items-start justify-between mb-3">
                       <div>
                         <h3 className="font-bold text-slate-800 line-clamp-1">{design.product || "Custom Design"}</h3>
-                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">ID: design-{design.id}</p>
+                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">{getMaskedCode(design.id, "DSG")}</p>
                       </div>
                       <Button
       variant="ghost"
@@ -390,7 +390,7 @@ export default function SavedDesignsPage({ params }) {
               <div className="mb-8">
                 <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Design Information</h3>
                 <h2 className="text-xl font-bold text-slate-800">{activeDesign?.product || "Custom Design"}</h2>
-                <p className="text-sm text-slate-500 mt-1">Ref: design-{activeDesign?.id}</p>
+                <p className="text-sm text-slate-500 mt-1">Code: {getMaskedCode(activeDesign?.id, "DSG")}</p>
               </div>
 
               <div className="mb-8">

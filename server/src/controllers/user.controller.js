@@ -24,7 +24,7 @@ export async function listDesigners(req, res, next) {
   try {
     const userId = req.user?.sub || req.user?.id;
     const designers = await userService.getDesignersForProvider(userId);
-    return res.json(designers);
+    return res.json({ designers });
   } catch (err) {
     next(err);
   }

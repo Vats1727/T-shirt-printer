@@ -30,4 +30,10 @@ export function decodeId(code) {
   return isNaN(parsed) ? 0 : parsed;
 }
 
-export default { encodeId, decodeId };
+export function getMaskedCode(num, prefix = 'DSG') {
+  if (!num) return '';
+  const enc = encodeId(num).replace(/^x/i, '').toUpperCase();
+  return `#${prefix}-${enc}`;
+}
+
+export default { encodeId, decodeId, getMaskedCode };

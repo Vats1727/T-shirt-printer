@@ -46,6 +46,30 @@ export async function login({ email, password }) {
     throw err;
   }
 
+  // Approval gate for Print Providers and Designers
+  if (user.role === 'print_provider' || user.role === 'designer') {
+    const status = (user.status || 'pending').toLowerCase();
+    const roleLabel = user.role === 'designer' ? 'designer' : 'print provider';
+    if (status === 'pending') {
+      const err = new Error(`Your ${roleLabel} registration request is currently under review by the portal administrator. Please wait for acceptance before signing in.`);
+      err.status = 403;
+      err.code = 'PENDING_APPROVAL';
+      throw err;
+    }
+    if (status === 'rejected') {
+      const err = new Error(`Your ${roleLabel} registration was rejected by the portal administrator. Please contact support.`);
+      err.status = 403;
+      err.code = 'REGISTRATION_REJECTED';
+      throw err;
+    }
+    if (status === 'suspended') {
+      const err = new Error(`Your ${roleLabel} account has been suspended by the portal administrator. Access is restricted.`);
+      err.status = 403;
+      err.code = 'ACCOUNT_SUSPENDED';
+      throw err;
+    }
+  }
+
   const token = jwt.sign(
     { sub: user.id, role: user.role, email: user.email },
     env.JWT_SECRET,

@@ -60,17 +60,60 @@ export async function createSupplierOrder(supplier_id, placed_by, items, shippin
   return orderId;
 }
 
-export async function listSupplierOrders(supplier_id) {
+export async function listSupplierOrders(userId) {
   if (!pool) return [];
-  const rows = await pool.query('SELECT * FROM supplier_orders WHERE supplier_id=$1 ORDER BY created_at DESC', [supplier_id]);
+  const rows = await pool.query(
+    `SELECT so.*, 
+            prov.name as provider_name, 
+            prov.email as provider_email,
+            u.name as designer_name, 
+            u.email as designer_email
+     FROM supplier_orders so
+     LEFT JOIN users prov ON prov.id = so.supplier_id
+     LEFT JOIN users u ON u.id = so.placed_by
+     WHERE so.placed_by=$1 OR so.supplier_id=$1
+     ORDER BY so.created_at DESC`,
+    [userId]
+  );
   const orders = rows.rows;
   for (const o of orders) {
-    const lines = await pool.query('SELECT * FROM supplier_order_lines WHERE order_id=$1', [o.id]);
+    const lines = await pool.query(
+      `SELECT sol.*, pf.name as product_name, pf.slug as product_slug, pf.designs as product_designs
+       FROM supplier_order_lines sol
+       LEFT JOIN products_full pf ON pf.id = sol.product_id
+       WHERE sol.order_id=$1`,
+      [o.id]
+    );
+    o.subtotal = (o.subtotal_cents || 0) / 100;
+    o.tax = (o.tax_cents || 0) / 100;
+    o.shipping = (o.shipping_cost_cents || 0) / 100;
+    o.total = (o.total_cents || 0) / 100;
     o.items = lines.rows.map((l) => {
       const ds = l.design_snapshot;
       let parsed = null;
       try { parsed = ds ? (typeof ds === 'string' ? JSON.parse(ds) : ds) : null; } catch (e) { parsed = ds; }
-      return { ...l, design_snapshot: parsed };
+      
+      let image = null;
+      let rawDes = l.product_designs;
+      try {
+        if (typeof rawDes === 'string') rawDes = JSON.parse(rawDes);
+      } catch (e) {}
+
+      if (Array.isArray(rawDes)) {
+        image = rawDes[0]?.image || rawDes[0]?.image_url || null;
+      } else if (rawDes && typeof rawDes === 'object') {
+        image = rawDes.front?.image || rawDes.front?.image_url || rawDes.image || null;
+      }
+
+      return {
+        ...l,
+        product: l.product_name || l.product_sku || 'Garment',
+        product_slug: l.product_slug || null,
+        image,
+        unit_price: (l.unit_price_cents || 0) / 100,
+        line_total: (l.line_total_cents || 0) / 100,
+        design_snapshot: parsed
+      };
     });
   }
   return orders;
@@ -96,7 +139,20 @@ export async function listOrdersForAdmin(ownerId) {
   const colors = await productModel.listColors(ownerId);
   const sizes = await productModel.listSizes(ownerId);
 
-  const rows = await pool.query('SELECT * FROM supplier_orders WHERE supplier_id=$1 ORDER BY created_at DESC', [ownerId]);
+  const rows = await pool.query(
+    `SELECT so.*, u.name as designer_name, u.email as designer_email
+     FROM supplier_orders so
+     LEFT JOIN users u ON u.id = so.placed_by
+     WHERE so.supplier_id=$1
+        OR so.id IN (
+          SELECT sol.order_id 
+          FROM supplier_order_lines sol 
+          JOIN products_full pf ON pf.id = sol.product_id 
+          WHERE pf.owner_id = $1
+        )
+     ORDER BY so.created_at DESC`,
+    [ownerId]
+  );
   const orders = rows.rows;
   for (const o of orders) {
     const lines = await pool.query('SELECT * FROM supplier_order_lines WHERE order_id=$1', [o.id]);
@@ -126,6 +182,114 @@ export async function getOrderForAdmin(orderId, ownerId) {
   return sanitizeOrderForAdmin(ord, user ? { [user.id]: user } : {}, colors, sizes);
 }
 
+export async function createDesignerPurchaseRequest({ designerId, providerId, productId, productSku, size, color, quantity = 1, unitPrice = 0, shipping = {} }) {
+  if (!pool) return null;
+
+  const unitPriceCents = Math.round(Number(unitPrice || 0) * 100);
+  const subtotalCents = unitPriceCents * Number(quantity || 1);
+  const totalCents = subtotalCents + (shipping?.shipping_cost_cents || 0);
+
+  const ins = await pool.query(
+    `INSERT INTO supplier_orders (supplier_id, placed_by, customer_name, customer_email, shipping_address, shipping_method, shipping_cost_cents, subtotal_cents, tax_cents, total_cents, currency, status, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, $9, 'INR', 'pending', NOW(), NOW())
+     RETURNING id, status, created_at`,
+    [
+      providerId,
+      designerId,
+      shipping?.customer_name || null,
+      shipping?.customer_email || null,
+      shipping?.shipping_address ? JSON.stringify(shipping.shipping_address) : null,
+      shipping?.shipping_method || 'Standard',
+      shipping?.shipping_cost_cents || 0,
+      subtotalCents,
+      totalCents
+    ]
+  );
+  const orderId = ins.rows[0].id;
+
+  await pool.query(
+    `INSERT INTO supplier_order_lines (order_id, product_id, product_sku, size, color, quantity, unit_price_cents, line_total_cents, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+    [
+      orderId,
+      productId ? Number(productId) : null,
+      productSku || String(productId || 'tshirt'),
+      size ? String(size) : null,
+      color ? String(color) : null,
+      Number(quantity || 1),
+      unitPriceCents,
+      subtotalCents
+    ]
+  );
+
+  return { orderId, status: 'pending', created_at: ins.rows[0].created_at };
+}
+
+export async function getDesignerProductPurchaseStatus(designerId, productId, providerId = null) {
+  if (!pool) return { status: 'none', canSave: false, order: null };
+
+  const query = `
+    SELECT so.id, so.status, so.created_at, so.total_cents, sol.quantity, sol.size, sol.color, sol.unit_price_cents, sol.line_total_cents, pf.name as product_name
+    FROM supplier_orders so
+    JOIN supplier_order_lines sol ON sol.order_id = so.id
+    LEFT JOIN products_full pf ON pf.id = sol.product_id
+    WHERE so.placed_by = $1
+      AND (sol.product_id = $2 OR sol.product_sku = $2::text)
+      AND ($3::int IS NULL OR so.supplier_id = $3)
+    ORDER BY so.id DESC
+    LIMIT 1
+  `;
+  const res = await pool.query(query, [Number(designerId), Number(productId), providerId ? Number(providerId) : null]);
+  if (!res.rows.length) {
+    return { status: 'none', canSave: false, order: null };
+  }
+
+  const row = res.rows[0];
+  const approvedStatuses = ['confirmed', 'paid', 'processing', 'completed'];
+  const isApproved = approvedStatuses.includes((row.status || '').toLowerCase());
+  const isPending = (row.status || '').toLowerCase() === 'pending';
+  const isRejected = ['cancelled', 'rejected'].includes((row.status || '').toLowerCase());
+
+  let status = 'none';
+  if (isApproved) status = 'approved';
+  else if (isPending) status = 'pending';
+  else if (isRejected) status = 'rejected';
+  else status = row.status;
+
+  return {
+    status,
+    canSave: true, // Designers are permitted to design and save without purchase requirement
+    order: {
+      id: row.id,
+      status: row.status,
+      created_at: row.created_at,
+      quantity: row.quantity,
+      size: row.size,
+      color: row.color,
+      unit_price: (row.unit_price_cents || 0) / 100,
+      total: (row.total_cents || 0) / 100,
+      product_name: row.product_name
+    }
+  };
+}
+
+export async function hasDesignerApprovedPurchase(designerId, productId, providerId = null) {
+  return true;
+}
+
+
+export async function updateOrderStatus(orderId, status, providerId = null) {
+  if (!pool) return null;
+  const res = await pool.query(
+    `UPDATE supplier_orders
+     SET status = $1, updated_at = NOW()
+     WHERE id = $2 AND ($3::int IS NULL OR supplier_id = $3)
+     RETURNING *`,
+    [status, Number(orderId), providerId ? Number(providerId) : null]
+  );
+  return res.rows[0] || null;
+}
+
 function sanitizeOrderForAdmin(order, usersMap, colors, sizes) {
   const o = { ...order };
   if (o.supplier_id && usersMap && usersMap[o.supplier_id]) {
@@ -133,9 +297,14 @@ function sanitizeOrderForAdmin(order, usersMap, colors, sizes) {
   } else {
     o.supplier = null;
   }
+  if (o.designer_name || o.designer_email) {
+    o.designer = { name: o.designer_name || 'Designer', email: o.designer_email || null };
+  } else {
+    o.designer = null;
+  }
+  // Keep order ID for administrative action, but do not leak placed_by directly
   delete o.supplier_id;
   delete o.placed_by;
-  delete o.id;
   o.subtotal = (o.subtotal_cents || 0) / 100;
   o.tax = (o.tax_cents || 0) / 100;
   o.shipping = (o.shipping_cost_cents || 0) / 100;
@@ -147,6 +316,7 @@ function sanitizeOrderForAdmin(order, usersMap, colors, sizes) {
   o.items = (o.items || []).map((it) => {
     const copy = {};
     copy.product = it.product_sku || it.product || null;
+    copy.product_id = it.product_id || null;
     let sizeLabel = it.size;
     const sizeNum = Number(it.size);
     if (!isNaN(sizeNum)) {
@@ -180,5 +350,9 @@ export default {
   listSupplierOrders,
   getSupplierOrder,
   listOrdersForAdmin,
-  getOrderForAdmin
+  getOrderForAdmin,
+  createDesignerPurchaseRequest,
+  getDesignerProductPurchaseStatus,
+  hasDesignerApprovedPurchase,
+  updateOrderStatus
 };

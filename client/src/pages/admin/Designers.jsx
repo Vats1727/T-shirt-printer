@@ -12,6 +12,7 @@ import {
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { encodeId } from "@/utils/idEncoder";
 import {
   Card,
   CardContent,
@@ -38,9 +39,9 @@ export default function AdminDesigners() {
       const res = await fetch("/api/admin/designers", {
         headers: { Authorization: token ? `Bearer ${token}` : "" }
       });
-      if (!res.ok) throw new Error("Failed to load designers");
       const data = await res.json();
-      setDesigners(data.designers || []);
+      const desList = Array.isArray(data) ? data : (Array.isArray(data?.designers) ? data.designers : []);
+      setDesigners(desList);
     } catch (err) {
       setError(err?.message || "Failed to load designers");
     } finally {
@@ -129,11 +130,12 @@ export default function AdminDesigners() {
 
               <CardFooter className="relative flex gap-2 pt-2">
                 <Button
-    variant="secondary"
-    className="w-full h-11 rounded-xl font-bold bg-secondary hover:bg-secondary/80 text-foreground group"
-  >
-                  View Profile
-                  <ChevronRight className="w-4 h-4 ml-1 opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
+                  variant="default"
+                  className="w-full h-11 rounded-xl font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm group"
+                  onClick={() => setLocation(`/admin/designer-designs?designerId=${encodeId(designer.id)}`)}
+                >
+                  View Saved Designs
+                  <ChevronRight className="w-4 h-4 ml-1 opacity-70 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
                 </Button>
                 <Button
     variant="ghost"

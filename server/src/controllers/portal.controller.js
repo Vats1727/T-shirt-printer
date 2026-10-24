@@ -15,12 +15,12 @@ export async function updateProviderStatus(req, res, next) {
     const id = Number(req.params.id);
     const data = req.body;
 
-    if (data.status && !['active', 'pending', 'suspended', 'deactivated'].includes(data.status)) {
+    if (data.status && !['active', 'pending', 'rejected', 'suspended', 'deactivated'].includes(data.status)) {
       return res.status(400).json({ message: 'Invalid status' });
     }
 
     await userModel.updateUser(id, data);
-    return res.json({ ok: true });
+    return res.json({ ok: true, status: data.status });
   } catch (err) {
     next(err);
   }

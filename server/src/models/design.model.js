@@ -36,10 +36,13 @@ export async function createDesign(input) {
   const template = input.template || 'tshirt';
   const ownerId = input.owner_id || null;
 
+  const productId = input.product_id ? Number(input.product_id) : null;
+  const providerId = input.provider_id ? Number(input.provider_id) : null;
+
   if (pool) {
     const insertRes = await pool.query(
-      `INSERT INTO designs (slogan, color, text_size, text_rotation, text_position, image, image_scale, image_rotation, image_position, product, template, template_color, owner_id, group_id, design_code, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW()) RETURNING *`,
+      `INSERT INTO designs (slogan, color, text_size, text_rotation, text_position, image, image_scale, image_rotation, image_position, product, template, template_color, owner_id, group_id, design_code, product_id, provider_id, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW()) RETURNING *`,
       [
         input.slogan || null,
         color,
@@ -55,7 +58,9 @@ export async function createDesign(input) {
         color,
         ownerId,
         input.group_id || null,
-        input.design_code || null
+        input.design_code || null,
+        productId,
+        providerId
       ]
     );
     const design = insertRes.rows[0];
@@ -266,14 +271,86 @@ export async function updateDesign(id, changes, userId) {
 }
 
 export async function deleteDesign(id, userId) {
+  const designId = Number(id);
+  if (!designId) return false;
+
   if (pool) {
-    let query = 'DELETE FROM designs WHERE id = $1';
-    const params = [Number(id)];
+    // 1. Fetch design to verify ownership and collect image references
+    let selectQuery = 'SELECT id, image, back_image, owner_id FROM designs WHERE id = $1';
+    const selectParams = [designId];
     if (userId) {
-      query += ' AND (owner_id = $2 OR owner_id IS NULL)';
-      params.push(Number(userId));
+      selectQuery += ' AND (owner_id = $2 OR owner_id IS NULL)';
+      selectParams.push(Number(userId));
     }
-    const res = await pool.query(query, params);
+    const designRes = await pool.query(selectQuery, selectParams);
+    const design = designRes.rows[0];
+    if (!design) return false;
+
+    // 2. Collect all files associated with this design
+    const filesToDelete = new Set();
+    if (design.image) filesToDelete.add(design.image);
+    if (design.back_image) filesToDelete.add(design.back_image);
+
+    // 3. Inspect design_versions for previews and embedded layer assets
+    const vRes = await pool.query('SELECT payload FROM design_versions WHERE design_id = $1', [designId]);
+    for (const vRow of vRes.rows) {
+      let payload = vRow.payload;
+      if (typeof payload === 'string') {
+        try { payload = JSON.parse(payload); } catch (e) {}
+      }
+      if (payload && typeof payload === 'object') {
+        if (payload.metadata?.preview_front) filesToDelete.add(payload.metadata.preview_front);
+        if (payload.metadata?.preview_back) filesToDelete.add(payload.metadata.preview_back);
+        if (Array.isArray(payload.sides)) {
+          for (const side of payload.sides) {
+            for (const layer of side.layers || []) {
+              if (layer.type === 'image' && layer.asset) {
+                if (layer.asset.url) filesToDelete.add(layer.asset.url);
+                if (layer.asset.filename) filesToDelete.add(layer.asset.filename);
+                if (layer.asset.id) filesToDelete.add(`/api/assets/${layer.asset.id}`);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 4. Inspect assets table for automated preview assets linked to this design
+    const assetRes = await pool.query(
+      `SELECT id, filename, storage_key 
+       FROM assets 
+       WHERE (metadata->>'designId')::int = $1
+          OR filename LIKE '%' || $2 || '%'`,
+      [designId, `design-${designId}-`]
+    );
+    for (const aRow of assetRes.rows) {
+      if (aRow.storage_key) filesToDelete.add(aRow.storage_key);
+      if (aRow.filename) filesToDelete.add(aRow.filename);
+      filesToDelete.add(`/api/assets/${aRow.id}`);
+    }
+
+    // 5. Physically unlink all collected files from disk
+    for (const fileRef of filesToDelete) {
+      try {
+        await storageService.deletePhysicalFile(fileRef);
+      } catch (err) {
+        console.warn(`deleteDesign: failed to delete physical file ${fileRef}:`, err.message);
+      }
+    }
+
+    // 6. Delete linked assets from database
+    await pool.query(
+      `DELETE FROM assets 
+       WHERE (metadata->>'designId')::int = $1
+          OR filename LIKE '%' || $2 || '%'`,
+      [designId, `design-${designId}-`]
+    );
+
+    // 7. Delete design versions
+    await pool.query('DELETE FROM design_versions WHERE design_id = $1', [designId]);
+
+    // 8. Delete the design record
+    const res = await pool.query('DELETE FROM designs WHERE id = $1', [designId]);
     return (res.rowCount || 0) > 0;
   }
 
@@ -283,11 +360,45 @@ export async function deleteDesign(id, userId) {
   return true;
 }
 
+export async function listDesignsForProvider(providerId) {
+  if (pool) {
+    const res = await pool.query(
+      `SELECT d.*, dv.payload as version_payload, u.name as designer_name, u.email as designer_email, pf.name as product_name
+       FROM designs d
+       LEFT JOIN users u ON u.id = d.owner_id
+       LEFT JOIN products_full pf ON pf.id = d.product_id
+       LEFT JOIN LATERAL (
+         SELECT payload FROM design_versions WHERE design_id = d.id ORDER BY id DESC LIMIT 1
+       ) dv ON true
+       WHERE d.provider_id = $1
+          OR d.product_id IN (SELECT id FROM products_full WHERE owner_id = $1)
+          OR d.owner_id IN (SELECT id FROM users WHERE associated_provider_id = $1)
+       ORDER BY d.id DESC`,
+      [Number(providerId)]
+    );
+    return res.rows.map((row) => {
+      let version = row.version_payload;
+      if (typeof version === 'string') {
+        try { version = JSON.parse(version); } catch (e) {}
+      }
+      return {
+        ...row,
+        version: version || null,
+        versions: version ? [version] : []
+      };
+    });
+  }
+
+  const designs = await readDesigns();
+  return designs.filter((d) => Number(d.provider_id) === Number(providerId));
+}
+
 export default {
   createDesign,
   getDesign,
   listDesigns,
   listDesignVersions,
+  listDesignsForProvider,
   updateDesign,
   deleteDesign
 };
