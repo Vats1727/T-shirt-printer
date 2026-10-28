@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Route, Redirect } from 'wouter';
-import { DashboardLayout } from '@/layouts/DashboardLayout';
+import { DesignerLayout } from '@/layouts/DesignerLayout';
 
 export default function SupplierRoute({ path, component: Component }) {
   return (
@@ -17,10 +17,11 @@ export default function SupplierRoute({ path, component: Component }) {
         if (user.role !== 'designer' && user.role !== 'supplier') {
           return <Redirect to="/supplier/login" />;
         }
+
         return (
-          <DashboardLayout>
+          <DesignerLayout>
             <Component {...params} />
-          </DashboardLayout>
+          </DesignerLayout>
         );
       }}
     </Route>

@@ -66,7 +66,7 @@ export default function StoreProduct() {
           return;
         }
         const js = await res.json();
-        setListing(js.listing || null);
+        setListing(js.listing || (js.id ? js : null));
       } catch (e) {
         setListing(null);
       } finally {
@@ -271,15 +271,22 @@ export default function StoreProduct() {
     /* Header / Titles */
   }
             <div className="space-y-2.5 pb-5 border-b border-slate-200/80">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="inline-flex items-center gap-1.5 text-xs font-bold tracking-wider uppercase text-indigo-600">
                   <Sparkles className="size-3.5" />
                   Exclusive Print Collection
                 </span>
-                <div className="flex items-center gap-1 text-amber-500 text-xs font-bold">
-                  <Star className="size-3.5 fill-amber-400 text-amber-400" />
-                  <span>4.9</span>
-                  <span className="text-slate-400 font-normal">(42 reviews)</span>
+                <div className="flex items-center gap-2">
+                  {listing.designer_name && (
+                    <Badge variant="secondary" className="bg-violet-50 text-violet-700 border-violet-200 text-[11px] font-bold">
+                      Designed by {listing.designer_name}
+                    </Badge>
+                  )}
+                  <div className="flex items-center gap-1 text-amber-500 text-xs font-bold">
+                    <Star className="size-3.5 fill-amber-400 text-amber-400" />
+                    <span>4.9</span>
+                    <span className="text-slate-400 font-normal">(42 reviews)</span>
+                  </div>
                 </div>
               </div>
 

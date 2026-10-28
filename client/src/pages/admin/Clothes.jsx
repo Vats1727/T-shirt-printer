@@ -24,11 +24,25 @@ import {
   Layers,
   Shirt,
   RotateCcw,
-  Loader2
+  Loader2,
+  Plus,
+  Wand2,
+  HelpCircle,
+  AlertTriangle,
+  FileText,
+  AlertCircle
 } from "lucide-react";
 import { DesignCanvas } from "@/components/common/DesignCanvas";
 import { useToast } from "@/hooks/use-toast";
 import { decodeId } from "@/utils/idEncoder";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -47,10 +61,13 @@ export default function AdminClothes() {
   const [colors, setColors] = useState([]);
   const [sizes, setSizes] = useState([]);
   const [colorName, setColorName] = useState("");
-  const [colorHex, setColorHex] = useState("#000000");
+  const [colorHex, setColorHex] = useState("#4F46E5");
+  const [rgbState, setRgbState] = useState({ r: 79, g: 70, b: 229 });
   const [sizeLabel, setSizeLabel] = useState("");
   const [product, setProduct] = useState("tshirt");
   const [sizeChart, setSizeChart] = useState([]);
+  const [sizeChartValues, setSizeChartValues] = useState({});
+  const [showSizeMatrix, setShowSizeMatrix] = useState(false);
   const [inventory, setInventory] = useState([]);
   const [editingProductId, setEditingProductId] = useState(null);
   const [productName, setProductName] = useState("");
@@ -63,62 +80,249 @@ export default function AdminClothes() {
     description: "",
     onConfirm: () => {}
   });
+  const [showMockupGuide, setShowMockupGuide] = useState(false);
+
+  // Industry Standard Apparel Measurements (in Inches)
+  const INDUSTRY_STANDARD_SIZES = {
+    tshirt: {
+      XS: { chest: 36, length: 26, shoulder: 16.5 },
+      S: { chest: 38, length: 27, shoulder: 17 },
+      M: { chest: 40, length: 28, shoulder: 18 },
+      L: { chest: 42, length: 29, shoulder: 19 },
+      XL: { chest: 44, length: 30, shoulder: 20 },
+      "2XL": { chest: 46, length: 31, shoulder: 21 },
+      "3XL": { chest: 48, length: 32, shoulder: 22 }
+    },
+    hoodie: {
+      XS: { chest: 38, length: 26, shoulder: 17.5 },
+      S: { chest: 40, length: 27, shoulder: 18.5 },
+      M: { chest: 42, length: 28, shoulder: 19.5 },
+      L: { chest: 44, length: 29, shoulder: 20.5 },
+      XL: { chest: 46, length: 30, shoulder: 21.5 },
+      "2XL": { chest: 48, length: 31, shoulder: 22.5 },
+      "3XL": { chest: 50, length: 32, shoulder: 23.5 }
+    },
+    longsleeve: {
+      XS: { chest: 36, length: 26, shoulder: 16.5 },
+      S: { chest: 38, length: 27, shoulder: 17 },
+      M: { chest: 40, length: 28, shoulder: 18 },
+      L: { chest: 42, length: 29, shoulder: 19 },
+      XL: { chest: 44, length: 30, shoulder: 20 },
+      "2XL": { chest: 46, length: 31, shoulder: 21 },
+      "3XL": { chest: 48, length: 32, shoulder: 22 }
+    },
+    sweatshirt: {
+      XS: { chest: 38, length: 26, shoulder: 17 },
+      S: { chest: 40, length: 27, shoulder: 18 },
+      M: { chest: 42, length: 28, shoulder: 19 },
+      L: { chest: 44, length: 29, shoulder: 20 },
+      XL: { chest: 46, length: 30, shoulder: 21 },
+      "2XL": { chest: 48, length: 31, shoulder: 22 },
+      "3XL": { chest: 50, length: 32, shoulder: 23 }
+    }
+  };
+
+  function getIndustryDefaults(template, label) {
+    const tmpl = INDUSTRY_STANDARD_SIZES[template] || INDUSTRY_STANDARD_SIZES.tshirt;
+    const cleanLabel = (label || "").trim().toUpperCase();
+    if (tmpl[cleanLabel]) return tmpl[cleanLabel];
+    if (cleanLabel === "XXL" && tmpl["2XL"]) return tmpl["2XL"];
+    if (cleanLabel === "XXXL" && tmpl["3XL"]) return tmpl["3XL"];
+    if (cleanLabel.startsWith("XS") && tmpl["XS"]) return tmpl["XS"];
+    if (cleanLabel.startsWith("S") && tmpl["S"]) return tmpl["S"];
+    if (cleanLabel.startsWith("M") && tmpl["M"]) return tmpl["M"];
+    if (cleanLabel.startsWith("L") && tmpl["L"]) return tmpl["L"];
+    if (cleanLabel.startsWith("XL") && tmpl["XL"]) return tmpl["XL"];
+    return { chest: 40, length: 28, shoulder: 18 };
+  }
+
+  // Populate/Refresh sizeChartValues with defaults or existing data
+  const applyIndustryDefaultsToAll = () => {
+    const next = {};
+    sizes.forEach((s) => {
+      const def = getIndustryDefaults(product, s.label);
+      next[s.id] = {
+        chest: def.chest,
+        length: def.length,
+        shoulder: def.shoulder
+      };
+    });
+    setSizeChartValues(next);
+    toast({
+      title: "Industry Defaults Applied",
+      description: `Loaded standard measurements for ${product.toUpperCase()}.`
+    });
+  };
+
+  // Color conversion & management helpers
+  function hexToRgb(hex) {
+    let clean = (hex || "#000000").replace("#", "");
+    if (clean.length === 3) {
+      clean = clean.split("").map((c) => c + c).join("");
+    }
+    const num = parseInt(clean, 16);
+    return {
+      r: isNaN(num) ? 0 : (num >> 16) & 255,
+      g: isNaN(num) ? 0 : (num >> 8) & 255,
+      b: isNaN(num) ? 0 : num & 255
+    };
+  }
+
+  function rgbToHex(r, g, b) {
+    const clamp = (v) => Math.max(0, Math.min(255, parseInt(v, 10) || 0));
+    return (
+      "#" +
+      [clamp(r), clamp(g), clamp(b)]
+        .map((x) => x.toString(16).padStart(2, "0"))
+        .join("")
+    );
+  }
+
+  const updateColorFromHex = (hex) => {
+    setColorHex(hex);
+    setRgbState(hexToRgb(hex));
+  };
+
+  const updateColorFromRgb = (channel, val) => {
+    const clean = Math.max(0, Math.min(255, parseInt(val, 10) || 0));
+    const next = { ...rgbState, [channel]: clean };
+    setRgbState(next);
+    setColorHex(rgbToHex(next.r, next.g, next.b));
+  };
+
+  async function handleAddCustomColor() {
+    if (!colorHex || !colorName.trim()) {
+      toast({
+        title: "Color Name Required",
+        description: "Please enter a descriptive name for this color swatch (e.g., 'Vintage Indigo').",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const normalizeHex = (h) => {
+      if (!h) return "";
+      let clean = h.trim().toLowerCase();
+      if (!clean.startsWith("#")) clean = "#" + clean;
+      if (clean.length === 4) {
+        clean = "#" + clean[1] + clean[1] + clean[2] + clean[2] + clean[3] + clean[3];
+      }
+      return clean;
+    };
+
+    const targetHex = normalizeHex(colorHex);
+    const targetName = colorName.trim().toLowerCase();
+
+    // 1. Check if a color with the exact same hex code already exists
+    const duplicateHex = colors.find(
+      (c) => normalizeHex(c.hex) === targetHex
+    );
+    if (duplicateHex) {
+      toast({
+        title: "Color Already Exists",
+        description: `This color code (${colorHex.toUpperCase()}) already exists in your catalog as "${duplicateHex.name}".`,
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // 2. Check if a color with the exact same name already exists
+    const duplicateName = colors.find(
+      (c) => (c.name || "").trim().toLowerCase() === targetName
+    );
+    if (duplicateName) {
+      toast({
+        title: "Color Name Already Exists",
+        description: `A color named "${duplicateName.name}" (${duplicateName.hex}) already exists. Please choose a different name.`,
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/admin/colors", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token ? `Bearer ${token}` : ""
+        },
+        body: JSON.stringify({ name: colorName.trim(), hex: colorHex })
+      });
+      if (res.ok) {
+        const newColor = await res.json();
+        setColors((prev) => [...prev.filter((c) => c.id !== newColor.id), newColor]);
+        setSelectedColors((prev) => [...new Set([...prev, newColor.id])]);
+        setColorName("");
+        toast({
+          title: "Custom Swatch Added",
+          description: `${newColor.name} (${newColor.hex}) added and selected.`
+        });
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast({
+          title: "Could Not Add Color",
+          description: err.message || "Failed to create color swatch.",
+          variant: "destructive"
+        });
+      }
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: err.message || "Failed to add color swatch.",
+        variant: "destructive"
+      });
+    }
+  }
+
+  async function handleDeleteColor(colorId, colorTitle) {
+    try {
+      const res = await fetch(`/api/admin/colors/${colorId}`, {
+        method: "DELETE",
+        headers: { Authorization: token ? `Bearer ${token}` : "" }
+      });
+      if (res.ok) {
+        setColors((prev) => prev.filter((c) => c.id !== colorId));
+        setSelectedColors((prev) => prev.filter((id) => id !== colorId));
+        toast({
+          title: "Swatch Removed",
+          description: `${colorTitle} removed from catalog.`
+        });
+      }
+    } catch (e) {}
+  }
+
+  // Strict Real-Time Whole Number Validation Handlers
+  const handleWholeNumberKeyDown = (e) => {
+    if (
+      ["Backspace", "Delete", "Tab", "Escape", "Enter", "ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key) ||
+      ((e.ctrlKey || e.metaKey) && ["a", "c", "v", "x"].includes(e.key.toLowerCase()))
+    ) {
+      return;
+    }
+    // Block negatives, decimals, exponents, symbols, letters
+    if (!/^[0-9]$/.test(e.key)) {
+      e.preventDefault();
+    }
+  };
+
+  const sanitizeWholeNumber = (val) => {
+    if (val === "" || val === null || val === undefined) return "";
+    const digits = String(val).replace(/\D/g, "");
+    if (!digits) return "";
+    return String(parseInt(digits, 10)); // removes leading zeroes e.g. "05" -> "5"
+  };
 
   const sectionsEnabled = productSaved || productName.trim() !== "";
 
-  const FARMO_PRESETS = [
-    {
-      category: "men",
-      label: "Pullover Hoodie",
-      name: "Men's Pullover Fleece Hoodie",
-      template: "hoodie",
-      frontImage: "/uploads/farmo/front/farmo_men_hoodie_front.png",
-      backImage: "/uploads/farmo/back/farmo_men_hoodie_back.png",
-      singlePrice: 32,
-      bulkMin: 50,
-      bulkPrice: 22
-    }
-  ];
-
-  function applyPreset(preset) {
-    setProductName(preset.name);
-    setCategory(preset.category);
-    setProduct(preset.template);
-    setSinglePrice(preset.singlePrice);
-    setBulkMin(preset.bulkMin);
-    setBulkPrice(preset.bulkPrice);
-    setDesigns({
-      front: {
-        image: preset.frontImage,
-        imageScale: 85,
-        imageRotation: 0,
-        imagePosition: { x: 200, y: 200 },
-        slogan: "",
-        color: "#000000",
-        template: preset.template
-      },
-      back: {
-        image: preset.backImage,
-        imageScale: 85,
-        imageRotation: 0,
-        imagePosition: { x: 200, y: 200 },
-        slogan: "",
-        color: "#000000",
-        template: preset.template
-      }
-    });
-    setFrontFilename(preset.frontImage);
-    setBackFilename(preset.backImage);
-    setSelectedSizes(sizes.map((s) => s.id));
-    setSelectedColors([1, 2, 3, 4, 9]);
-    toast({
-      title: "Farmo Preset Loaded",
-      description: `Loaded blank template: ${preset.name}`
-    });
-  }
-
   const [designSide, setDesignSide] = useState("front");
   const [activeTab, setActiveTab] = useState("product");
+
+  const handleTabChange = (tabId) => {
+    setActiveTab(tabId);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
   const [designs, setDesigns] = useState({
     front: {
       image: null,
@@ -144,8 +348,11 @@ export default function AdminClothes() {
   const [selectedSizes, setSelectedSizes] = useState([]);
   const [selectedColors, setSelectedColors] = useState([]);
   const [singlePrice, setSinglePrice] = useState("");
-  const [bulkMin, setBulkMin] = useState(100);
+  const [bulkMin, setBulkMin] = useState("50");
   const [bulkPrice, setBulkPrice] = useState("");
+  const [productStatus, setProductStatus] = useState("published");
+  const [missingFieldsModalOpen, setMissingFieldsModalOpen] = useState(false);
+  const [missingFieldsList, setMissingFieldsList] = useState([]);
 
   useEffect(() => {
     fetchData();
@@ -166,8 +373,20 @@ export default function AdminClothes() {
       const s = await fetch("/api/admin/sizes", {
         headers: { Authorization: token ? `Bearer ${token}` : "" }
       });
-      if (s.ok) setSizes(await s.json());
-      else throw new Error("Failed to load sizes");
+      if (s.ok) {
+        const rawSizes = await s.json();
+        const seen = new Set();
+        setSizes(
+          rawSizes.filter((item) => {
+            const key = (item.label || "").toLowerCase().trim();
+            if (!key || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          })
+        );
+      } else {
+        throw new Error("Failed to load sizes");
+      }
 
       const sc = await fetch(
         `/api/admin/size-chart?product=${encodeURIComponent(product)}`,
@@ -209,12 +428,24 @@ export default function AdminClothes() {
       const p = await res.json();
       setProductName(p.name || "");
       if (p.category) setCategory(p.category);
-      setSinglePrice(p.single_price ?? 0);
-      setBulkMin(p.bulk_min ?? 100);
-      setBulkPrice(p.bulk_price ?? 0);
+      setProductStatus(p.status || "published");
+      setSinglePrice(p.single_price !== undefined && p.single_price !== null ? String(Math.round(p.single_price)) : "");
+      setBulkMin(p.bulk_min !== undefined && p.bulk_min !== null ? String(Math.round(p.bulk_min)) : "50");
+      setBulkPrice(p.bulk_price !== undefined && p.bulk_price !== null ? String(Math.round(p.bulk_price)) : "");
       setSelectedSizes(p.sizes || []);
       setSelectedColors(p.colors || []);
       setSizeChart(p.sizeChart || []);
+      if (Array.isArray(p.sizeChart) && p.sizeChart.length > 0) {
+        const scMap = {};
+        p.sizeChart.forEach((sc) => {
+          scMap[sc.size_id] = {
+            chest: sc.chest ?? "",
+            length: sc.length ?? "",
+            shoulder: sc.shoulder ?? ""
+          };
+        });
+        setSizeChartValues((prev) => ({ ...prev, ...scMap }));
+      }
 
       const designsMap = {
         front: {
@@ -347,48 +578,98 @@ export default function AdminClothes() {
     });
   }
 
-  async function handleSaveAll(e) {
-    if (e && e.preventDefault) e.preventDefault();
+  const getMissingRequiredFields = () => {
+    const missing = [];
+    if (!productName.trim()) {
+      missing.push({ tab: "product", tabName: "Step 01 Product Info", field: "Product Title" });
+    }
+    if (!designs.front.image) {
+      missing.push({ tab: "design", tabName: "Step 02 Artwork & Mockups", field: "Front Mockup Image (PNG)" });
+    }
+    if (!selectedColors || selectedColors.length === 0) {
+      missing.push({ tab: "sizes", tabName: "Step 03 Colors & Sizes", field: "At least one Fabric Color" });
+    }
+    if (!selectedSizes || selectedSizes.length === 0) {
+      missing.push({ tab: "sizes", tabName: "Step 03 Colors & Sizes", field: "At least one Garment Size" });
+    }
+    if (!singlePrice || Number(singlePrice) <= 0) {
+      missing.push({ tab: "pricing", tabName: "Step 04 Wholesale Pricing", field: "Single Unit Base Price (> ₹0)" });
+    }
+    if (!bulkPrice || Number(bulkPrice) <= 0) {
+      missing.push({ tab: "pricing", tabName: "Step 04 Wholesale Pricing", field: "Bulk Wholesale Price (> ₹0)" });
+    }
+    if (!bulkMin || Number(bulkMin) <= 0) {
+      missing.push({ tab: "pricing", tabName: "Step 04 Wholesale Pricing", field: "Minimum Order Quantity (> 0)" });
+    }
+    return missing;
+  };
+
+  async function handleSave(isDraft = false) {
     if (!productName.trim()) {
       toast({
-        title: "Product Name Required",
-        description: "Please enter a product name before saving.",
+        title: "Product Title Required",
+        description: isDraft
+          ? "Please provide a name for this draft garment."
+          : "Please enter a product title before saving.",
         variant: "destructive"
       });
-      setActiveTab("product");
+      handleTabChange("product");
       return;
     }
 
+    if (!isDraft) {
+      const missing = getMissingRequiredFields();
+      if (missing.length > 0) {
+        setMissingFieldsList(missing);
+        setMissingFieldsModalOpen(true);
+        toast({
+          title: "Required Fields Missing",
+          description: `Cannot save as published. ${missing.length} required field(s) remain empty. You can complete them or save as Draft.`,
+          variant: "destructive"
+        });
+        return;
+      }
+    }
+
+    await executeSave(isDraft);
+  }
+
+  async function executeSave(isDraft = false) {
     setIsSaving(true);
     const sizeChartPayload = sizes
       .map((s) => {
-        const chest = document.getElementById(`chest-${s.id}`)?.value || "";
-        const length = document.getElementById(`length-${s.id}`)?.value || "";
-        const shoulder = document.getElementById(`shoulder-${s.id}`)?.value || "";
+        const defaultVals = getIndustryDefaults(product, s.label);
+        const row = sizeChartValues[s.id] || {};
+        const chest = row.chest !== undefined && row.chest !== "" ? row.chest : (document.getElementById(`chest-${s.id}`)?.value || defaultVals.chest || "");
+        const length = row.length !== undefined && row.length !== "" ? row.length : (document.getElementById(`length-${s.id}`)?.value || defaultVals.length || "");
+        const shoulder = row.shoulder !== undefined && row.shoulder !== "" ? row.shoulder : (document.getElementById(`shoulder-${s.id}`)?.value || defaultVals.shoulder || "");
         return {
           size_id: s.id,
-          chest: chest === "" ? null : Number(chest),
-          length: length === "" ? null : Number(length),
-          shoulder: shoulder === "" ? null : Number(shoulder)
+          chest: chest === "" || isNaN(Number(chest)) ? null : Number(chest),
+          length: length === "" || isNaN(Number(length)) ? null : Number(length),
+          shoulder: shoulder === "" || isNaN(Number(shoulder)) ? null : Number(shoulder)
         };
       })
       .filter(
         (sc) => sc.chest !== null || sc.length !== null || sc.shoulder !== null
       );
 
+    const targetStatus = isDraft ? "draft" : "published";
+
     const payload = {
       name: productName,
       category,
-      single_price: singlePrice === "" ? 0 : Number(singlePrice),
-      bulk_min: bulkMin,
-      bulk_price: bulkPrice === "" ? 0 : Number(bulkPrice),
+      single_price: singlePrice === "" ? 0 : parseInt(singlePrice, 10),
+      bulk_min: bulkMin === "" ? 50 : parseInt(bulkMin, 10),
+      bulk_price: bulkPrice === "" ? 0 : parseInt(bulkPrice, 10),
       sizes: selectedSizes,
       colors: selectedColors,
       designs: {
         front: { ...designs.front, imageScale: designs.front.imageScale / 100 },
         back: { ...designs.back, imageScale: designs.back.imageScale / 100 }
       },
-      sizeChart: sizeChartPayload
+      sizeChart: sizeChartPayload,
+      status: targetStatus
     };
 
     try {
@@ -416,23 +697,24 @@ export default function AdminClothes() {
       if (!res.ok) {
         const js = await res.json().catch(() => ({}));
         toast({
-          title: "Failed to Save Product",
+          title: isDraft ? "Failed to Save Draft" : "Failed to Save Product",
           description: js.message || "Error occurred while saving product.",
           variant: "destructive"
         });
       } else {
         const data = await res.json();
         setProductSaved(true);
+        setProductStatus(targetStatus);
         setSizeChart(data.sizeChart || data.size_chart || []);
         toast({
-          title: editingProductId ? "Product Updated" : "Product Created",
-          description: editingProductId
-            ? "Your catalog changes have been saved."
-            : "New blank garment published to catalog."
+          title: isDraft ? "Saved as Draft" : (editingProductId ? "All Changes Saved" : "Garment Published"),
+          description: isDraft
+            ? "Your draft has been saved. You can complete the remaining required specifications later."
+            : "All required specifications validated and saved. Returning to catalog dashboard..."
         });
         setTimeout(() => {
           setLocation("/admin/dashboard");
-        }, 1200);
+        }, 800);
       }
     } catch (err) {
       toast({
@@ -443,6 +725,11 @@ export default function AdminClothes() {
     } finally {
       setIsSaving(false);
     }
+  }
+
+  function handleSaveAll(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    handleSave(false);
   }
 
   // Calculate volume discount percentage if both prices are valid
@@ -483,131 +770,96 @@ export default function AdminClothes() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-slate-50/60 to-white pb-16">
-      {/* Top Navigation Header */}
-      <div className="border-b bg-white/80 backdrop-blur sticky top-0 z-30 shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setLocation("/admin/dashboard")}
-              className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition shadow-xs"
-              title="Return to Dashboard"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </button>
-            <div>
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-indigo-600">
-                <span>Print Provider Studio</span>
-                <span className="text-slate-300">•</span>
-                <span className="text-slate-500">Blank Garment Catalog</span>
-              </div>
-              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-                {editingProductId ? "Edit Blank Garment" : "Create New Blank Garment"}
-                {editingProductId ? (
-                  <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-                    Active Catalog Item
-                  </span>
-                ) : (
-                  <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    Draft Configuration
-                  </span>
-                )}
-              </h1>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setLocation("/admin/dashboard")}
-              className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 transition shadow-xs"
-            >
-              Cancel & Exit
-            </button>
-            <button
-              id="save-product-btn"
-              type="button"
-              onClick={handleSaveAll}
-              disabled={isSaving || (!editingProductId && !productName.trim())}
-              className={`inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm hover:shadow transition-all ${
-                isSaving || (!editingProductId && !productName.trim())
-                  ? "opacity-60 cursor-not-allowed"
-                  : ""
-              }`}
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" /> Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="h-4 w-4" />
-                  {editingProductId ? "Save Changes" : "Publish to Catalog"}
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <form onSubmit={handleSaveAll}>
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            {/* Left Column: Multi-Step Configuration Studio */}
-            <div className="lg:col-span-7 xl:col-span-8 space-y-6">
-              {/* Stepper Navigation Card */}
-              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-1.5 overflow-x-auto">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 min-w-[500px] sm:min-w-0">
-                  {tabList.map((t) => {
-                    const Icon = t.icon;
-                    const isActive = activeTab === t.id;
-                    return (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => setActiveTab(t.id)}
-                        className={`flex items-center justify-between p-3 rounded-xl text-left transition-all relative ${
-                          isActive
-                            ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20 font-semibold"
-                            : "bg-transparent text-slate-600 hover:bg-slate-100/80 hover:text-slate-900"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5 truncate">
-                          <div
-                            className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                              isActive
-                                ? "bg-white/20 text-white"
-                                : "bg-slate-100 text-slate-500"
-                            }`}
-                          >
-                            <Icon className="h-3.5 w-3.5" />
-                          </div>
-                          <div className="truncate">
-                            <div className="text-xs opacity-75 font-medium leading-none mb-1">
-                              Step {t.number}
-                            </div>
-                            <div className="text-sm font-semibold truncate leading-none">
-                              {t.label}
-                            </div>
-                          </div>
-                        </div>
-                        {t.badge && (
-                          <span
-                            className={`hidden xl:inline-block ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                              isActive
-                                ? "bg-white/25 text-white"
-                                : "bg-slate-200 text-slate-700"
-                            }`}
-                          >
-                            {t.badge}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
+    <div className="w-full space-y-6 pb-12 animate-in fade-in duration-300">
+      <form onSubmit={handleSaveAll} className="space-y-6">
+          {/* Professional SaaS Stepper Navigation Bar */}
+          <div className="sticky top-[108px] z-30 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden">
+            {editingProductId && (
+              <div className="px-4 py-1.5 bg-slate-50/90 border-b border-slate-100 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-slate-500">Editing:</span>
+                  <span className="font-bold text-slate-800">{productName || "Untitled"}</span>
+                </div>
+                <div>
+                  {productStatus === "draft" ? (
+                    <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-bold text-[10px] uppercase tracking-wider flex items-center gap-1 shadow-2xs">
+                      <FileText className="w-3 h-3 text-amber-600" /> Draft
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-[10px] uppercase tracking-wider flex items-center gap-1 shadow-2xs">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Published
+                    </span>
+                  )}
                 </div>
               </div>
+            )}
+            <nav className="flex divide-x divide-slate-100 overflow-x-auto no-scrollbar" aria-label="Garment Studio Steps">
+              {tabList.map((t, index) => {
+                const isActive = activeTab === t.id;
+                const activeIndex = tabList.findIndex((item) => item.id === activeTab);
+                const isPassed = index < activeIndex;
+
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => handleTabChange(t.id)}
+                    className={`group relative flex-1 min-w-[180px] sm:min-w-0 py-4 px-4 sm:px-6 flex items-center gap-3.5 text-left transition-all ${
+                      isActive
+                        ? "bg-slate-50/70"
+                        : "bg-white hover:bg-slate-50/40"
+                    }`}
+                  >
+                    {/* Step Indicator Badge */}
+                    <div
+                      className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 transition-all text-xs font-bold ${
+                        isActive
+                          ? "bg-indigo-600 text-white shadow-xs"
+                          : isPassed
+                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200/80"
+                          : "bg-slate-100 text-slate-500 border border-slate-200/70"
+                      }`}
+                    >
+                      {isPassed ? (
+                        <Check className="h-3.5 w-3.5 stroke-[3]" />
+                      ) : (
+                        <span>0{t.number}</span>
+                      )}
+                    </div>
+
+                    {/* Step Title & Counter */}
+                    <div className="min-w-0 flex-1">
+                      <div
+                        className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                          isActive
+                            ? "text-indigo-600"
+                            : isPassed
+                            ? "text-emerald-700"
+                            : "text-slate-400 group-hover:text-slate-500"
+                        }`}
+                      >
+                        Step 0{t.number}
+                      </div>
+                      <div
+                        className={`text-sm transition-colors whitespace-nowrap ${
+                          isActive
+                            ? "text-slate-900 font-bold"
+                            : "text-slate-600 font-semibold group-hover:text-slate-900"
+                        }`}
+                      >
+                        {t.label}
+                      </div>
+                    </div>
+
+                    {/* Active Bottom Indicator Accent */}
+                    {isActive && (
+                      <div className="absolute bottom-0 inset-x-0 h-0.5 bg-indigo-600" />
+                    )}
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
 
               {/* TAB 1: PRODUCT INFO */}
               {activeTab === "product" && (
@@ -668,7 +920,7 @@ export default function AdminClothes() {
                               </div>
                             </div>
                             <p className="text-xs text-slate-500 mt-1">
-                              Standard, relaxed, streetwear and heavyweight silhouettes.
+                              Standard, relaxed, streetwear and heavyweight fits.
                             </p>
                           </div>
                         </button>
@@ -709,52 +961,10 @@ export default function AdminClothes() {
                               </div>
                             </div>
                             <p className="text-xs text-slate-500 mt-1">
-                              Fitted tees, cropped silhouettes, and specialized women's sizing.
+                              Fitted tees, cropped styles, and specialized women's sizing.
                             </p>
                           </div>
                         </button>
-                      </div>
-                    </div>
-
-                    {/* Farmo Quick-Fill Presets */}
-                    <div className="bg-gradient-to-r from-slate-900 to-indigo-950 p-5 rounded-2xl text-white shadow-sm">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <Sparkles className="h-4 w-4 text-amber-400" />
-                          <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
-                            Farmo Blank Presets Catalog
-                          </span>
-                        </div>
-                        <span className="text-[11px] text-slate-400">
-                          Pre-calibrated mockups
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {FARMO_PRESETS.filter((p) => p.category === category).map((preset) => (
-                          <div
-                            key={preset.name}
-                            className="bg-white/10 hover:bg-white/15 border border-white/10 rounded-xl p-3.5 flex items-center justify-between transition-all"
-                          >
-                            <div>
-                              <div className="font-semibold text-sm text-white flex items-center gap-2">
-                                {preset.label}
-                                <span className="text-[10px] bg-indigo-500/30 text-indigo-200 px-2 py-0.5 rounded-full border border-indigo-400/20 font-mono">
-                                  {preset.template}
-                                </span>
-                              </div>
-                              <div className="text-xs text-slate-300 mt-1">
-                                ₹{preset.singlePrice} unit • ₹{preset.bulkPrice} wholesale
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => applyPreset(preset)}
-                              className="px-3 py-1.5 bg-indigo-500 hover:bg-indigo-400 text-white rounded-lg text-xs font-semibold shadow-xs transition flex items-center gap-1.5 shrink-0"
-                            >
-                              <Sparkles className="h-3 w-3" /> Auto-fill
-                            </button>
-                          </div>
-                        ))}
                       </div>
                     </div>
 
@@ -762,7 +972,7 @@ export default function AdminClothes() {
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                          Product / Silhouette Title <span className="text-rose-500">*</span>
+                          Product Title <span className="text-rose-500">*</span>
                         </label>
                         <span className="text-xs text-slate-400">
                           Shown to designers in catalog
@@ -775,114 +985,68 @@ export default function AdminClothes() {
                         className="w-full border border-slate-200 bg-white px-4 py-3 rounded-xl text-slate-900 font-medium placeholder:text-slate-400 shadow-2xs focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
                       />
                     </div>
-
-                    {/* Base Template Selector */}
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                        Garment Silhouette Template
-                      </label>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                        {[
-                          { id: "tshirt", label: "Classic T-Shirt" },
-                          { id: "hoodie", label: "Pullover Hoodie" },
-                          { id: "longsleeve", label: "Long Sleeve Tee" },
-                          { id: "sweatshirt", label: "Crew Sweatshirt" }
-                        ].map((t) => (
-                          <button
-                            key={t.id}
-                            type="button"
-                            onClick={() => {
-                              setProduct(t.id);
-                              setDesigns((prev) => ({
-                                front: { ...prev.front, template: t.id },
-                                back: { ...prev.back, template: t.id }
-                              }));
-                            }}
-                            className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition text-center ${
-                              product === t.id
-                                ? "bg-indigo-50 border-indigo-600 text-indigo-700 shadow-xs"
-                                : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
-                            }`}
-                          >
-                            {t.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Quick Pricing Summary Row */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                      <div className="space-y-2">
-                        <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                          Single Unit Price (₹)
-                        </label>
-                        <div className="relative">
-                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">
-                            ₹
-                          </span>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={singlePrice}
-                            onChange={(e) =>
-                              setSinglePrice(
-                                e.target.value === "" ? "" : Number(e.target.value)
-                              )
-                            }
-                            placeholder="0.00"
-                            className="w-full border border-slate-200 pl-8 pr-4 py-2.5 rounded-xl text-slate-900 font-semibold focus:ring-2 focus:ring-indigo-500 outline-none transition shadow-2xs"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                          Bulk Wholesale Price (₹)
-                        </label>
-                        <div className="relative">
-                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">
-                            ₹
-                          </span>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={bulkPrice}
-                            onChange={(e) =>
-                              setBulkPrice(
-                                e.target.value === "" ? "" : Number(e.target.value)
-                              )
-                            }
-                            placeholder="0.00"
-                            className="w-full border border-slate-200 pl-8 pr-4 py-2.5 rounded-xl text-slate-900 font-semibold focus:ring-2 focus:ring-indigo-500 outline-none transition shadow-2xs"
-                          />
-                        </div>
-                      </div>
-                    </div>
                   </CardContent>
 
-                  <CardFooter className="border-t bg-slate-50/50 p-6 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab("design")}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-semibold shadow-xs transition"
-                    >
-                      Continue to Mockups <ArrowRight className="h-4 w-4" />
-                    </button>
+                  <CardFooter className="border-t bg-slate-50/50 p-6 flex flex-wrap items-center justify-between gap-3">
+                    <span className="text-xs text-slate-400">Step 1 of 4 • Product Identity</span>
+                    <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => handleSave(true)}
+                        disabled={isSaving || !productName.trim()}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300/80 rounded-xl text-sm font-semibold transition shadow-2xs cursor-pointer"
+                        title="Save progress as a draft without publishing"
+                      >
+                        <FileText className="h-4 w-4 text-slate-500" />
+                        <span>Save as Draft</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSave(false)}
+                        disabled={isSaving}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold shadow-2xs transition cursor-pointer"
+                        title="Validate all required specifications and publish to catalog"
+                      >
+                        <Save className="h-4 w-4" />
+                        <span>Save All</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleTabChange("design")}
+                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-xs transition"
+                      >
+                        <span>Continue to Mockups</span>
+                        <ArrowRight className="h-4 w-4" />
+                      </button>
+                    </div>
                   </CardFooter>
                 </Card>
               )}
 
               {/* TAB 2: ARTWORK & MOCKUPS */}
               {activeTab === "design" && (
-                <Card className="rounded-2xl border-slate-200/80 shadow-sm overflow-hidden bg-white">
-                  <CardHeader className="border-b bg-slate-50/60 p-6">
-                    <CardTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                      <Layers className="h-5 w-5 text-indigo-600" />
-                      Garment Mockup Uploads
-                    </CardTitle>
-                    <CardDescription className="text-xs text-slate-500 mt-1">
-                      Upload transparent PNG mockups for front and back angles. Designers will place their artwork directly over these canvases.
-                    </CardDescription>
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                  {/* Left Column: Mockup Upload Controls */}
+                  <div className="lg:col-span-7 space-y-6">
+                    <Card className="rounded-2xl border-slate-200/80 shadow-xs overflow-hidden bg-white">
+                  <CardHeader className="border-b bg-slate-50/60 p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                      <CardTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <Layers className="h-5 w-5 text-indigo-600" />
+                        Garment Mockup Uploads
+                      </CardTitle>
+                      <CardDescription className="text-xs text-slate-500 mt-1">
+                        Upload transparent PNG mockups for front and back angles. Designers will place their artwork directly over these canvases.
+                      </CardDescription>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowMockupGuide(true)}
+                      className="inline-flex items-center gap-2 px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100/80 text-indigo-700 border border-indigo-200/80 rounded-xl text-xs font-bold shadow-2xs transition shrink-0 cursor-pointer"
+                    >
+                      <HelpCircle className="h-4 w-4 text-indigo-600" />
+                      <span>Mockup Requirements</span>
+                    </button>
                   </CardHeader>
                   <CardContent className="p-6 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -900,8 +1064,8 @@ export default function AdminClothes() {
                               <CheckCircle2 className="h-3 w-3" /> Ready
                             </span>
                           ) : (
-                            <span className="text-[11px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
-                              Required
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-600 bg-rose-50 px-2.5 py-0.5 rounded-full border border-rose-200">
+                              Required *
                             </span>
                           )}
                         </div>
@@ -1374,24 +1538,156 @@ export default function AdminClothes() {
                     </div>
                   </CardContent>
 
-                  <CardFooter className="border-t bg-slate-50/50 p-6 flex items-center justify-between">
+                  <CardFooter className="border-t bg-slate-50/50 p-6 flex flex-wrap items-center justify-between gap-3">
                     <button
                       type="button"
-                      onClick={() => setActiveTab("product")}
+                      onClick={() => handleTabChange("product")}
                       className="inline-flex items-center gap-2 px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-semibold transition"
                     >
-                      <ArrowLeft className="h-4 w-4" /> Back to Info
+                      <ArrowLeft className="h-4 w-4" /> Back to Product Info
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab("sizes")}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-semibold shadow-xs transition"
-                    >
-                      Continue to Colors & Sizes <ArrowRight className="h-4 w-4" />
-                    </button>
+                    <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => handleSave(true)}
+                        disabled={isSaving || !productName.trim()}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300/80 rounded-xl text-sm font-semibold transition shadow-2xs cursor-pointer"
+                        title="Save progress as a draft without publishing"
+                      >
+                        <FileText className="h-4 w-4 text-slate-500" />
+                        <span>Save as Draft</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSave(false)}
+                        disabled={isSaving}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold shadow-2xs transition cursor-pointer"
+                        title="Validate all required specifications and publish to catalog"
+                      >
+                        <Save className="h-4 w-4" />
+                        <span>Save All</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleTabChange("sizes")}
+                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-xs transition"
+                      >
+                        <span>Continue to Colors & Sizes</span>
+                        <ArrowRight className="h-4 w-4" />
+                      </button>
+                    </div>
                   </CardFooter>
                 </Card>
-              )}
+              </div>
+
+              {/* Right Column: Studio Live Preview (ONLY shown in Tab 2!) */}
+              <div className="lg:col-span-5 lg:sticky lg:top-6 space-y-4">
+                <Card className="rounded-2xl border-slate-200/80 shadow-xs overflow-hidden bg-white">
+                  <CardHeader className="border-b bg-slate-50/60 p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                          <Eye className="h-4 w-4 text-indigo-600" />
+                          Studio Live Preview
+                        </CardTitle>
+                        <CardDescription className="text-[11px] text-slate-500 mt-0.5">
+                          Real-time garment canvas projection
+                        </CardDescription>
+                      </div>
+
+                      {/* View Switcher Pills */}
+                      <div className="flex items-center bg-slate-200/80 p-0.5 rounded-lg">
+                        <button
+                          type="button"
+                          onClick={() => setDesignSide("front")}
+                          className={`px-3 py-1 rounded-md text-xs font-bold transition ${
+                            designSide === "front"
+                              ? "bg-white text-indigo-600 shadow-2xs"
+                              : "text-slate-600 hover:text-slate-900"
+                          }`}
+                        >
+                          Front
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDesignSide("back")}
+                          className={`px-3 py-1 rounded-md text-xs font-bold transition ${
+                            designSide === "back"
+                              ? "bg-white text-indigo-600 shadow-2xs"
+                              : "text-slate-600 hover:text-slate-900"
+                          }`}
+                        >
+                          Back
+                        </button>
+                      </div>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="p-4 space-y-4">
+                    {/* Studio Canvas Box */}
+                    <div className="relative aspect-square w-full rounded-2xl bg-gradient-to-b from-slate-100 to-slate-200/70 border border-slate-200 flex items-center justify-center overflow-hidden shadow-inner p-2">
+                      <div
+                        className="absolute inset-0 opacity-20 pointer-events-none"
+                        style={{
+                          backgroundImage: `radial-gradient(circle, #94a3b8 1px, transparent 1px)`,
+                          backgroundSize: "16px 16px"
+                        }}
+                      />
+
+                      <DesignCanvas
+                        side={designSide}
+                        slogan={designs[designSide].slogan}
+                        color={designs[designSide].color}
+                        template={designs[designSide].template}
+                        templateColor={designs[designSide].color}
+                        image={designs[designSide].image}
+                        imageScale={designs[designSide].imageScale / 100}
+                        imageRotation={designs[designSide].imageRotation}
+                        imagePosition={designs[designSide].imagePosition}
+                        width={320}
+                        height={320}
+                        showTemplate={false}
+                      />
+
+                      <div className="absolute bottom-3 left-3 bg-white/90 backdrop-blur px-2.5 py-1 rounded-lg border border-slate-200 text-[11px] font-bold text-slate-700 shadow-2xs">
+                        {designSide === "front" ? "Front View" : "Back View"}
+                      </div>
+                    </div>
+
+                    {/* Garment Mockup Live Metadata Summary */}
+                    <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80 space-y-2.5 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500 font-medium">Front View Mockup</span>
+                        {designs.front.image ? (
+                          <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                            <CheckCircle2 className="h-3 w-3" /> Configured ({designs.front.imageScale}%)
+                          </span>
+                        ) : (
+                          <span className="text-amber-600 font-medium">Missing</span>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500 font-medium">Back View Mockup</span>
+                        {designs.back.image ? (
+                          <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                            <CheckCircle2 className="h-3 w-3" /> Configured ({designs.back.imageScale}%)
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 font-medium">Optional / None</span>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
+                        <span className="text-slate-500 font-medium">Garment Title</span>
+                        <span className="font-bold text-slate-900 truncate max-w-[170px]">
+                          {productName.trim() || "Untitled Blank"}
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          )}
 
               {/* TAB 3: COLORS & SIZES */}
               {activeTab === "sizes" && (
@@ -1402,20 +1698,220 @@ export default function AdminClothes() {
                       Variants, Color Swatches & Size Chart
                     </CardTitle>
                     <CardDescription className="text-xs text-slate-500 mt-1">
-                      Choose which standard sizes and fabric colors are offered for this silhouette, and input the garment measurement chart.
+                      Choose which standard sizes and fabric colors are offered for this garment, and configure the garment measurement matrix.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="p-6 space-y-8">
+                    {/* Interactive RGB & Hex Color Palette Generator */}
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                            <Palette className="h-4 w-4 text-indigo-600" />
+                            RGB Fabric Color Palette Builder
+                          </h4>
+                          <span className="text-xs text-slate-500">
+                            Pick custom RGB/HEX shades or choose from catalog swatches.
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* RGB Color Palette Picker Card */}
+                      <div className="p-4 rounded-2xl border border-indigo-100 bg-gradient-to-r from-slate-50 to-indigo-50/30 space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                          {/* Live Swatch & Visual Picker */}
+                          <div className="md:col-span-3 flex items-center gap-3">
+                            <div className="relative group">
+                              <div
+                                className="w-12 h-12 rounded-2xl border-2 border-white shadow-md transition-transform group-hover:scale-105 flex items-center justify-center overflow-hidden"
+                                style={{ backgroundColor: colorHex }}
+                              >
+                                <input
+                                  type="color"
+                                  value={colorHex}
+                                  onChange={(e) => updateColorFromHex(e.target.value)}
+                                  className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
+                                  title="Click to open color wheel"
+                                />
+                              </div>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                                Hex Code
+                              </label>
+                              <div className="relative">
+                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-xs">
+                                  #
+                                </span>
+                                <input
+                                  type="text"
+                                  maxLength={7}
+                                  value={colorHex.replace("#", "")}
+                                  onChange={(e) => updateColorFromHex("#" + e.target.value.replace(/[^0-9A-Fa-f]/g, ""))}
+                                  className="w-full pl-6 pr-2 py-1.5 border border-slate-200 bg-white rounded-lg text-xs font-mono font-bold text-slate-800 uppercase focus:ring-2 focus:ring-indigo-500 outline-none"
+                                  placeholder="4F46E5"
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* RGB Sliders / Number Inputs */}
+                          <div className="md:col-span-4">
+                            <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                              RGB Channels (0 - 255)
+                            </label>
+                            <div className="grid grid-cols-3 gap-1.5">
+                              <div>
+                                <span className="text-[10px] font-bold text-rose-500 block text-center">R</span>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={rgbState.r}
+                                  onKeyDown={handleWholeNumberKeyDown}
+                                  onChange={(e) => updateColorFromRgb("r", e.target.value)}
+                                  className="w-full text-center py-1.5 border border-slate-200 bg-white rounded-lg text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                />
+                              </div>
+                              <div>
+                                <span className="text-[10px] font-bold text-emerald-600 block text-center">G</span>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={rgbState.g}
+                                  onKeyDown={handleWholeNumberKeyDown}
+                                  onChange={(e) => updateColorFromRgb("g", e.target.value)}
+                                  className="w-full text-center py-1.5 border border-slate-200 bg-white rounded-lg text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                />
+                              </div>
+                              <div>
+                                <span className="text-[10px] font-bold text-blue-600 block text-center">B</span>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={rgbState.b}
+                                  onKeyDown={handleWholeNumberKeyDown}
+                                  onChange={(e) => updateColorFromRgb("b", e.target.value)}
+                                  className="w-full text-center py-1.5 border border-slate-200 bg-white rounded-lg text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Color Name Input */}
+                          <div className="md:col-span-3">
+                            <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                              Fabric Shade Name
+                            </label>
+                            <input
+                              type="text"
+                              value={colorName}
+                              onChange={(e) => setColorName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  handleAddCustomColor();
+                                }
+                              }}
+                              placeholder="e.g. Vintage Indigo"
+                              className="w-full px-3 py-1.5 border border-slate-200 bg-white rounded-lg text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
+                            />
+                          </div>
+
+                          {/* Add Swatch Button */}
+                          <div className="md:col-span-2">
+                            <button
+                              type="button"
+                              onClick={handleAddCustomColor}
+                              className="w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 shadow-xs transition"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                              <span>Add Color</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Swatches Grid */}
+                      <div className="space-y-2 pt-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                            Offered Fabric Colors <span className="text-rose-500">*</span> ({selectedColors.length} Selected)
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedColors(colors.map((c) => c.id))}
+                              className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition"
+                            >
+                              Select All
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedColors([])}
+                              className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          {colors.map((c) => {
+                            const isSelected = selectedColors.includes(c.id);
+                            return (
+                              <div
+                                key={c.id}
+                                className={`group flex items-center gap-2 pl-2.5 pr-2 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-2xs ${
+                                  isSelected
+                                    ? "bg-indigo-50/80 border-indigo-600 text-indigo-950 font-bold ring-1 ring-indigo-500/20"
+                                    : "bg-white border-slate-200 text-slate-700 hover:border-slate-300"
+                                }`}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedColors((prev) =>
+                                      prev.includes(c.id)
+                                        ? prev.filter((x) => x !== c.id)
+                                        : [...prev, c.id]
+                                    );
+                                  }}
+                                  className="flex items-center gap-2"
+                                >
+                                  <span
+                                    className="w-3.5 h-3.5 rounded-full border border-black/15 shadow-inner shrink-0"
+                                    style={{ backgroundColor: c.hex }}
+                                  />
+                                  <span>{c.name}</span>
+                                  {isSelected && <Check className="h-3.5 w-3.5 text-indigo-600 stroke-[3]" />}
+                                </button>
+                                {c.owner_id && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteColor(c.id, c.name)}
+                                    className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-500 transition p-0.5 ml-0.5"
+                                    title="Delete custom color"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Size Selector */}
-                    <div className="space-y-3">
+                    <div className="space-y-3 pt-2">
                       <div className="flex items-center justify-between">
                         <div>
                           <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
                             <Ruler className="h-4 w-4 text-indigo-600" />
-                            Garment Sizing Options
+                            Garment Sizing Options <span className="text-rose-500">*</span> ({selectedSizes.length} Selected)
                           </h4>
                           <span className="text-xs text-slate-500">
-                            Select all sizes available in your production inventory.
+                            Select sizes available in your production inventory.
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -1436,8 +1932,8 @@ export default function AdminClothes() {
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-2.5">
-                        {sizes.map((s) => {
+                      <div className="flex flex-wrap gap-2">
+                        {Array.from(new Map(sizes.map((s) => [(s.label || "").toLowerCase().trim(), s])).values()).map((s) => {
                           const isSelected = selectedSizes.includes(s.id);
                           return (
                             <button
@@ -1450,7 +1946,7 @@ export default function AdminClothes() {
                                     : [...prev, s.id]
                                 );
                               }}
-                              className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 shadow-2xs ${
+                              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 shadow-2xs ${
                                 isSelected
                                   ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
                                   : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
@@ -1464,188 +1960,197 @@ export default function AdminClothes() {
                       </div>
                     </div>
 
-                    {/* Color Swatches */}
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-                            <Palette className="h-4 w-4 text-indigo-600" />
-                            Print Color Palettes
-                          </h4>
-                          <span className="text-xs text-slate-500">
-                            Available blank garment fabric colors.
-                          </span>
+                    {/* Compact Industry Standard Sizing Matrix */}
+                    <div className="space-y-3 pt-2">
+                      {/* Summary Bar - Default compact view */}
+                      <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+                            <Ruler className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-slate-900">
+                                Industry Standard Measurements ({product.toUpperCase()})
+                              </span>
+                              <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                Pre-Calibrated Active
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                              Standard Chest, Length & Shoulder specs pre-filled in inches for all active sizes.
+                            </p>
+                          </div>
                         </div>
+
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            onClick={() => setSelectedColors(colors.map((c) => c.id))}
-                            className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition"
+                            onClick={applyIndustryDefaultsToAll}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition shadow-2xs"
+                            title="Reset all measurements to factory standard"
                           >
-                            Select All
+                            <Wand2 className="h-3.5 w-3.5 text-indigo-600" />
+                            <span>Reset Defaults</span>
                           </button>
                           <button
                             type="button"
-                            onClick={() => setSelectedColors([])}
-                            className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition"
+                            onClick={() => setShowSizeMatrix((prev) => !prev)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition shadow-2xs"
                           >
-                            Clear
+                            <span>{showSizeMatrix ? "Hide Measurement Table" : "Customize Measurements"}</span>
+                            <span className="text-xs">{showSizeMatrix ? "▲" : "▼"}</span>
                           </button>
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-2.5">
-                        {colors.map((c) => {
-                          const isSelected = selectedColors.includes(c.id);
-                          return (
-                            <button
-                              key={c.id}
-                              type="button"
-                              onClick={() => {
-                                setSelectedColors((prev) =>
-                                  prev.includes(c.id)
-                                    ? prev.filter((x) => x !== c.id)
-                                    : [...prev, c.id]
-                                );
-                              }}
-                              className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-all flex items-center gap-2 shadow-2xs ${
-                                isSelected
-                                  ? "bg-slate-900 text-white border-slate-900 shadow-xs"
-                                  : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
-                              }`}
-                            >
-                              <span
-                                className="w-3.5 h-3.5 rounded-full border border-black/15 shadow-inner"
-                                style={{ backgroundColor: c.hex }}
-                              />
-                              <span>{c.name}</span>
-                              {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Sizing Measurement Chart Matrix */}
-                    <div className="space-y-3 pt-2">
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-                          <Ruler className="h-4 w-4 text-indigo-600" />
-                          Size Chart Matrix ({product.toUpperCase()})
-                        </h4>
-                        <span className="text-xs text-slate-400">
-                          Measurements in inches
-                        </span>
-                      </div>
-
-                      <div className="overflow-hidden rounded-xl border border-slate-200 shadow-xs bg-white">
-                        <table className="w-full text-left border-collapse">
-                          <thead>
-                            <tr className="bg-slate-50/80 border-b border-slate-200">
-                              <th className="px-5 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                Size
-                              </th>
-                              <th className="px-5 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">
-                                Chest Width (in)
-                              </th>
-                              <th className="px-5 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">
-                                Body Length (in)
-                              </th>
-                              <th className="px-5 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">
-                                Shoulder (in)
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {sizes.map((s) => {
-                              const sc = sizeChart.find((x) => x.size_id === s.id) || {};
-                              const isSelected = selectedSizes.includes(s.id);
-                              return (
-                                <tr
-                                  key={s.id}
-                                  className={`transition-colors ${
-                                    isSelected ? "bg-indigo-50/30" : "bg-slate-50/30 opacity-40"
-                                  }`}
-                                >
-                                  <td className="px-5 py-3">
-                                    <div className="flex items-center gap-2">
-                                      <div
-                                        className={`w-2 h-2 rounded-full ${
-                                          isSelected ? "bg-indigo-600" : "bg-slate-300"
-                                        }`}
-                                      />
-                                      <span
-                                        className={`font-bold text-sm ${
-                                          isSelected ? "text-slate-900" : "text-slate-400"
-                                        }`}
-                                      >
-                                        {s.label}
-                                      </span>
-                                    </div>
-                                  </td>
-                                  <td className="px-5 py-3">
-                                    <input
-                                      className={`w-full max-w-[110px] mx-auto block border border-slate-200 px-3 py-1.5 rounded-lg text-center text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none transition shadow-2xs ${
-                                        !isSelected
-                                          ? "cursor-not-allowed bg-slate-100 text-slate-400"
-                                          : "bg-white text-slate-900"
-                                      }`}
-                                      defaultValue={sc.chest || ""}
-                                      id={`chest-${s.id}`}
-                                      placeholder="—"
-                                      readOnly={!isSelected}
-                                    />
-                                  </td>
-                                  <td className="px-5 py-3">
-                                    <input
-                                      className={`w-full max-w-[110px] mx-auto block border border-slate-200 px-3 py-1.5 rounded-lg text-center text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none transition shadow-2xs ${
-                                        !isSelected
-                                          ? "cursor-not-allowed bg-slate-100 text-slate-400"
-                                          : "bg-white text-slate-900"
-                                      }`}
-                                      defaultValue={sc.length || ""}
-                                      id={`length-${s.id}`}
-                                      placeholder="—"
-                                      readOnly={!isSelected}
-                                    />
-                                  </td>
-                                  <td className="px-5 py-3">
-                                    <input
-                                      className={`w-full max-w-[110px] mx-auto block border border-slate-200 px-3 py-1.5 rounded-lg text-center text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none transition shadow-2xs ${
-                                        !isSelected
-                                          ? "cursor-not-allowed bg-slate-100 text-slate-400"
-                                          : "bg-white text-slate-900"
-                                      }`}
-                                      defaultValue={sc.shoulder || ""}
-                                      id={`shoulder-${s.id}`}
-                                      placeholder="—"
-                                      readOnly={!isSelected}
-                                    />
-                                  </td>
+                      {/* Collapsible Measurement Matrix - Only renders when expanded, and ONLY for selected sizes */}
+                      {showSizeMatrix && (
+                        <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-xs bg-white mt-2">
+                          {sizes.filter((s) => selectedSizes.includes(s.id)).length === 0 ? (
+                            <div className="p-6 text-center text-xs text-slate-500">
+                              <p className="font-semibold text-slate-700">No active sizes selected</p>
+                              <p className="mt-1">Please select one or more garment sizes above to configure custom measurements.</p>
+                            </div>
+                          ) : (
+                            <table className="w-full text-left border-collapse text-xs">
+                              <thead>
+                                <tr className="bg-slate-50/90 border-b border-slate-200">
+                                  <th className="px-4 py-2 text-xs font-bold text-slate-600 uppercase tracking-wider w-28">
+                                    Size
+                                  </th>
+                                  <th className="px-3 py-2 text-xs font-bold text-slate-600 uppercase tracking-wider text-center">
+                                    Chest Width (in)
+                                  </th>
+                                  <th className="px-3 py-2 text-xs font-bold text-slate-600 uppercase tracking-wider text-center">
+                                    Body Length (in)
+                                  </th>
+                                  <th className="px-3 py-2 text-xs font-bold text-slate-600 uppercase tracking-wider text-center">
+                                    Shoulder (in)
+                                  </th>
                                 </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {sizes
+                                  .filter((s) => selectedSizes.includes(s.id))
+                                  .map((s) => {
+                                    const defaultVals = getIndustryDefaults(product, s.label);
+                                    const currentVals = sizeChartValues[s.id] || {
+                                      chest: defaultVals.chest,
+                                      length: defaultVals.length,
+                                      shoulder: defaultVals.shoulder
+                                    };
+
+                                    return (
+                                      <tr key={s.id} className="bg-indigo-50/20 hover:bg-indigo-50/40 transition-colors">
+                                        <td className="px-4 py-2">
+                                          <div className="flex items-center gap-2">
+                                            <div className="w-2 h-2 rounded-full bg-indigo-600" />
+                                            <span className="font-bold text-xs text-slate-900">
+                                              {s.label}
+                                            </span>
+                                          </div>
+                                        </td>
+                                        <td className="px-3 py-1.5">
+                                          <input
+                                            id={`chest-${s.id}`}
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={currentVals.chest ?? ""}
+                                            onChange={(e) => {
+                                              const val = e.target.value.replace(/[^0-9.]/g, "");
+                                              setSizeChartValues((prev) => ({
+                                                ...prev,
+                                                [s.id]: { ...(prev[s.id] || {}), chest: val }
+                                              }));
+                                            }}
+                                            placeholder="—"
+                                            className="w-full max-w-[90px] mx-auto block border border-slate-200 px-2.5 py-1 rounded-lg text-center text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none transition shadow-2xs bg-white text-slate-900"
+                                          />
+                                        </td>
+                                        <td className="px-3 py-1.5">
+                                          <input
+                                            id={`length-${s.id}`}
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={currentVals.length ?? ""}
+                                            onChange={(e) => {
+                                              const val = e.target.value.replace(/[^0-9.]/g, "");
+                                              setSizeChartValues((prev) => ({
+                                                ...prev,
+                                                [s.id]: { ...(prev[s.id] || {}), length: val }
+                                              }));
+                                            }}
+                                            placeholder="—"
+                                            className="w-full max-w-[90px] mx-auto block border border-slate-200 px-2.5 py-1 rounded-lg text-center text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none transition shadow-2xs bg-white text-slate-900"
+                                          />
+                                        </td>
+                                        <td className="px-3 py-1.5">
+                                          <input
+                                            id={`shoulder-${s.id}`}
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={currentVals.shoulder ?? ""}
+                                            onChange={(e) => {
+                                              const val = e.target.value.replace(/[^0-9.]/g, "");
+                                              setSizeChartValues((prev) => ({
+                                                ...prev,
+                                                [s.id]: { ...(prev[s.id] || {}), shoulder: val }
+                                              }));
+                                            }}
+                                            placeholder="—"
+                                            className="w-full max-w-[90px] mx-auto block border border-slate-200 px-2.5 py-1 rounded-lg text-center text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none transition shadow-2xs bg-white text-slate-900"
+                                          />
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </CardContent>
 
-                  <CardFooter className="border-t bg-slate-50/50 p-6 flex items-center justify-between">
+                  <CardFooter className="border-t bg-slate-50/50 p-6 flex flex-wrap items-center justify-between gap-3">
                     <button
                       type="button"
-                      onClick={() => setActiveTab("design")}
+                      onClick={() => handleTabChange("design")}
                       className="inline-flex items-center gap-2 px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-semibold transition"
                     >
                       <ArrowLeft className="h-4 w-4" /> Back to Mockups
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab("pricing")}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-semibold shadow-xs transition"
-                    >
-                      Continue to Pricing <ArrowRight className="h-4 w-4" />
-                    </button>
+                    <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => handleSave(true)}
+                        disabled={isSaving || !productName.trim()}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300/80 rounded-xl text-sm font-semibold transition shadow-2xs cursor-pointer"
+                        title="Save progress as a draft without publishing"
+                      >
+                        <FileText className="h-4 w-4 text-slate-500" />
+                        <span>Save as Draft</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSave(false)}
+                        disabled={isSaving}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold shadow-2xs transition cursor-pointer"
+                        title="Validate all required specifications and publish to catalog"
+                      >
+                        <Save className="h-4 w-4" />
+                        <span>Save All</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleTabChange("pricing")}
+                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-xs transition"
+                      >
+                        <span>Continue to Wholesale Pricing</span>
+                        <ArrowRight className="h-4 w-4" />
+                      </button>
+                    </div>
                   </CardFooter>
                 </Card>
               )}
@@ -1671,15 +2176,15 @@ export default function AdminClothes() {
                             Tier 1: Sample Orders
                           </span>
                           <span className="text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full">
-                            1 - {Math.max(1, bulkMin - 1)} units
+                            1 - {Math.max(1, (parseInt(bulkMin, 10) || 50) - 1)} units
                           </span>
                         </div>
                         <div>
                           <h4 className="text-base font-bold text-slate-900">
-                            Single Unit Base Price
+                            Single Unit Base Price <span className="text-rose-500">*</span>
                           </h4>
                           <p className="text-xs text-slate-500 mt-0.5">
-                            Standard rate charged when designers buy single test samples.
+                            Standard rate charged when designers buy single test samples. Whole numbers only.
                           </p>
                         </div>
                         <div className="relative">
@@ -1687,15 +2192,18 @@ export default function AdminClothes() {
                             ₹
                           </span>
                           <input
-                            type="number"
-                            step="0.01"
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
                             value={singlePrice}
-                            onChange={(e) =>
-                              setSinglePrice(
-                                e.target.value === "" ? "" : Number(e.target.value)
-                              )
-                            }
-                            placeholder="299.00"
+                            onKeyDown={handleWholeNumberKeyDown}
+                            onChange={(e) => setSinglePrice(sanitizeWholeNumber(e.target.value))}
+                            onPaste={(e) => {
+                              e.preventDefault();
+                              const paste = e.clipboardData.getData("text");
+                              setSinglePrice(sanitizeWholeNumber(paste));
+                            }}
+                            placeholder="299"
                             className="w-full border border-slate-200 pl-9 pr-4 py-3 rounded-xl text-slate-900 font-bold text-lg focus:ring-2 focus:ring-indigo-500 outline-none transition"
                           />
                         </div>
@@ -1719,10 +2227,10 @@ export default function AdminClothes() {
                         </div>
                         <div>
                           <h4 className="text-base font-bold text-slate-900">
-                            Bulk Production Pricing
+                            Bulk Production Pricing <span className="text-rose-500">*</span>
                           </h4>
                           <p className="text-xs text-slate-500 mt-0.5">
-                            Discounted wholesale unit price for batch manufacturing runs.
+                            Discounted wholesale unit price for batch manufacturing runs. Whole numbers only.
                           </p>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
@@ -1731,9 +2239,17 @@ export default function AdminClothes() {
                               Min Order Qty (MOQ)
                             </label>
                             <input
-                              type="number"
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
                               value={bulkMin}
-                              onChange={(e) => setBulkMin(Number(e.target.value))}
+                              onKeyDown={handleWholeNumberKeyDown}
+                              onChange={(e) => setBulkMin(sanitizeWholeNumber(e.target.value))}
+                              onPaste={(e) => {
+                                e.preventDefault();
+                                const paste = e.clipboardData.getData("text");
+                                setBulkMin(sanitizeWholeNumber(paste));
+                              }}
                               placeholder="50"
                               className="w-full border border-slate-200 bg-white px-3 py-3 rounded-xl text-slate-900 font-bold text-base focus:ring-2 focus:ring-indigo-500 outline-none transition"
                             />
@@ -1747,15 +2263,18 @@ export default function AdminClothes() {
                                 ₹
                               </span>
                               <input
-                                type="number"
-                                step="0.01"
+                                type="text"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
                                 value={bulkPrice}
-                                onChange={(e) =>
-                                  setBulkPrice(
-                                    e.target.value === "" ? "" : Number(e.target.value)
-                                  )
-                                }
-                                placeholder="199.00"
+                                onKeyDown={handleWholeNumberKeyDown}
+                                onChange={(e) => setBulkPrice(sanitizeWholeNumber(e.target.value))}
+                                onPaste={(e) => {
+                                  e.preventDefault();
+                                  const paste = e.clipboardData.getData("text");
+                                  setBulkPrice(sanitizeWholeNumber(paste));
+                                }}
+                                placeholder="199"
                                 className="w-full border border-slate-200 bg-white pl-7 pr-3 py-3 rounded-xl text-slate-900 font-bold text-base focus:ring-2 focus:ring-indigo-500 outline-none transition"
                               />
                             </div>
@@ -1764,7 +2283,7 @@ export default function AdminClothes() {
                       </div>
                     </div>
 
-                    {/* Calculated Tier Summary Banner */}
+                    {/* Calculated Tier Summary Banner (No duplicate button) */}
                     <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0 font-bold">
@@ -1777,220 +2296,65 @@ export default function AdminClothes() {
                           <div className="text-xs text-slate-500">
                             Single unit purchase:{" "}
                             <span className="font-semibold text-slate-900">
-                              ₹{singlePrice || "0.00"}
+                              ₹{singlePrice || "0"}
                             </span>{" "}
-                            • Bulk runs ({bulkMin}+ pcs):{" "}
+                            • Bulk runs ({bulkMin || "50"}+ pcs):{" "}
                             <span className="font-semibold text-indigo-600">
-                              ₹{bulkPrice || "0.00"}/pc
+                              ₹{bulkPrice || "0"}/pc
                             </span>
                           </div>
                         </div>
                       </div>
-
-                      <div className="flex items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={handleSaveAll}
-                          disabled={isSaving || (!editingProductId && !productName.trim())}
-                          className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-xs transition flex items-center gap-2"
-                        >
-                          <Save className="h-4 w-4" />
-                          {editingProductId ? "Update Product" : "Save & Publish Garment"}
-                        </button>
-                      </div>
                     </div>
                   </CardContent>
 
-                  <CardFooter className="border-t bg-slate-50/50 p-6 flex items-center justify-between">
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab("sizes")}
-                      className="inline-flex items-center gap-2 px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-semibold transition"
-                    >
-                      <ArrowLeft className="h-4 w-4" /> Back to Sizes
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSaveAll}
-                      disabled={isSaving || (!editingProductId && !productName.trim())}
-                      className="inline-flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-xs transition"
-                    >
-                      <Save className="h-4 w-4" /> Save Product
-                    </button>
+                  <CardFooter className="border-t bg-slate-50/50 p-6 flex items-center justify-between flex-wrap gap-3">
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleTabChange("sizes")}
+                        className="inline-flex items-center gap-2 px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-semibold transition"
+                      >
+                        <ArrowLeft className="h-4 w-4" /> Back to Colors & Sizes
+                      </button>
+                      {editingProductId && (
+                        <button
+                          type="button"
+                          onClick={promptDeleteProduct}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200/70 rounded-xl text-xs font-semibold transition"
+                          title="Delete this garment from catalog"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          <span>Delete Garment</span>
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => handleSave(true)}
+                        disabled={isSaving || !productName.trim()}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300/80 rounded-xl text-sm font-semibold transition shadow-2xs cursor-pointer"
+                        title="Save progress as a draft without publishing"
+                      >
+                        <FileText className="h-4 w-4 text-slate-500" />
+                        <span>Save as Draft</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSave(false)}
+                        disabled={isSaving}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold shadow-2xs transition cursor-pointer"
+                        title="Validate all required specifications and publish to catalog"
+                      >
+                        <Save className="h-4 w-4" />
+                        <span>Save All</span>
+                      </button>
+                    </div>
                   </CardFooter>
                 </Card>
               )}
-            </div>
-
-            {/* Right Column: Sticky Studio Live Preview & Actions */}
-            <aside className="lg:col-span-5 xl:col-span-4 lg:sticky lg:top-24 space-y-5">
-              <Card className="rounded-2xl border-slate-200/80 shadow-sm overflow-hidden bg-white">
-                <CardHeader className="border-b bg-slate-50/60 p-5">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-                        <Eye className="h-4 w-4 text-indigo-600" />
-                        Studio Live Preview
-                      </CardTitle>
-                      <CardDescription className="text-xs text-slate-500 mt-0.5">
-                        Real-time garment canvas projection
-                      </CardDescription>
-                    </div>
-
-                    {/* View Switcher Pills */}
-                    <div className="flex items-center bg-slate-200/80 p-0.5 rounded-lg">
-                      <button
-                        type="button"
-                        onClick={() => setDesignSide("front")}
-                        className={`px-3 py-1 rounded-md text-xs font-bold transition ${
-                          designSide === "front"
-                            ? "bg-white text-indigo-600 shadow-xs"
-                            : "text-slate-600 hover:text-slate-900"
-                        }`}
-                      >
-                        Front
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDesignSide("back")}
-                        className={`px-3 py-1 rounded-md text-xs font-bold transition ${
-                          designSide === "back"
-                            ? "bg-white text-indigo-600 shadow-xs"
-                            : "text-slate-600 hover:text-slate-900"
-                        }`}
-                      >
-                        Back
-                      </button>
-                    </div>
-                  </div>
-                </CardHeader>
-
-                <CardContent className="p-5 space-y-5">
-                  {/* Studio Canvas Box */}
-                  <div className="relative aspect-square w-full rounded-2xl bg-gradient-to-b from-slate-100 to-slate-200/70 border border-slate-200 flex items-center justify-center overflow-hidden shadow-inner p-2">
-                    {/* Subtle grid pattern background */}
-                    <div
-                      className="absolute inset-0 opacity-20 pointer-events-none"
-                      style={{
-                        backgroundImage: `radial-gradient(circle, #94a3b8 1px, transparent 1px)`,
-                        backgroundSize: "16px 16px"
-                      }}
-                    />
-
-                    <DesignCanvas
-                      side={designSide}
-                      slogan={designs[designSide].slogan}
-                      color={designs[designSide].color}
-                      template={designs[designSide].template}
-                      templateColor={designs[designSide].color}
-                      image={designs[designSide].image}
-                      imageScale={designs[designSide].imageScale / 100}
-                      imageRotation={designs[designSide].imageRotation}
-                      imagePosition={designs[designSide].imagePosition}
-                      width={340}
-                      height={340}
-                      showTemplate={false}
-                    />
-
-                    {/* Side indicator badge */}
-                    <div className="absolute bottom-3 left-3 bg-white/90 backdrop-blur px-2.5 py-1 rounded-lg border border-slate-200 text-[11px] font-bold text-slate-700 shadow-xs">
-                      {designSide === "front" ? "Front View" : "Back View"}
-                    </div>
-                  </div>
-
-                  {/* Garment Quick Metadata Summary */}
-                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200/80 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-slate-500 font-medium">Garment Name</span>
-                      <span className="text-xs font-bold text-slate-900 truncate max-w-[180px]">
-                        {productName.trim() || "Untitled Blank"}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-slate-500 font-medium">Classification</span>
-                      <span className="text-xs font-semibold text-slate-700 capitalize">
-                        {category}’s • {product}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-slate-500 font-medium">Pricing Range</span>
-                      <span className="text-xs font-bold text-indigo-600 font-mono">
-                        {singlePrice ? `₹${singlePrice}` : "₹0"}
-                        {bulkPrice ? ` - ₹${bulkPrice} bulk` : ""}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
-                      <span className="text-xs text-slate-500 font-medium">
-                        Enabled Variants
-                      </span>
-                      <div className="flex items-center gap-1 text-xs font-semibold text-slate-700">
-                        <span>{selectedSizes.length} sizes</span>
-                        <span>•</span>
-                        <span>{selectedColors.length} colors</span>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-
-                <CardFooter className="border-t bg-slate-50/50 p-5 flex flex-col gap-2.5">
-                  <button
-                    type="submit"
-                    disabled={isSaving || (!editingProductId && !productName.trim())}
-                    className={`w-full inline-flex items-center justify-center gap-2 px-5 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all ${
-                      isSaving || (!editingProductId && !productName.trim())
-                        ? "opacity-60 cursor-not-allowed"
-                        : ""
-                    }`}
-                  >
-                    {isSaving ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" /> Saving Product...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="h-4 w-4" />
-                        {editingProductId ? "Update Garment Catalog" : "Save & Publish Garment"}
-                      </>
-                    )}
-                  </button>
-
-                  {editingProductId && (
-                    <button
-                      type="button"
-                      onClick={promptDeleteProduct}
-                      className="w-full inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" /> Delete from Catalog
-                    </button>
-                  )}
-                </CardFooter>
-              </Card>
-            </aside>
-          </div>
         </form>
-      </div>
-
-      {/* Mobile Sticky Action Bar */}
-      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-full max-w-md px-4 lg:hidden">
-        <div className="bg-white/95 backdrop-blur border border-slate-200 shadow-xl rounded-2xl p-3 flex gap-2.5 items-center">
-          <button
-            onClick={() => document.getElementById("save-product-btn")?.click()}
-            disabled={isSaving || (!editingProductId && !productName.trim())}
-            className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-xs transition"
-          >
-            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Save Garment
-          </button>
-          {editingProductId && (
-            <button
-              onClick={promptDeleteProduct}
-              className="px-4 py-3 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-sm font-bold transition"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-      </div>
 
       {/* Styled Confirmation Dialog */}
       <AlertDialog
@@ -2022,6 +2386,166 @@ export default function AdminClothes() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Mockup Guidance & Specification Modal */}
+      <Dialog open={showMockupGuide} onOpenChange={setShowMockupGuide}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden p-0 rounded-2xl border-slate-200 shadow-2xl bg-white flex flex-col">
+          <DialogHeader className="p-6 pb-4 border-b bg-gradient-to-r from-slate-50 via-indigo-50/40 to-slate-50 shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                <Layers className="h-5 w-5" />
+              </div>
+              <div className="space-y-0.5 text-left">
+                <div className="flex items-center gap-2">
+                  <DialogTitle className="text-base font-bold text-slate-900">
+                    Mockup Image Upload Guidelines
+                  </DialogTitle>
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200/60">
+                    Studio Standard
+                  </span>
+                </div>
+                <DialogDescription className="text-xs text-slate-500">
+                  Follow these specifications so our studio engine accurately applies real-time color shades and fabric depth.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="p-6 space-y-4 overflow-y-auto max-h-[calc(90vh-140px)]">
+            {/* Rule 1: Garment Color */}
+            <div className="rounded-xl border border-slate-200 p-4 bg-slate-50/50 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-bold text-sm text-slate-900">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                  <span>1. Pure Neutral White Base Color (Mandatory)</span>
+                </div>
+                <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                  White #FFFFFF
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                The blank garment image <strong>must be pure white with natural grayscale fabric shading</strong>. Our rendering engine uses Canvas <code className="text-[11px] bg-slate-200/70 text-indigo-700 px-1 py-0.5 rounded font-mono">multiply</code> blending: pure white passes 100% of the true RGB/Hex swatch color, while fabric shadows and seams create photorealistic 3D depth.
+              </p>
+              <div className="text-xs text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200/80 flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" />
+                <span>
+                  <strong>Avoid Colored or Dark Mockups:</strong> Multiplying color over an already dyed or dark base distorts the hue (e.g., Red base + Blue swatch = muddy black). Black garments will never take color.
+                </span>
+              </div>
+            </div>
+
+            {/* Rule 2: Background Transparency */}
+            <div className="rounded-xl border border-slate-200 p-4 bg-slate-50/50 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-bold text-sm text-slate-900">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                  <span>2. 100% Transparent Background (PNG with Alpha)</span>
+                </div>
+                <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                  .PNG (RGBA)
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Images must be saved as <strong>PNG with a clean transparent cutout background</strong>. The canvas uses the garment alpha mask (<code className="text-[11px] bg-slate-200/70 text-indigo-700 px-1 py-0.5 rounded font-mono">destination-in</code>) to dye only the fabric.
+              </p>
+              <div className="text-xs text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200/80 flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" />
+                <span>
+                  <strong>Avoid JPEG or Solid Backdrops:</strong> If the image has a solid white, gray, or studio backdrop, the entire rectangular box will be dyed with the selected color.
+                </span>
+              </div>
+            </div>
+
+            {/* Rule 3: Framing & Aspect Ratio */}
+            <div className="rounded-xl border border-slate-200 p-4 bg-slate-50/50 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-bold text-sm text-slate-900">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                  <span>3. 1:1 Aspect Ratio & Centered Framing</span>
+                </div>
+                <span className="text-[11px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                  Min 1000×1000px
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Use a square 1:1 aspect ratio with high resolution (1000×1000px to 2000×2000px). Ensure both the Front and Back angles are centered symmetrically with matching margins so designer graphics align predictably on the print area.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="p-4 border-t bg-slate-50/60 flex items-center justify-end shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowMockupGuide(false)}
+              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs transition cursor-pointer"
+            >
+              Got it, Close
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Required Specifications Incomplete Dialog (Allows Saving as Draft) */}
+      <Dialog open={missingFieldsModalOpen} onOpenChange={setMissingFieldsModalOpen}>
+        <DialogContent className="max-w-md bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl">
+          <DialogHeader>
+            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 border border-amber-200/80 flex items-center justify-center mb-2">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <DialogTitle className="text-base font-bold text-slate-900">
+              Required Specifications Incomplete
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500 mt-1">
+              To publish this garment to your live catalog, all required fields must be completed. Would you like to save it as a <strong>Draft</strong> to finish later, or continue editing?
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="my-4 bg-slate-50 rounded-xl p-3.5 border border-slate-200/80 space-y-2 max-h-56 overflow-y-auto">
+            <span className="text-[11px] font-bold text-slate-700 block uppercase tracking-wider">
+              Missing Required Specifications:
+            </span>
+            <ul className="space-y-1.5 text-xs text-slate-600">
+              {missingFieldsList.map((m, idx) => (
+                <li key={idx} className="flex items-center justify-between gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
+                  <span className="font-semibold text-rose-600 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                    {m.field}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-medium bg-slate-100 px-2 py-0.5 rounded-md">
+                    {m.tabName}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <DialogFooter className="flex flex-col sm:flex-row items-center justify-end gap-2 pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => {
+                setMissingFieldsModalOpen(false);
+                if (missingFieldsList.length > 0) {
+                  handleTabChange(missingFieldsList[0].tab);
+                }
+              }}
+              className="w-full sm:w-auto px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold transition"
+            >
+              Continue Editing
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMissingFieldsModalOpen(false);
+                executeSave(true);
+              }}
+              className="w-full sm:w-auto px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-semibold shadow-xs transition flex items-center justify-center gap-1.5"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Save as Draft</span>
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

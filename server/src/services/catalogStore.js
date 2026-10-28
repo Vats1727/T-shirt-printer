@@ -42,13 +42,19 @@ export async function listColors(ownerId) {
   return items;
 }
 export async function createColor(payload) {
+  const cleanHex = (payload.hex || '').trim().toLowerCase();
+  const cleanName = (payload.name || '').trim().toLowerCase();
   if (pool) {
     const existing = await pool.query(
-      "SELECT id, name, hex, owner_id FROM colors WHERE lower(hex) = lower($1) AND (owner_id = $2 OR owner_id IS NULL) LIMIT 1",
-      [payload.hex.trim(), payload.owner_id || null]
+      "SELECT id, name, hex, owner_id FROM colors WHERE (lower(hex) = lower($1) OR lower(name) = lower($2)) AND (owner_id = $3 OR owner_id IS NULL) LIMIT 1",
+      [cleanHex, cleanName, payload.owner_id || null]
     );
     if (existing.rows.length > 0) {
-      return existing.rows[0];
+      const match = existing.rows[0];
+      if ((match.hex || '').toLowerCase() === cleanHex) {
+        throw new Error(`Color with hex code ${(payload.hex || '').toUpperCase()} already exists (${match.name})`);
+      }
+      throw new Error(`Color with name "${match.name}" already exists`);
     }
     const res = await pool.query(
       "INSERT INTO colors (name, hex, owner_id) VALUES ($1, $2, $3) RETURNING id, name, hex, owner_id",
@@ -57,8 +63,16 @@ export async function createColor(payload) {
     return res.rows[0];
   }
   const items = await readJson(colorsFile);
-  const found = items.find((i) => i.hex.toLowerCase() === payload.hex.toLowerCase() && (i.owner_id === payload.owner_id || !i.owner_id));
-  if (found) return found;
+  const found = items.find((i) =>
+    ((i.hex || '').toLowerCase() === cleanHex || ((i.name || '').trim().toLowerCase() === cleanName)) &&
+    (i.owner_id === payload.owner_id || !i.owner_id)
+  );
+  if (found) {
+    if ((found.hex || '').toLowerCase() === cleanHex) {
+      throw new Error(`Color with hex code ${(payload.hex || '').toUpperCase()} already exists (${found.name})`);
+    }
+    throw new Error(`Color with name "${found.name}" already exists`);
+  }
   const id = (items.reduce((m, x) => Math.max(m, x.id || 0), 0) || 0) + 1;
   const color = { id, ...payload };
   items.push(color);
@@ -80,11 +94,23 @@ export async function listSizes(ownerId) {
   if (pool) {
     const query = ownerId ? "SELECT id, label, owner_id FROM sizes WHERE owner_id = $1 OR owner_id IS NULL ORDER BY id" : "SELECT id, label, owner_id FROM sizes ORDER BY id";
     const res = await pool.query(query, ownerId ? [ownerId] : []);
-    return res.rows;
+    const seen = new Set();
+    return res.rows.filter((s) => {
+      const key = (s.label || "").toLowerCase().trim();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
   const items = await readJson(sizesFile);
-  if (ownerId) return items.filter((i) => i.owner_id === ownerId);
-  return items;
+  const filtered = ownerId ? items.filter((i) => i.owner_id === ownerId) : items;
+  const seen = new Set();
+  return filtered.filter((s) => {
+    const key = (s.label || "").toLowerCase().trim();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 export async function createSize(payload) {
   if (pool) {

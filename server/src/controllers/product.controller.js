@@ -24,9 +24,16 @@ export async function listColors(req, res, next) {
 export async function createColor(req, res, next) {
   try {
     const ownerId = req.user?.sub || req.user?.id;
+    const { name, hex } = req.body || {};
+    if (!name || !hex) {
+      return res.status(400).json({ message: "Color name and hex code are required." });
+    }
     const color = await productModel.createColor({ ...req.body, owner_id: ownerId });
     return res.status(201).json(color);
   } catch (err) {
+    if (err && err.message && (err.message.includes("already exists") || err.code === "23505")) {
+      return res.status(400).json({ message: err.message });
+    }
     next(err);
   }
 }

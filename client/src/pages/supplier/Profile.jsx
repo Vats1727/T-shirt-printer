@@ -109,11 +109,26 @@ export default function SupplierProfile() {
       setLoading(false);
     }
   };
-  return <div className="space-y-6 max-w-4xl mx-auto">
-            <div className="flex flex-col gap-1">
-                <h1 className="text-3xl font-bold tracking-tight">Designer Profile</h1>
-                <p className="text-muted-foreground">Manage your account details and security settings.</p>
+  return (
+    <div className="w-full space-y-5 animate-in fade-in duration-300 pb-12">
+      {/* Top Enterprise Header Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-xs">
+            <User className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-indigo-600">
+              <span>Creator Studio</span>
+              <span className="text-slate-300">•</span>
+              <span className="text-slate-500">Credentials & Security</span>
             </div>
+            <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 leading-tight">
+              Designer Studio Profile
+            </h1>
+          </div>
+        </div>
+      </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <Card className="md:col-span-1 border-primary/10 shadow-sm">
@@ -148,13 +163,13 @@ export default function SupplierProfile() {
                                 </span>
                             </div>
                         </div>
-                        {providerData && <div className="flex items-center gap-3 text-sm">
-                                <Building className="size-4 text-muted-foreground" />
-                                <div className="flex flex-col">
-                                    <span className="text-xs text-muted-foreground">Print Provider</span>
-                                    <span className="font-medium">{providerData.name}</span>
-                                </div>
-                            </div>}
+                        <div className="flex items-center gap-3 text-sm">
+                            <Building className="size-4 text-muted-foreground" />
+                            <div className="flex flex-col">
+                                <span className="text-xs text-muted-foreground">Print Network Access</span>
+                                <span className="font-medium text-indigo-600">All Print Providers (Open Catalog)</span>
+                            </div>
+                        </div>
                         <div className="flex items-center gap-3 text-sm">
                             <CheckCircle className="size-4 text-muted-foreground" />
                             <div className="flex flex-col">
@@ -257,5 +272,6 @@ export default function SupplierProfile() {
                     </Card>
                 </div>
             </div>
-        </div>;
+        </div>
+    );
 }

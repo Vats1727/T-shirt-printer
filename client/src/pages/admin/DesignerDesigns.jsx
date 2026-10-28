@@ -30,7 +30,9 @@ import {
   Copy,
   Check,
   Palette,
-  Ruler
+  Ruler,
+  Shirt,
+  Store
 } from "lucide-react";
 import { format } from "date-fns";
 import { getMaskedCode, decodeId } from "@/utils/idEncoder";
@@ -182,337 +184,378 @@ export default function DesignerDesigns() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto p-4 md:p-8 space-y-8 animate-in fade-in duration-500">
-      {/* Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-slate-200 pb-8">
-        <div>
-          <button
-            onClick={() => setLocation("/admin/designers")}
-            className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-900 transition-colors mb-4 group"
-          >
-            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-            Back to Associated Designers
-          </button>
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-indigo-600 text-white rounded-2xl shadow-sm">
-              <LayoutTemplate className="w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">
-                Designer Creations
-              </h1>
-              <p className="text-slate-500 mt-0.5 text-sm">
-                Explore custom designs created by your associated designers on your blank garments.
-              </p>
-            </div>
+    <div className="w-full space-y-4 pb-12 animate-in fade-in duration-300">
+      {/* Creations Catalog Section */}
+      <div className="space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500 font-medium px-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-extrabold text-slate-900 text-base">Creations Showcase</span>
+            <span className="text-slate-400 font-semibold">({filteredDesigns.length})</span>
+            {filterDesignerId && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-semibold">
+                Filtered by Designer
+              </span>
+            )}
+            {searchQuery && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px]">
+                Search: "{searchQuery}"
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="hover:text-indigo-900 font-bold ml-0.5 cursor-pointer"
+                >
+                  ×
+                </button>
+              </span>
+            )}
           </div>
-        </div>
 
-        <div className="flex flex-col sm:flex-row items-center gap-3">
-          {filterDesignerId && (
+          <div className="flex items-center gap-2 flex-wrap">
+            {filterDesignerId && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  window.history.replaceState({}, "", "/admin/designer-designs");
+                  window.location.reload();
+                }}
+                className="h-8 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50 rounded-lg shadow-2xs cursor-pointer"
+              >
+                Clear Filter
+              </Button>
+            )}
+
+            {designs.length > 0 && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={copyAllData}
+                className="h-8 text-xs bg-indigo-600 hover:bg-indigo-700 shadow-xs rounded-lg cursor-pointer"
+              >
+                {copiedAll ? <Check className="w-3.5 h-3.5 mr-1" /> : <Copy className="w-3.5 h-3.5 mr-1" />}
+                {copiedAll ? "Copied All!" : "Copy All Data"}
+              </Button>
+            )}
+
+            <div className="relative w-full sm:w-60">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+              <Input
+                placeholder="Search design, product..."
+                className="pl-8 h-8 text-xs bg-white border-slate-200 rounded-lg shadow-2xs"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                window.history.replaceState({}, "", "/admin/designer-designs");
-                window.location.reload();
-              }}
-              className="text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+              onClick={fetchDesigns}
+              disabled={loading}
+              className="h-8 gap-1.5 border-slate-200 shadow-2xs hover:bg-slate-50 rounded-lg text-xs cursor-pointer"
             >
-              Clear Designer Filter
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-indigo-600" : ""}`} />
+              Refresh
             </Button>
-          )}
-
-          {designs.length > 0 && (
-            <Button
-              variant="default"
-              size="sm"
-              onClick={copyAllData}
-              className="h-10 text-xs bg-indigo-600 hover:bg-indigo-700 shadow-sm"
-            >
-              {copiedAll ? <Check className="w-4 h-4 mr-1.5" /> : <Copy className="w-4 h-4 mr-1.5" />}
-              {copiedAll ? "Copied All!" : "Copy All Data"}
-            </Button>
-          )}
-
-          <div className="relative w-full sm:w-72">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <Input
-              placeholder="Search design, product or designer..."
-              className="pl-9 h-10 bg-white border-slate-200 text-xs rounded-xl shadow-xs"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
           </div>
+        </div>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchDesigns}
-            disabled={loading}
-            className="h-10 px-3 text-xs border-slate-200 shadow-xs"
-            title="Refresh creations"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-          </Button>
-        </div>
-      </div>
-
-      {/* Main Content Area */}
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-96 rounded-2xl bg-slate-100 animate-pulse border border-slate-200" />
-          ))}
-        </div>
-      ) : error ? (
-        <div className="p-12 text-center bg-rose-50 border border-rose-200 rounded-2xl">
-          <p className="text-rose-700 font-semibold text-sm">{error}</p>
-          <Button variant="outline" className="mt-4 border-rose-300 text-rose-800" onClick={fetchDesigns}>
-            Try Again
-          </Button>
-        </div>
-      ) : filteredDesigns.length === 0 ? (
-        <Card className="bg-white border-dashed border-2 py-20">
-          <CardContent className="flex flex-col items-center justify-center text-center">
-            <div className="bg-slate-100 p-4 rounded-full mb-4">
-              <Sparkles className="h-8 w-8 text-indigo-400" />
-            </div>
-            <h3 className="text-lg font-bold text-slate-800 mb-1">No Saved Designs Found</h3>
-            <p className="text-slate-500 text-xs max-w-sm mx-auto mt-2">
-              When designers select your print hub and save designs on your blank garments, their creations will automatically appear here.
+        {/* Main Content Area */}
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3.5">
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
+              <div
+                key={i}
+                className="h-72 rounded-xl bg-slate-100 animate-pulse border border-slate-200"
+              />
+            ))}
+          </div>
+        ) : error ? (
+          <div className="p-12 text-center bg-rose-50 border border-rose-200 rounded-xl">
+            <p className="text-rose-700 font-semibold text-sm">{error}</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-4 border-rose-300 text-rose-800 hover:bg-rose-100 rounded-lg text-xs"
+              onClick={fetchDesigns}
+            >
+              Try Again
+            </Button>
+          </div>
+        ) : filteredDesigns.length === 0 ? (
+          <div className="p-16 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-white">
+            <Sparkles className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+            <h3 className="text-base font-bold text-slate-800 mb-1">No Saved Designs Found</h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              When designers select your print hub and save custom graphics on your blank garments, their creations will appear here.
             </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredDesigns.map((d) => {
-            const meta = d.version?.metadata || {};
-            const activeSide = selectedSide[d.id] || "front";
-            const currentPreview = getPreviewImage(d, activeSide);
-            const garmentColor = d.template_color || d.color || "#ffffff";
-            const selectedColors = meta.selected_colors || [];
-            const selectedSizes = meta.selected_sizes || [];
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3.5">
+            {filteredDesigns.map((d) => {
+              const meta = d.version?.metadata || {};
+              const activeSide = selectedSide[d.id] || "front";
+              const currentPreview = getPreviewImage(d, activeSide);
+              const garmentColor = d.template_color || d.color || "#ffffff";
+              const selectedColors = meta.selected_colors || [];
+              const selectedSizes = meta.selected_sizes || [];
 
-            return (
-              <Card
-                key={d.id}
-                className="group overflow-hidden rounded-2xl border border-slate-200 hover:border-indigo-300 transition-all duration-300 hover:shadow-xl hover:-translate-y-1 bg-white flex flex-col"
-              >
-                {/* Visual Canvas / Preview Area (Matching Designer Studio) */}
-                <div className="relative aspect-square w-full bg-[#f8f9fa] overflow-hidden flex items-center justify-center">
-                  {currentPreview ? (
-                    <img
-                      src={currentPreview}
-                      alt={d.product_name || "Design Preview"}
-                      onError={(e) => {
-                        if (e.currentTarget.dataset.retried) return;
-                        e.currentTarget.dataset.retried = "true";
-                        if (currentPreview.startsWith("/uploads/")) {
-                          e.currentTarget.src = currentPreview.replace("/uploads/", "/attached_assets/");
-                        } else if (currentPreview.startsWith("/attached_assets/")) {
-                          e.currentTarget.src = currentPreview.replace("/attached_assets/", "/uploads/");
-                        }
-                      }}
-                      className="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-500"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center p-4">
-                      <DesignCanvas
-                        side={activeSide}
-                        width={220}
-                        height={220}
-                        slogan={(() => {
-                          const v2Slogan = d.version?.sides?.find((s) => s.name === activeSide)?.layers?.find((l) => l.type === "text")?.text;
-                          return v2Slogan || (activeSide === "front" ? d.slogan : d.back_slogan) || "";
-                        })()}
-                        color={(() => {
-                          const v2Color = d.version?.sides?.find((s) => s.name === activeSide)?.layers?.find((l) => l.type === "text")?.color;
-                          return v2Color || d.color || "#000000";
-                        })()}
-                        image={(() => {
-                          const sideData = d.version?.sides?.find((s) => s.name === activeSide);
-                          const imgLayer = sideData?.layers?.find((l) => l.type === "image");
-                          return imgLayer?.asset?.url || imgLayer?.asset?.dataUrl || (activeSide === "front" ? d.image : d.back_image) || null;
-                        })()}
-                        imageScale={1}
-                        template={d.template || "tshirt"}
-                        templateColor={garmentColor}
-                        showTemplate={true}
-                      />
+              return (
+                <div
+                  key={d.id}
+                  className="rounded-xl border border-slate-200 bg-white hover:border-indigo-300 hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col justify-between group"
+                >
+                  {/* Visual Canvas / Preview Area */}
+                  <div className="relative h-44 sm:h-48 bg-slate-50/80 flex items-center justify-center p-3 border-b border-slate-100 overflow-hidden">
+                    {/* Masked Code Badge */}
+                    <div className="absolute top-2 left-2 z-10">
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-white/95 backdrop-blur-2xs text-slate-700 border border-slate-200 shadow-2xs">
+                        {getMaskedCode(d.id, "DSG")}
+                      </span>
                     </div>
-                  )}
 
-                  {/* Side Switcher Pills on the Card */}
-                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 inline-flex rounded-full bg-white/90 backdrop-blur-md p-1 shadow-md border border-slate-200/60 z-10">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedSide((prev) => ({ ...prev, [d.id]: "front" }));
-                      }}
-                      className={`px-3 py-0.5 rounded-full text-[10px] font-bold transition-all ${
-                        activeSide === "front"
-                          ? "bg-indigo-600 text-white shadow-xs"
-                          : "text-slate-600 hover:text-slate-900"
-                      }`}
-                    >
-                      Front
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedSide((prev) => ({ ...prev, [d.id]: "back" }));
-                      }}
-                      className={`px-3 py-0.5 rounded-full text-[10px] font-bold transition-all ${
-                        activeSide === "back"
-                          ? "bg-indigo-600 text-white shadow-xs"
-                          : "text-slate-600 hover:text-slate-900"
-                      }`}
-                    >
-                      Back
-                    </button>
+                    {/* Garment Badge */}
+                    <div className="absolute top-2 right-2 z-10">
+                      <Badge
+                        variant="secondary"
+                        className="bg-white/95 backdrop-blur-2xs text-slate-700 text-[9px] font-bold px-1.5 py-0.5 border border-slate-200 shadow-2xs"
+                      >
+                        {d.product_name || d.product || "Garment"}
+                      </Badge>
+                    </div>
+
+                    {/* Preview Image / Fallback Canvas */}
+                    {currentPreview ? (
+                      <img
+                        src={currentPreview}
+                        alt={d.product_name || "Design Preview"}
+                        onError={(e) => {
+                          if (e.currentTarget.dataset.retried) return;
+                          e.currentTarget.dataset.retried = "true";
+                          if (currentPreview.startsWith("/uploads/")) {
+                            e.currentTarget.src = currentPreview.replace("/uploads/", "/attached_assets/");
+                          } else if (currentPreview.startsWith("/attached_assets/")) {
+                            e.currentTarget.src = currentPreview.replace("/attached_assets/", "/uploads/");
+                          }
+                        }}
+                        className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform duration-300"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center p-2">
+                        <DesignCanvas
+                          side={activeSide}
+                          width={170}
+                          height={170}
+                          slogan={(() => {
+                            const v2Slogan = d.version?.sides
+                              ?.find((s) => s.name === activeSide)
+                              ?.layers?.find((l) => l.type === "text")?.text;
+                            return (
+                              v2Slogan ||
+                              (activeSide === "front" ? d.slogan : d.back_slogan) ||
+                              ""
+                            );
+                          })()}
+                          color={(() => {
+                            const v2Color = d.version?.sides
+                              ?.find((s) => s.name === activeSide)
+                              ?.layers?.find((l) => l.type === "text")?.color;
+                            return v2Color || d.color || "#000000";
+                          })()}
+                          image={(() => {
+                            const sideData = d.version?.sides?.find((s) => s.name === activeSide);
+                            const imgLayer = sideData?.layers?.find((l) => l.type === "image");
+                            return (
+                              imgLayer?.asset?.url ||
+                              imgLayer?.asset?.dataUrl ||
+                              (activeSide === "front" ? d.image : d.back_image) ||
+                              null
+                            );
+                          })()}
+                          imageScale={1}
+                          template={d.template || "tshirt"}
+                          templateColor={garmentColor}
+                          showTemplate={true}
+                        />
+                      </div>
+                    )}
+
+                    {/* Front / Back Switcher Pills */}
+                    <div className="absolute bottom-2 left-1/2 -translate-x-1/2 inline-flex rounded-full bg-white/95 backdrop-blur-2xs p-0.5 shadow-2xs border border-slate-200 z-10 text-[9px] font-medium">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedSide((prev) => ({ ...prev, [d.id]: "front" }));
+                        }}
+                        className={`px-2 py-0.5 rounded-full transition-all cursor-pointer ${
+                          activeSide === "front"
+                            ? "bg-indigo-600 text-white font-bold shadow-xs"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        Front
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedSide((prev) => ({ ...prev, [d.id]: "back" }));
+                        }}
+                        className={`px-2 py-0.5 rounded-full transition-all cursor-pointer ${
+                          activeSide === "back"
+                            ? "bg-indigo-600 text-white font-bold shadow-xs"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        Back
+                      </button>
+                    </div>
+
+                    {/* Hover Overlay with Preview Details Button */}
+                    <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2 backdrop-blur-[1px] z-20">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="rounded-lg shadow-md text-xs font-bold px-3 py-1 bg-white hover:bg-slate-100 text-slate-900 cursor-pointer h-7"
+                        onClick={() => openPreview(d)}
+                      >
+                        <Eye className="h-3.5 w-3.5 mr-1 text-indigo-600" /> Preview Details
+                      </Button>
+                    </div>
                   </div>
 
-                  {/* Garment Badge */}
-                  <div className="absolute top-3 right-3 z-10">
-                    <Badge variant="secondary" className="bg-white/90 backdrop-blur-md text-slate-700 text-[11px] font-semibold shadow-xs">
-                      {d.product_name || d.product || "Blank Garment"}
-                    </Badge>
+                  {/* Card Content & Details */}
+                  <div className="p-3 flex-grow flex flex-col justify-between space-y-2">
+                    <div>
+                      <h3 className="font-bold text-slate-900 text-xs line-clamp-1">
+                        {d.slogan ? `"${d.slogan}"` : d.product_name || "Custom Design"}
+                      </h3>
+
+                      {/* Designer Attribution Box */}
+                      <div className="mt-2 p-2 bg-slate-50/80 rounded-lg border border-slate-100 text-[10px] space-y-0.5">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center gap-1 font-medium text-slate-500">
+                            <User className="w-2.5 h-2.5 text-indigo-500" /> Designer:
+                          </span>
+                          <span className="font-bold text-slate-800 truncate max-w-[110px]">
+                            {d.designer_name || "Associated Designer"}
+                          </span>
+                        </div>
+                        {d.designer_email && (
+                          <div className="flex items-center justify-between text-slate-500">
+                            <span className="flex items-center gap-1 font-medium">
+                              <Mail className="w-2.5 h-2.5 text-slate-400" /> Contact:
+                            </span>
+                            <span className="font-mono text-[9px] text-slate-600 truncate max-w-[110px]">
+                              {d.designer_email}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Colors & Sizes Row */}
+                    <div className="space-y-1.5 pt-1.5 border-t border-slate-100 text-[10px]">
+                      {/* Selected Colors */}
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-slate-500 flex items-center gap-1">
+                          <Palette className="w-2.5 h-2.5 text-slate-400" /> Colors:
+                        </span>
+                        <div className="flex items-center -space-x-1">
+                          {selectedColors.length > 0 ? (
+                            <>
+                              {selectedColors.slice(0, 5).map((c, i) => (
+                                <div
+                                  key={i}
+                                  className="w-3.5 h-3.5 rounded-full border-2 border-white shadow-2xs"
+                                  style={{ backgroundColor: c.hex || "#ddd" }}
+                                  title={c.name || c.hex}
+                                />
+                              ))}
+                              {selectedColors.length > 5 && (
+                                <div className="w-3.5 h-3.5 rounded-full border-2 border-white shadow-2xs bg-slate-100 flex items-center justify-center text-[7px] font-bold text-slate-600">
+                                  +{selectedColors.length - 5}
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <div
+                              className="w-3.5 h-3.5 rounded-full border-2 border-white shadow-2xs"
+                              style={{ backgroundColor: garmentColor }}
+                              title={garmentColor}
+                            />
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Selected Sizes */}
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-slate-500 flex items-center gap-1">
+                          <Ruler className="w-2.5 h-2.5 text-slate-400" /> Sizes:
+                        </span>
+                        <div className="flex items-center gap-1 flex-wrap justify-end">
+                          {selectedSizes.length > 0 ? (
+                            selectedSizes.slice(0, 3).map((s, idx) => (
+                              <span
+                                key={idx}
+                                className="px-1 py-0.2 rounded text-[8px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100"
+                              >
+                                {s.label || s.size || s.id}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-[9px] text-slate-400 italic">Standard</span>
+                          )}
+                          {selectedSizes.length > 3 && (
+                            <span className="text-[8px] font-bold text-indigo-600">
+                              +{selectedSizes.length - 3}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Hover Overlay with Preview Button (Matching SavedDesigns) */}
-                  <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-2 backdrop-blur-[2px] z-20">
+                  {/* Card Footer: Quick Actions */}
+                  <div className="p-2.5 pt-0 border-t border-slate-100 flex items-center gap-1.5">
                     <Button
                       size="sm"
-                      variant="secondary"
-                      className="rounded-full shadow-lg text-xs font-bold px-4 bg-white hover:bg-slate-100 text-slate-900"
+                      variant="outline"
+                      className="flex-1 h-7 text-[11px] font-semibold text-indigo-700 bg-indigo-50/60 hover:bg-indigo-100/80 border-indigo-200/60 rounded-lg shadow-2xs"
                       onClick={() => openPreview(d)}
                     >
-                      <Eye className="h-4 w-4 mr-1.5 text-indigo-600" /> Preview Details
+                      <Eye className="w-3 h-3 mr-1 text-indigo-600" /> Preview
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      className="flex-1 h-7 text-[11px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-2xs gap-1"
+                      onClick={() => setLocation(`/admin/listings/create?designId=${d.id}`)}
+                      title="Sell this designer creation in your store"
+                    >
+                      <Store className="w-3 h-3" /> Sell in Store
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-7 w-7 rounded-lg border-slate-200 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 shrink-0 shadow-2xs"
+                      onClick={() => copyDesignData(d)}
+                      title="Copy design specifications JSON"
+                    >
+                      {copiedId === d.id ? (
+                        <Check className="h-3 w-3 text-emerald-600" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
                     </Button>
                   </div>
                 </div>
-
-                {/* Card Content & Details */}
-                <CardContent className="p-4 flex-grow flex flex-col justify-between space-y-3">
-                  <div>
-                    <div className="mb-1.5">
-                      <h3 className="font-bold text-slate-800 text-sm line-clamp-1">
-                        {d.slogan ? `"${d.slogan}"` : d.product_name || "Custom Design"}
-                      </h3>
-                    </div>
-
-                    {/* Designer Details Banner */}
-                    <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-[11px] space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="flex items-center gap-1 font-medium text-slate-500">
-                          <User className="w-3 h-3 text-indigo-500" /> Designer:
-                        </span>
-                        <span className="font-bold text-slate-800 truncate max-w-[130px]">
-                          {d.designer_name || "Associated Designer"}
-                        </span>
-                      </div>
-                      {d.designer_email && (
-                        <div className="flex items-center justify-between text-slate-500">
-                          <span className="flex items-center gap-1 font-medium">
-                            <Mail className="w-3 h-3 text-slate-400" /> Contact:
-                          </span>
-                          <span className="font-mono text-[10px] text-slate-600 truncate max-w-[130px]">
-                            {d.designer_email}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Colors & Sizes Row */}
-                  <div className="space-y-2 pt-1 border-t border-slate-100">
-                    {/* Selected Colors Dots */}
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-semibold text-slate-500 flex items-center gap-1">
-                        <Palette className="w-3 h-3 text-slate-400" /> Colors:
-                      </span>
-                      <div className="flex items-center -space-x-1">
-                        {selectedColors.length > 0 ? (
-                          <>
-                            {selectedColors.slice(0, 5).map((c, i) => (
-                              <div
-                                key={i}
-                                className="w-4 h-4 rounded-full border-2 border-white shadow-xs"
-                                style={{ backgroundColor: c.hex || "#ddd" }}
-                                title={c.name || c.hex}
-                              />
-                            ))}
-                            {selectedColors.length > 5 && (
-                              <div className="w-4 h-4 rounded-full border-2 border-white shadow-xs bg-slate-100 flex items-center justify-center text-[7px] font-bold text-slate-600">
-                                +{selectedColors.length - 5}
-                              </div>
-                            )}
-                          </>
-                        ) : (
-                          <div
-                            className="w-4 h-4 rounded-full border-2 border-white shadow-xs"
-                            style={{ backgroundColor: garmentColor }}
-                            title={garmentColor}
-                          />
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Selected Sizes Chips */}
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-semibold text-slate-500 flex items-center gap-1">
-                        <Ruler className="w-3 h-3 text-slate-400" /> Sizes:
-                      </span>
-                      <div className="flex items-center gap-1 flex-wrap justify-end">
-                        {selectedSizes.length > 0 ? (
-                          selectedSizes.slice(0, 4).map((s, idx) => (
-                            <span
-                              key={idx}
-                              className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100"
-                            >
-                              {s.label || s.size || s.id}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-[10px] text-slate-400 italic">Standard</span>
-                        )}
-                        {selectedSizes.length > 4 && (
-                          <span className="text-[9px] font-bold text-indigo-600">
-                            +{selectedSizes.length - 4}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-
-                {/* Card Footer: Quick Actions */}
-                <CardFooter className="p-3 pt-0 border-t border-slate-50 flex items-center justify-end">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 px-2 text-[11px] font-bold text-slate-400 hover:text-slate-700 hover:bg-slate-100"
-                    onClick={() => copyDesignData(d)}
-                  >
-                    {copiedId === d.id ? (
-                      <>
-                        <Check className="h-3 w-3 mr-1 text-emerald-600" /> Copied
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="h-3 w-3 mr-1" /> Copy Data
-                      </>
-                    )}
-                  </Button>
-                </CardFooter>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Full Preview Modal */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -783,7 +826,17 @@ export default function DesignerDesigns() {
               {/* Bottom Actions */}
               <div className="mt-auto space-y-2 pt-4 border-t border-slate-100">
                 <Button
-                  className="w-full bg-indigo-600 hover:bg-indigo-700 h-10 text-xs font-bold shadow-sm"
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 h-10 text-xs font-bold shadow-sm gap-2"
+                  onClick={() => {
+                    setDialogOpen(false);
+                    setLocation(`/admin/listings/create?designId=${activeDesign?.id}`);
+                  }}
+                >
+                  <Store className="h-4 w-4" /> Publish / Sell in Facility Store
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full border-slate-300 text-slate-700 hover:text-indigo-600 h-10 text-xs font-semibold shadow-2xs"
                   onClick={() => copyDesignData(activeDesign)}
                 >
                   <Copy className="h-4 w-4 mr-2" /> Copy Full Design Specifications

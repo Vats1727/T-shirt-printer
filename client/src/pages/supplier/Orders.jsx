@@ -176,26 +176,20 @@ export default function SupplierOrders() {
 
   return (
     <div className="w-full space-y-5 animate-in fade-in duration-300 pb-12">
-      {/* Top Professional Header Bar */}
+      {/* Top Enterprise Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-4">
         <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setLocation("/supplier/dashboard")}
-            className="size-9 rounded-xl hover:bg-slate-100 text-slate-600 transition-colors"
-            title="Return to Dashboard"
-          >
-            <ArrowLeft className="size-5" />
-          </Button>
+          <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-xs">
+            <ShoppingBag className="w-5 h-5" />
+          </div>
           <div>
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-indigo-600">
-              <span>Designer Sourcing Portal</span>
+              <span>Creator Studio Sourcing</span>
               <span className="text-slate-300">•</span>
-              <span className="text-slate-500">Procurement History</span>
+              <span className="text-slate-500">Procurement Orders</span>
             </div>
             <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 leading-tight">
-              Blank Garment Purchase Orders
+              Garment Purchase & Production Orders
             </h1>
           </div>
         </div>
@@ -216,7 +210,7 @@ export default function SupplierOrders() {
             onClick={() => setLocation("/supplier/dashboard")}
             className="h-8 gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs"
           >
-            <ShoppingBag className="w-3.5 h-3.5" />
+            <Package className="w-3.5 h-3.5" />
             Browse Blank Catalog
           </Button>
         </div>
@@ -431,7 +425,7 @@ export default function SupplierOrders() {
                 onClick={() => setLocation("/supplier/dashboard")}
                 className="mt-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded-xl h-8 font-semibold"
               >
-                Browse Blank Silhouettes
+                Browse Blank Garments
               </Button>
             </div>
           ) : (

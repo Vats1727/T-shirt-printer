@@ -10,13 +10,18 @@ export async function getCatalog(req, res) {
   const user = req.user;
   if (!user) return res.status(401).json({ message: "Not authenticated" });
   const userId = user.sub || user.id;
-  const userRow = await userStore.findById(Number(userId));
-  const ownerId = userRow?.associated_provider_id || (user.role === "print_provider" ? userId : null);
+  const queryProviderId = req.query.providerId ? Number(req.query.providerId) : null;
+  // All designers have access to all print providers' products
+  const ownerId = queryProviderId || (user.role === "print_provider" ? userId : null);
   const data = await catalog.listCatalog(ownerId);
   const list = await productsStore.listProducts(ownerId);
   const products = [];
   for (const p of list) {
-    const full = await productsStore.getProduct(p.id, ownerId);
+    // If designer, only show published products (never drafts)
+    if ((user.role === "designer" || user.role === "supplier") && p.status === "draft") {
+      continue;
+    }
+    const full = await productsStore.getProduct(p.id, null);
     if (full) products.push(full);
   }
   return res.json({ ...data, products });

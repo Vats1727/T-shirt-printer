@@ -8,7 +8,7 @@ export async function registerRoutes(httpServer, app) {
   app.get("/api/portal/providers", requireAuth, requireRole("portal_admin"), safe(async (_req, res) => {
     const userStore = await import('./src/services/userStore.js');
     const allUsers = await userStore.getAllUsers();
-    const providers = allUsers.filter((u) => u.role === "print_provider" || u.role === "admin");
+    const providers = allUsers.filter((u) => u.role === "print_provider" || u.role === "admin" || u.role === "designer");
     return res.json(providers);
   }));
   app.patch("/api/portal/providers/:id", requireAuth, requireRole("portal_admin"), safe(async (req, res) => {
@@ -83,6 +83,22 @@ export async function registerRoutes(httpServer, app) {
   app.delete("/api/admin/products/:id", requireAuth, requireRole("print_provider"), safe(productsCtrl.deleteProduct));
   const supplierCtrl = await import('./src/controllers/supplierController.js');
   const supplierListingsCtrl = await import('./src/controllers/supplierListingsController.js');
+  app.get("/api/admin/listings", requireAuth, requireRole("print_provider"), safe(supplierListingsCtrl.listListings));
+  app.post("/api/admin/listings", requireAuth, requireRole("print_provider"), safe(supplierListingsCtrl.createListing));
+  app.delete("/api/admin/listings/:id", requireAuth, requireRole("print_provider"), safe(supplierListingsCtrl.deleteListing));
+  app.get("/api/admin/store-settings", requireAuth, requireRole("print_provider"), safe(async (req, res) => {
+    const userStore = await import('./src/services/userStore.js');
+    const userId = Number(req.user.sub || req.user.id);
+    const data = await userStore.getStoreSettings(userId);
+    return res.json(data);
+  }));
+  app.patch("/api/admin/store-settings", requireAuth, requireRole("print_provider"), safe(async (req, res) => {
+    const userStore = await import('./src/services/userStore.js');
+    const userId = Number(req.user.sub || req.user.id);
+    const { store_settings } = req.body;
+    await userStore.updateStoreSettings(userId, store_settings || {});
+    return res.json({ ok: true, store_settings: store_settings || {} });
+  }));
   app.get("/api/supplier/catalog", requireAuth, requireRole("designer"), (req, res, next) => {
     res.set("Cache-Control", "public, max-age=5");
     return next();

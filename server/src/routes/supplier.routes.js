@@ -26,6 +26,9 @@ router.get('/orders', orderController.listSupplierOrders);
 router.get('/orders/:id', orderController.getSupplierOrder);
 router.post('/order', orderController.placeOrder);
 
+// Providers
+router.get('/providers', userController.getPublicProviders);
+
 // Profile
 router.get('/profile', userController.getProfile);
 router.patch('/profile', userController.updateProfile);

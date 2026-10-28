@@ -53,12 +53,20 @@ export async function listColors(ownerId) {
 }
 
 export async function createColor(payload) {
+  const cleanHex = (payload.hex || '').trim().toLowerCase();
+  const cleanName = (payload.name || '').trim().toLowerCase();
   if (pool) {
     const existing = await pool.query(
-      'SELECT id, name, hex, owner_id FROM colors WHERE lower(hex) = lower($1) AND (owner_id = $2 OR owner_id IS NULL) LIMIT 1',
-      [payload.hex.trim(), payload.owner_id || null]
+      'SELECT id, name, hex, owner_id FROM colors WHERE (lower(hex) = lower($1) OR lower(name) = lower($2)) AND (owner_id = $3 OR owner_id IS NULL) LIMIT 1',
+      [cleanHex, cleanName, payload.owner_id || null]
     );
-    if (existing.rows.length > 0) return existing.rows[0];
+    if (existing.rows.length > 0) {
+      const match = existing.rows[0];
+      if ((match.hex || '').toLowerCase() === cleanHex) {
+        throw new Error(`Color with hex code ${(payload.hex || '').toUpperCase()} already exists (${match.name})`);
+      }
+      throw new Error(`Color with name "${match.name}" already exists`);
+    }
     const res = await pool.query(
       'INSERT INTO colors (name, hex, owner_id) VALUES ($1, $2, $3) RETURNING id, name, hex, owner_id',
       [payload.name.trim(), payload.hex.trim(), payload.owner_id || null]
@@ -66,8 +74,16 @@ export async function createColor(payload) {
     return res.rows[0];
   }
   const items = await readJson(colorsFile);
-  const found = items.find((i) => i.hex.toLowerCase() === payload.hex.toLowerCase() && (i.owner_id === payload.owner_id || !i.owner_id));
-  if (found) return found;
+  const found = items.find((i) =>
+    ((i.hex || '').toLowerCase() === cleanHex || ((i.name || '').trim().toLowerCase() === cleanName)) &&
+    (i.owner_id === payload.owner_id || !i.owner_id)
+  );
+  if (found) {
+    if ((found.hex || '').toLowerCase() === cleanHex) {
+      throw new Error(`Color with hex code ${(payload.hex || '').toUpperCase()} already exists (${found.name})`);
+    }
+    throw new Error(`Color with name "${found.name}" already exists`);
+  }
   const id = (items.reduce((m, x) => Math.max(m, x.id || 0), 0) || 0) + 1;
   const color = { id, ...payload };
   items.push(color);
@@ -94,11 +110,23 @@ export async function listSizes(ownerId) {
       ? 'SELECT id, label, owner_id FROM sizes WHERE owner_id = $1 OR owner_id IS NULL ORDER BY id'
       : 'SELECT id, label, owner_id FROM sizes ORDER BY id';
     const res = await pool.query(query, ownerId ? [ownerId] : []);
-    return res.rows;
+    const seen = new Set();
+    return res.rows.filter((s) => {
+      const key = (s.label || '').toLowerCase().trim();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
   const items = await readJson(sizesFile);
-  if (ownerId) return items.filter((i) => i.owner_id === ownerId);
-  return items;
+  const filtered = ownerId ? items.filter((i) => i.owner_id === ownerId) : items;
+  const seen = new Set();
+  return filtered.filter((s) => {
+    const key = (s.label || '').toLowerCase().trim();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export async function createSize(payload) {
@@ -209,9 +237,10 @@ export async function createProduct(payload) {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)+/g, '') || 'product';
+    const status = payload.status || (payload.is_draft ? 'draft' : 'published');
     const res = await pool.query(
-      `INSERT INTO products_full (name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory, category, owner_id, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW()) RETURNING *`,
+      `INSERT INTO products_full (name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory, category, owner_id, status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW()) RETURNING *`,
       [
         payload.name || payload.title || 'Untitled Product',
         slug,
@@ -224,14 +253,16 @@ export async function createProduct(payload) {
         JSON.stringify(payload.designs || []),
         JSON.stringify(payload.inventory || []),
         payload.category || 'men',
-        payload.owner_id || null
+        payload.owner_id || null,
+        status
       ]
     );
     return res.rows[0];
   }
   const items = await readJson(productsFile);
   const id = (items.reduce((m, x) => Math.max(m, x.id || 0), 0) || 0) + 1;
-  const item = { id, ...payload, created_at: new Date().toISOString() };
+  const status = payload.status || (payload.is_draft ? 'draft' : 'published');
+  const item = { id, ...payload, status, created_at: new Date().toISOString() };
   items.push(item);
   await writeJson(productsFile, items);
   return item;
@@ -261,6 +292,7 @@ export async function updateProduct(id, payload, ownerId) {
       values.push(JSON.stringify(payload.sizeChart || payload.size_chart));
     }
     if (payload.inventory !== undefined) { fields.push(`inventory = $${i++}`); values.push(JSON.stringify(payload.inventory)); }
+    if (payload.status !== undefined) { fields.push(`status = $${i++}`); values.push(payload.status); }
 
     fields.push(`updated_at = NOW()`);
     values.push(id);

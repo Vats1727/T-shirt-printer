@@ -18,10 +18,11 @@ export async function createProduct(payload) {
       if (payload.designs.back) designsArray.push({ side: "back", ...payload.designs.back });
     }
     const category = payload.category || "men";
+    const status = payload.status || (payload.is_draft ? "draft" : "published");
     const res = await pool.query(
-      `INSERT INTO products_full (name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory, category, owner_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id, name, slug, category, single_price, bulk_min, bulk_price, created_at`,
-      [payload.name, slug, payload.single_price || 0, payload.bulk_min || 100, payload.bulk_price || 0, JSON.stringify(payload.sizes || []), JSON.stringify(payload.colors || []), JSON.stringify(payload.sizeChart || []), JSON.stringify(designsArray), JSON.stringify(payload.inventory || []), category, payload.owner_id || null]
+      `INSERT INTO products_full (name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory, category, owner_id, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id, name, slug, category, single_price, bulk_min, bulk_price, status, created_at`,
+      [payload.name, slug, payload.single_price || 0, payload.bulk_min || 100, payload.bulk_price || 0, JSON.stringify(payload.sizes || []), JSON.stringify(payload.colors || []), JSON.stringify(payload.sizeChart || []), JSON.stringify(designsArray), JSON.stringify(payload.inventory || []), category, payload.owner_id || null, status]
     );
     return res.rows[0];
   }
@@ -30,8 +31,8 @@ export async function createProduct(payload) {
 export async function listProducts(ownerId) {
   if (pool) {
     const query = ownerId
-      ? `SELECT id, name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, created_at, designs, category FROM products_full WHERE owner_id = $1 AND COALESCE(is_deleted, false) = false ORDER BY id`
-      : `SELECT id, name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, created_at, designs, category FROM products_full WHERE COALESCE(is_deleted, false) = false ORDER BY id`;
+      ? `SELECT id, name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, created_at, designs, category, status, owner_id FROM products_full WHERE owner_id = $1 AND COALESCE(is_deleted, false) = false ORDER BY id`
+      : `SELECT id, name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, created_at, designs, category, status, owner_id FROM products_full WHERE COALESCE(is_deleted, false) = false ORDER BY id`;
     const r = await pool.query(query, ownerId ? [ownerId] : []);
     return r.rows.map((row) => {
       const single_price = row.single_price !== null ? Number(row.single_price) : 0;
@@ -86,7 +87,7 @@ export async function listProducts(ownerId) {
 }
 export async function getProduct(id, ownerId) {
   if (pool) {
-    const query = ownerId ? "SELECT id, name, slug, category, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory, is_deleted, deleted_at, updated_at, created_at FROM products_full WHERE id=$1 AND owner_id=$2" : "SELECT id, name, slug, category, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory, is_deleted, deleted_at, updated_at, created_at FROM products_full WHERE id=$1";
+    const query = ownerId ? "SELECT id, name, slug, category, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory, is_deleted, deleted_at, updated_at, created_at, status, owner_id FROM products_full WHERE id=$1 AND owner_id=$2" : "SELECT id, name, slug, category, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory, is_deleted, deleted_at, updated_at, created_at, status, owner_id FROM products_full WHERE id=$1";
     const params = ownerId ? [id, ownerId] : [id];
     const r = await pool.query(query, params);
     const prod = r.rows[0];
@@ -170,6 +171,9 @@ export async function updateProduct(id, payload, ownerId) {
   }
   if (payload.inventory) {
     await pool.query("UPDATE products_full SET inventory=$1, updated_at=now() WHERE id=$2 AND owner_id=$3", [JSON.stringify(payload.inventory), id, ownerId]);
+  }
+  if (payload.status !== undefined) {
+    await pool.query("UPDATE products_full SET status=$1, updated_at=now() WHERE id=$2 AND owner_id=$3", [payload.status, id, ownerId]);
   }
   return getProduct(id, ownerId);
 }

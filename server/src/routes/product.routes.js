@@ -2,6 +2,7 @@ import { Router } from 'express';
 import productController from '../controllers/product.controller.js';
 import userController from '../controllers/user.controller.js';
 import orderController from '../controllers/order.controller.js';
+import supplierController from '../controllers/supplier.controller.js';
 import { requireAuth, requireRole } from '../middleware/auth.middleware.js';
 
 const router = Router();
@@ -46,5 +47,12 @@ router.patch('/profile', userController.updateProfile);
 router.get('/orders', orderController.listAdminOrders);
 router.get('/orders/:id', orderController.getAdminOrder);
 router.patch('/orders/:id/status', orderController.updateOrderStatus);
+
+// Store Listings & Customizer
+router.get('/listings', supplierController.listListings);
+router.post('/listings', supplierController.createListing);
+router.delete('/listings/:id', supplierController.deleteListing);
+router.get('/store-settings', userController.getStoreSettings);
+router.patch('/store-settings', userController.updateStoreSettings);
 
 export default router;

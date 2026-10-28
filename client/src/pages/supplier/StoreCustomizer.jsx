@@ -220,40 +220,43 @@ export default function StoreCustomizer() {
         <p className="text-slate-500 font-medium">Loading store studio...</p>
       </div>;
   }
-  return <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
-      
-      {
-    /* Top Header */
-  }
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
-        <div>
-          <div className="flex items-center gap-2 text-indigo-600 font-bold text-xs uppercase tracking-wider mb-1">
-            <Paintbrush className="size-4" />
-            Designer Store Studio
+  return (
+    <div className="w-full space-y-5 animate-in fade-in duration-300 pb-12">
+      {/* Top Enterprise Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-xs">
+            <Paintbrush className="w-5 h-5" />
           </div>
-          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-            Storefront Redesign & Customizer
-          </h1>
-          <p className="text-slate-500 text-sm mt-0.5">
-            Personalize your store theme, announcement banner, brand messaging, and social presence.
-          </p>
+          <div>
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-indigo-600">
+              <span>Creator Brand Experience</span>
+              <span className="text-slate-300">•</span>
+              <span className="text-slate-500">Storefront Studio</span>
+            </div>
+            <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 leading-tight">
+              Storefront Branding & Themes
+            </h1>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 flex-wrap">
           <Button
-    variant="outline"
-    onClick={() => window.open(storeUrl, "_blank")}
-    className="gap-2 border-slate-200 hover:bg-slate-50 text-slate-700"
-  >
-            <ExternalLink className="size-4" />
+            variant="outline"
+            size="sm"
+            onClick={() => window.open(storeUrl, "_blank")}
+            className="h-8 gap-1.5 border-slate-200 shadow-2xs hover:bg-slate-50 rounded-lg text-xs font-semibold text-slate-700 cursor-pointer"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
             View Live Store
           </Button>
 
           <Button
-    onClick={handleSave}
-    disabled={saving}
-    className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-md shadow-indigo-200"
-  >
+            size="sm"
+            onClick={handleSave}
+            disabled={saving}
+            className="h-8 gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs cursor-pointer"
+          >
             {saving ? <>
                 <div className="size-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
                 Saving...
@@ -636,6 +639,6 @@ export default function StoreCustomizer() {
         </div>
 
       </div>
-
-    </div>;
+    </div>
+  );
 }

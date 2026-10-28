@@ -337,67 +337,65 @@ export default function SupplierProductPurchase() {
     : [];
 
   return (
-    <div className="min-h-screen bg-slate-50/60 pb-16">
-      {/* Top Professional Header Bar */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setLocation(`/supplier/product/${rawParamId}`)}
-              className="size-9 rounded-xl hover:bg-slate-100 text-slate-600 transition-colors"
-              title="Return to Customizer Studio"
+    <div className="w-full space-y-5 animate-in fade-in duration-300 pb-16">
+      {/* Top Enterprise Header Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-4">
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setLocation(`/supplier/product/${rawParamId}`)}
+            className="size-9 rounded-xl hover:bg-slate-100 text-slate-600 transition-colors"
+            title="Return to Customizer Studio"
+          >
+            <ArrowLeft className="size-5" />
+          </Button>
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <span
+              onClick={() => setLocation("/supplier/dashboard")}
+              className="hover:text-slate-900 cursor-pointer font-medium transition-colors"
             >
-              <ArrowLeft className="size-5" />
-            </Button>
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <span
-                onClick={() => setLocation("/supplier/dashboard")}
-                className="hover:text-slate-900 cursor-pointer font-medium transition-colors"
-              >
-                Catalog
-              </span>
-              <ChevronRight className="size-3 text-slate-400" />
-              <span className="capitalize text-slate-600 font-medium">{product.category || "Apparel"}</span>
-              <ChevronRight className="size-3 text-slate-400" />
-              <span className="font-semibold text-slate-900 truncate max-w-[180px] sm:max-w-none">
-                {product.name}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {purchaseStatus.status === "approved" ? (
-              <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold px-2.5 py-1 gap-1.5 shadow-2xs">
-                <CheckCircle2 className="size-3.5 text-emerald-600" />
-                Purchased & Unlocked
-              </Badge>
-            ) : purchaseStatus.status === "pending" ? (
-              <Badge className="bg-amber-50 text-amber-700 border border-amber-200 text-xs font-semibold px-2.5 py-1 gap-1.5 shadow-2xs">
-                <Clock className="size-3.5 text-amber-600 animate-spin" />
-                Awaiting Approval
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="bg-slate-50 text-slate-700 text-xs font-semibold px-2.5 py-1">
-                Blank Procurement
-              </Badge>
-            )}
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setLocation(`/supplier/product/${rawParamId}`)}
-              className="rounded-xl text-xs font-semibold text-slate-700 border-slate-200 hover:bg-slate-100 h-9 hidden sm:flex items-center gap-1.5"
-            >
-              Design Studio
-            </Button>
+              Catalog
+            </span>
+            <ChevronRight className="size-3 text-slate-400" />
+            <span className="capitalize text-slate-600 font-medium">{product.category || "Apparel"}</span>
+            <ChevronRight className="size-3 text-slate-400" />
+            <span className="font-semibold text-slate-900 truncate max-w-[180px] sm:max-w-none">
+              {product.name}
+            </span>
           </div>
         </div>
-      </header>
+
+        <div className="flex items-center gap-2.5">
+          {purchaseStatus.status === "approved" ? (
+            <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold px-2.5 py-1 gap-1.5 shadow-2xs">
+              <CheckCircle2 className="size-3.5 text-emerald-600" />
+              Purchased & Unlocked
+            </Badge>
+          ) : purchaseStatus.status === "pending" ? (
+            <Badge className="bg-amber-50 text-amber-700 border border-amber-200 text-xs font-semibold px-2.5 py-1 gap-1.5 shadow-2xs">
+              <Clock className="size-3.5 text-amber-600 animate-spin" />
+              Awaiting Approval
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="bg-slate-50 text-slate-700 text-xs font-semibold px-2.5 py-1">
+              Blank Procurement
+            </Badge>
+          )}
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setLocation(`/supplier/product/${rawParamId}`)}
+            className="rounded-xl text-xs font-semibold text-slate-700 border-slate-200 hover:bg-slate-100 h-8 flex items-center gap-1.5"
+          >
+            Design Studio
+          </Button>
+        </div>
+      </div>
 
       {/* Main Content Container */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-6">
+      <div className="space-y-6">
         {/* Status Callout if previously approved */}
         {purchaseStatus.status === "approved" && (
           <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -824,7 +822,7 @@ export default function SupplierProductPurchase() {
             </div>
           </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

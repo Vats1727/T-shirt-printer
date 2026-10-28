@@ -13,6 +13,9 @@ import AdminOrders from '@/pages/Admin/Orders.jsx';
 import AdminProfile from '@/pages/Admin/Profile.jsx';
 import AdminDesigners from '@/pages/Admin/Designers.jsx';
 import AdminDesignerDesigns from '@/pages/Admin/DesignerDesigns.jsx';
+import AdminListings from '@/pages/Admin/Listings.jsx';
+import AdminCreateListing from '@/pages/Admin/CreateListing.jsx';
+import AdminStoreCustomizer from '@/pages/Admin/StoreCustomizer.jsx';
 import AdminRoute from '@/routes/AdminRoute.jsx';
 
 import SupplierDashboard from '@/pages/Supplier/Dashboard.jsx';
@@ -49,6 +52,10 @@ export function AppRoutes() {
       <AdminRoute path="/admin/profile" component={AdminProfile} />
       <AdminRoute path="/admin/designers" component={AdminDesigners} />
       <AdminRoute path="/admin/designer-designs" component={AdminDesignerDesigns} />
+      <AdminRoute path="/admin/listings/create" component={AdminCreateListing} />
+      <AdminRoute path="/admin/listings" component={AdminListings} />
+      <AdminRoute path="/admin/customize-store" component={AdminStoreCustomizer} />
+      <AdminRoute path="/admin/store-settings" component={AdminStoreCustomizer} />
 
       {/* Universal /orders and /order routes */}
       <Route path="/orders">
@@ -70,8 +77,10 @@ export function AppRoutes() {
         }}
       </Route>
 
-      {/* Supplier / Designer Protected Routes */}
       <Route path="/supplier/login" component={Login} />
+      <Route path="/supplier/providers">
+        {() => <Redirect to="/supplier/dashboard" />}
+      </Route>
       <SupplierRoute path="/supplier/dashboard" component={SupplierDashboard} />
       <SupplierRoute path="/supplier/saved-designs/:designerId?" component={SupplierSavedDesigns} />
       <SupplierRoute path="/supplier/listings/create" component={SupplierCreateListing} />

@@ -10,8 +10,15 @@ export async function createColor(req, res) {
   const ownerId = user?.sub || user?.id || null;
   const { name, hex } = req.body;
   if (!name || !hex) return res.status(400).json({ message: "name and hex required" });
-  const color = await catalog.createColor({ name, hex, owner_id: ownerId });
-  return res.status(201).json(color);
+  try {
+    const color = await catalog.createColor({ name, hex, owner_id: ownerId });
+    return res.status(201).json(color);
+  } catch (err) {
+    if (err && err.message && (err.message.includes("already exists") || err.code === "23505")) {
+      return res.status(400).json({ message: err.message });
+    }
+    throw err;
+  }
 }
 export async function deleteColor(req, res) {
   const user = req.user;

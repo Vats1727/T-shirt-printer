@@ -38,6 +38,29 @@ export function AuthProvider({ children }) {
     });
   };
 
+  React.useEffect(() => {
+    if (!token) return;
+    (async () => {
+      try {
+        const res = await fetch('/api/supplier/profile', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const profile = await res.json();
+          if (profile && profile.id) {
+            updateUser({
+              associated_provider_id: profile.associated_provider_id,
+              name: profile.name || undefined,
+              email: profile.email || undefined
+            });
+          }
+        }
+      } catch (e) {
+        // ignore background refresh errors
+      }
+    })();
+  }, [token]);
+
   return (
     <AuthContext.Provider value={{ user, token, loginWithCredentials, logout, updateUser }}>
       {children}

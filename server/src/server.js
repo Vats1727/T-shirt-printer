@@ -34,18 +34,19 @@ async function shutdown(signal = 'SIGTERM') {
     if (err) console.error('Error during HTTP server close:', err);
   });
 
-  for (const socket of connections) {
-    try { socket.end(); } catch (e) {}
-  }
+  // Allow in-flight requests a grace period to finish responding
+  setTimeout(async () => {
+    for (const socket of connections) {
+      try { socket.destroy(); } catch (e) {}
+    }
 
-  if (pool) {
-    try { await pool.end(); } catch (e) {}
-  }
+    if (pool) {
+      try { await pool.end(); } catch (e) {}
+    }
 
-  setTimeout(() => {
     log('Shutdown complete.');
     process.exit(0);
-  }, 1000);
+  }, 1500);
 }
 
 process.on('SIGINT', () => shutdown('SIGINT'));

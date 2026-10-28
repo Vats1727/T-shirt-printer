@@ -112,14 +112,17 @@ export default function PortalAdminRequests() {
         pending: "Moved to Pending"
       };
 
+      const isDesigner = actionConfirm?.provider?.role === "designer";
+      const roleName = isDesigner ? "Designer" : "Provider";
+
       toast({
-        title: `Application ${statusLabels[newStatus] || "Updated"}`,
+        title: `${roleName} Application ${statusLabels[newStatus] || "Updated"}`,
         description:
           newStatus === "active"
-            ? "Provider account has been approved. They can now log in and operate."
+            ? `${roleName} account has been approved. They can now log in and operate.`
             : newStatus === "rejected"
-              ? "Provider application was rejected. They will see a notice upon trying to sign in."
-              : `Provider status set to ${newStatus}.`
+              ? `${roleName} application was rejected. They will see a notice upon trying to sign in.`
+              : `${roleName} status set to ${newStatus}.`
       });
     } catch (err) {
       toast({
@@ -476,7 +479,7 @@ export default function PortalAdminRequests() {
                               setActionConfirm({
                                 provider: p,
                                 targetStatus: "active",
-                                title: "Approve Print Provider",
+                                title: isDesigner ? "Approve Designer" : "Approve Print Provider",
                                 description: `Approve and activate "${p.name || p.email}" for immediate platform access?`
                               })
                             }
@@ -493,7 +496,7 @@ export default function PortalAdminRequests() {
                               setActionConfirm({
                                 provider: p,
                                 targetStatus: "rejected",
-                                title: "Reject Application",
+                                title: isDesigner ? "Reject Designer Application" : "Reject Application",
                                 description: `Reject the onboarding application from "${p.name || p.email}"?`
                               })
                             }
@@ -512,7 +515,7 @@ export default function PortalAdminRequests() {
                             setActionConfirm({
                               provider: p,
                               targetStatus: "suspended",
-                              title: "Suspend Print Provider",
+                              title: isDesigner ? "Suspend Designer" : "Suspend Print Provider",
                               description: `Suspend "${p.name || p.email}"?`
                             })
                           }
@@ -529,7 +532,7 @@ export default function PortalAdminRequests() {
                             setActionConfirm({
                               provider: p,
                               targetStatus: "active",
-                              title: "Reactivate Provider",
+                              title: isDesigner ? "Reactivate Designer" : "Reactivate Provider",
                               description: `Reactivate "${p.name || p.email}"?`
                             })
                           }
@@ -648,6 +651,26 @@ export default function PortalAdminRequests() {
                   <span className="text-slate-500 font-medium">Contact Email:</span>
                   <span className="font-mono text-slate-800">{viewingProvider.email}</span>
                 </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium">Role:</span>
+                  <Badge
+                    className={
+                      viewingProvider.role === "designer"
+                        ? "bg-purple-50 text-purple-700 border-purple-200 font-bold"
+                        : "bg-blue-50 text-blue-700 border-blue-200 font-bold"
+                    }
+                  >
+                    {viewingProvider.role === "designer" ? "Designer" : "Print Provider"}
+                  </Badge>
+                </div>
+                {viewingProvider.role === "designer" && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 font-medium">Associated Provider:</span>
+                    <strong className="text-slate-900">
+                      {viewingProvider.associated_provider_name || "Independent / Unassigned"}
+                    </strong>
+                  </div>
+                )}
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500 font-medium">Application Status:</span>
                   <Badge className="capitalize font-bold">

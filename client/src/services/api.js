@@ -1,4 +1,4 @@
-export async function request(endpoint, options = {}) {
+export async function request(endpoint, options = {}, retries = 2) {
   const token = localStorage.getItem('token');
   const headers = {
     'Content-Type': 'application/json',
@@ -6,21 +6,33 @@ export async function request(endpoint, options = {}) {
     ...(options.headers || {})
   };
 
-  const res = await fetch(endpoint, {
-    ...options,
-    headers
-  });
+  try {
+    const res = await fetch(endpoint, {
+      ...options,
+      headers
+    });
 
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    const message = data.message || `HTTP Error ${res.status}`;
-    const error = new Error(message);
-    error.status = res.status;
-    error.data = data;
-    throw error;
+    if (!res.ok) {
+      if (res.status === 503 && retries > 0) {
+        await new Promise((r) => setTimeout(r, 600));
+        return request(endpoint, options, retries - 1);
+      }
+      const data = await res.json().catch(() => ({}));
+      const message = data.message || `HTTP Error ${res.status}`;
+      const error = new Error(message);
+      error.status = res.status;
+      error.data = data;
+      throw error;
+    }
+
+    return res.json().catch(() => ({}));
+  } catch (err) {
+    if (retries > 0 && (err.name === 'TypeError' || err.message?.includes('fetch') || err.message?.includes('network'))) {
+      await new Promise((r) => setTimeout(r, 600));
+      return request(endpoint, options, retries - 1);
+    }
+    throw err;
   }
-
-  return res.json().catch(() => ({}));
 }
 
 export async function fetchDesigns(all = false) {

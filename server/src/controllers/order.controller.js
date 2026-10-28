@@ -1,4 +1,5 @@
 import orderService from '../services/order.service.js';
+import * as productsStore from '../services/productsStore.js';
 
 export async function placeOrder(req, res, next) {
   try {
@@ -58,7 +59,11 @@ export async function getDesignerProductPurchaseStatus(req, res, next) {
   try {
     const designerId = req.user?.sub || req.user?.id;
     const productId = parseInt(req.params.id, 10);
-    const providerId = req.user?.associated_provider_id || (req.query.providerId ? parseInt(req.query.providerId, 10) : null);
+    let providerId = req.query.providerId ? parseInt(req.query.providerId, 10) : req.user?.associated_provider_id;
+    if (!providerId && productId) {
+      const prod = await productsStore.getProduct(productId);
+      if (prod?.owner_id) providerId = prod.owner_id;
+    }
 
     const statusInfo = await orderService.getDesignerProductPurchaseStatus(designerId, productId, providerId);
     return res.json(statusInfo);
@@ -72,7 +77,11 @@ export async function createDesignerPurchaseRequest(req, res, next) {
     const designerId = req.user?.sub || req.user?.id;
     const { productId, providerId, productSku, size, color, quantity, unitPrice, shipping } = req.body;
 
-    const resolvedProviderId = providerId || req.user?.associated_provider_id;
+    let resolvedProviderId = providerId || req.user?.associated_provider_id;
+    if (!resolvedProviderId && productId) {
+      const prod = await productsStore.getProduct(Number(productId));
+      if (prod?.owner_id) resolvedProviderId = prod.owner_id;
+    }
     if (!resolvedProviderId) {
       return res.status(400).json({ message: 'Print provider is required for purchase request' });
     }

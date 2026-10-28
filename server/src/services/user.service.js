@@ -22,6 +22,23 @@ export async function getAllProviders(includeDesigners = true) {
   const allowedRoles = includeDesigners ? ['print_provider', 'admin', 'designer'] : ['print_provider', 'admin'];
   const matchedUsers = users.filter((u) => allowedRoles.includes(u.role));
 
+  const providerMap = Object.fromEntries(
+    users
+      .filter((u) => u.role === 'print_provider' || u.role === 'admin')
+      .map((u) => [Number(u.id), { name: u.name, email: u.email }])
+  );
+
+  const enrichUser = (p, prodCount = 0, desCount = 0) => {
+    const assoc = p.associated_provider_id ? providerMap[Number(p.associated_provider_id)] : null;
+    return {
+      ...p,
+      associated_provider_name: assoc?.name || null,
+      associated_provider_email: assoc?.email || null,
+      products_count: prodCount,
+      designers_count: desCount
+    };
+  };
+
   if (pool) {
     try {
       const prodCounts = await pool.query(
@@ -33,21 +50,13 @@ export async function getAllProviders(includeDesigners = true) {
       const prodMap = Object.fromEntries(prodCounts.rows.map((r) => [r.owner_id, Number(r.count)]));
       const desMap = Object.fromEntries(designerCounts.rows.map((r) => [r.associated_provider_id, Number(r.count)]));
 
-      return matchedUsers.map((p) => ({
-        ...p,
-        products_count: prodMap[p.id] || 0,
-        designers_count: desMap[p.id] || 0
-      }));
+      return matchedUsers.map((p) => enrichUser(p, prodMap[p.id] || 0, desMap[p.id] || 0));
     } catch {
       // ignore
     }
   }
 
-  return matchedUsers.map((p) => ({
-    ...p,
-    products_count: 0,
-    designers_count: 0
-  }));
+  return matchedUsers.map((p) => enrichUser(p, 0, 0));
 }
 
 export async function getPublicProviders() {
@@ -57,12 +66,18 @@ export async function getPublicProviders() {
   );
 
   let prodMap = {};
+  let desMap = {};
   if (pool) {
     try {
       const prodCounts = await pool.query(
         `SELECT owner_id, COUNT(*) as count FROM products_full WHERE COALESCE(is_deleted, false) = false GROUP BY owner_id`
       );
       prodMap = Object.fromEntries(prodCounts.rows.map((r) => [r.owner_id, Number(r.count)]));
+
+      const desCounts = await pool.query(
+        `SELECT associated_provider_id, COUNT(*) as count FROM users WHERE associated_provider_id IS NOT NULL GROUP BY associated_provider_id`
+      );
+      desMap = Object.fromEntries(desCounts.rows.map((r) => [r.associated_provider_id, Number(r.count)]));
     } catch {}
   }
 
@@ -70,8 +85,12 @@ export async function getPublicProviders() {
     id: u.id,
     name: u.name || u.email,
     email: u.email,
+    role: u.role,
+    status: u.status || 'active',
     store_name: u.store_settings?.store_name || u.name || 'Print Provider Studio',
-    products_count: prodMap[u.id] || 0
+    store_settings: u.store_settings || {},
+    products_count: prodMap[u.id] || 0,
+    designers_count: desMap[u.id] || 0
   }));
 }
 

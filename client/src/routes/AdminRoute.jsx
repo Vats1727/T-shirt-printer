@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Route, Redirect } from 'wouter';
-import { DashboardLayout } from '@/layouts/DashboardLayout';
+import { PrintProviderLayout } from '@/layouts/PrintProviderLayout';
 
 export default function AdminRoute({ path, component: Component }) {
   return (
@@ -18,9 +18,9 @@ export default function AdminRoute({ path, component: Component }) {
           return <Redirect to="/login" />;
         }
         return (
-          <DashboardLayout>
+          <PrintProviderLayout>
             <Component {...params} />
-          </DashboardLayout>
+          </PrintProviderLayout>
         );
       }}
     </Route>

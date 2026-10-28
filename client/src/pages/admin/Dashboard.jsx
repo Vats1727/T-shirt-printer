@@ -28,7 +28,8 @@ import {
   Factory,
   Store,
   ChevronRight,
-  Check
+  Check,
+  ShieldCheck
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { encodeId } from "@/utils/idEncoder";
@@ -250,60 +251,21 @@ export default function AdminDashboard() {
     return img;
   };
 
+  // Listen for query params from Amazon Top Search Bar
+  useEffect(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const q = sp.get("q");
+      const cat = sp.get("cat");
+      if (q !== null) setSearchTerm(q);
+      if (cat !== null) setSelectedCategory(cat);
+    } catch {}
+  }, [window.location.search]);
+
   const isBusy = loading || ordersLoading || designersLoading;
 
   return (
-    <div className="w-full space-y-6 animate-in fade-in duration-300">
-      {/* Top Banner / Production Facility Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-5">
-        <div className="flex items-center gap-3.5">
-          <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-xs">
-            <Factory className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 leading-tight">
-                Print Provider Production Hub
-              </h1>
-              <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[11px] font-bold">
-                {user?.name || "Facility Console"}
-              </Badge>
-            </div>
-            <p className="text-slate-500 text-xs mt-0.5">
-              Manage your garment catalog, monitor production orders, and govern connected designers.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-full text-xs font-semibold">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            Live Fulfillment Active
-          </div>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={refreshAll}
-            disabled={isBusy}
-            className="h-9 gap-1.5 border-slate-200 shadow-2xs hover:bg-slate-50 rounded-lg text-xs"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isBusy ? "animate-spin text-indigo-600" : ""}`} />
-            Refresh
-          </Button>
-
-          <Button
-            size="sm"
-            disabled={blocked}
-            onClick={() => setLocation("/admin/clothes")}
-            className="h-9 gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg text-xs shadow-xs"
-          >
-            <Plus className="w-4 h-4" />
-            Add Garment Blank
-          </Button>
-        </div>
-      </div>
-
+    <div className="w-full space-y-5 animate-in fade-in duration-300">
       {/* Account Status Notice (if not active) */}
       {userData?.status === "pending" && (
         <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-3.5 shadow-xs animate-in slide-in-from-top-2">
@@ -333,13 +295,10 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Executive Metric Cards (4 KPIs) */}
+      {/* Executive Metric Cards (4 KPIs, Clean & Non-Duplicative) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* KPI 1: Active Blanks */}
-        <Card
-          onClick={() => setSelectedCategory("all")}
-          className="cursor-pointer rounded-xl border border-slate-200 bg-white hover:border-indigo-300 hover:shadow-md transition-all duration-200"
-        >
+        <Card className="rounded-xl border border-slate-200 bg-white hover:border-indigo-300 hover:shadow-md transition-all duration-200">
           <CardHeader className="p-4 pb-1.5 flex flex-row items-center justify-between space-y-0">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
               Garment Blanks
@@ -359,18 +318,15 @@ export default function AdminDashboard() {
         </Card>
 
         {/* KPI 2: Production Queue */}
-        <Card
-          onClick={() => setLocation("/admin/orders")}
-          className={cn(
-            "cursor-pointer rounded-xl border transition-all duration-200 hover:shadow-md",
-            pendingOrders.length > 0
-              ? "border-amber-300 bg-gradient-to-br from-amber-50/70 to-white hover:border-amber-400"
-              : "border-slate-200 bg-white hover:border-slate-300"
-          )}
-        >
+        <Card className={cn(
+          "rounded-xl border transition-all duration-200 hover:shadow-md",
+          pendingOrders.length > 0
+            ? "border-amber-300 bg-gradient-to-br from-amber-50/60 to-white"
+            : "border-slate-200 bg-white"
+        )}>
           <CardHeader className="p-4 pb-1.5 flex flex-row items-center justify-between space-y-0">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-700">
-              Production Queue
+            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-800">
+              Active Production Queue
             </span>
             <div className={cn(
               "p-2 rounded-lg",
@@ -381,7 +337,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent className="p-4 pt-0">
             <div className="text-2xl font-black text-slate-900">{pendingOrders.length}</div>
-            <p className="text-[11px] text-amber-700 mt-0.5 font-medium flex items-center justify-between">
+            <p className="text-[11px] text-amber-800 mt-0.5 font-medium flex items-center justify-between">
               <span>{pendingOrders.length > 0 ? "Orders awaiting print" : "Queue clear"}</span>
               <span className="text-slate-400 font-normal">({orders.length} total)</span>
             </p>
@@ -389,10 +345,7 @@ export default function AdminDashboard() {
         </Card>
 
         {/* KPI 3: Affiliated Designers */}
-        <Card
-          onClick={() => setLocation("/admin/designers")}
-          className="cursor-pointer rounded-xl border border-slate-200 bg-white hover:border-sky-300 hover:shadow-md transition-all duration-200"
-        >
+        <Card className="rounded-xl border border-slate-200 bg-white hover:border-sky-300 hover:shadow-md transition-all duration-200">
           <CardHeader className="p-4 pb-1.5 flex flex-row items-center justify-between space-y-0">
             <span className="text-[11px] font-bold uppercase tracking-wider text-sky-700">
               Connected Designers
@@ -403,18 +356,14 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent className="p-4 pt-0">
             <div className="text-2xl font-black text-slate-900">{designers.length}</div>
-            <p className="text-[11px] text-sky-700 mt-0.5 font-medium flex items-center gap-1">
-              <span>Merchandisers & Brands</span>
-              <ArrowRight className="w-3 h-3" />
+            <p className="text-[11px] text-sky-700 mt-0.5 font-medium">
+              Merchandisers & Brands
             </p>
           </CardContent>
         </Card>
 
         {/* KPI 4: Fulfillment Revenue */}
-        <Card
-          onClick={() => setLocation("/admin/orders")}
-          className="cursor-pointer rounded-xl border border-slate-200 bg-white hover:border-emerald-300 hover:shadow-md transition-all duration-200"
-        >
+        <Card className="rounded-xl border border-slate-200 bg-white hover:border-emerald-300 hover:shadow-md transition-all duration-200">
           <CardHeader className="p-4 pb-1.5 flex flex-row items-center justify-between space-y-0">
             <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">
               Fulfillment Volume
@@ -434,470 +383,302 @@ export default function AdminDashboard() {
         </Card>
       </div>
 
-      {/* Main Split Section: Catalog on Left (8 cols) + Operations Rail on Right (4 cols) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: Garment Blanks Catalog Management (8 cols) */}
-        <div className="lg:col-span-8 space-y-4">
-          <Card className="rounded-xl border border-slate-200 shadow-sm overflow-hidden bg-white">
-            {/* Catalog Control Header */}
-            <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
-              <div>
-                <h2 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                  <Package className="w-4 h-4 text-indigo-600" />
-                  Garment Blanks & Cut Catalog
-                </h2>
-                <p className="text-xs text-slate-500">
-                  Base apparel products supplied for print customization.
-                </p>
-              </div>
+      {/* Main Storefront Section: Garment Blanks Catalog */}
+      <div className="space-y-4">
+        <Card className="rounded-2xl border border-slate-200 shadow-sm overflow-hidden bg-white">
+          {/* Storefront Department Navigation Ribbon */}
+          <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/70">
+            <div>
+              <h2 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                <Package className="w-4 h-4 text-indigo-600" />
+                Garment Blanks Catalog
+              </h2>
+              <p className="text-xs text-slate-500">
+                Base apparel products offered to merchandisers for custom printing.
+              </p>
+            </div>
 
-              {/* Filter Tabs */}
+            {/* Department Tabs & Search Active Indicator */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {searchTerm && (
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg text-xs font-semibold">
+                  <span>Search: "{searchTerm}"</span>
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm("")}
+                    className="hover:text-indigo-900 cursor-pointer text-xs"
+                    title="Clear search"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+
               <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs text-xs font-semibold">
                 <button
+                  type="button"
                   onClick={() => setSelectedCategory("all")}
                   className={cn(
-                    "px-3 py-1.5 rounded-lg transition-all",
+                    "px-3 py-1.5 rounded-lg transition-all cursor-pointer",
                     selectedCategory === "all"
-                      ? "bg-slate-900 text-white shadow-xs"
+                      ? "bg-indigo-600 text-white shadow-xs"
                       : "text-slate-600 hover:text-slate-900"
                   )}
                 >
-                  All ({products.length})
+                  All Blanks ({products.length})
                 </button>
                 <button
+                  type="button"
                   onClick={() => setSelectedCategory("men")}
                   className={cn(
-                    "px-3 py-1.5 rounded-lg transition-all",
+                    "px-3 py-1.5 rounded-lg transition-all cursor-pointer",
                     selectedCategory === "men"
                       ? "bg-blue-600 text-white shadow-xs"
                       : "text-slate-600 hover:text-slate-900"
                   )}
                 >
-                  Men's ({menCount})
+                  Men's Fits ({menCount})
                 </button>
                 <button
+                  type="button"
                   onClick={() => setSelectedCategory("women")}
                   className={cn(
-                    "px-3 py-1.5 rounded-lg transition-all",
+                    "px-3 py-1.5 rounded-lg transition-all cursor-pointer",
                     selectedCategory === "women"
                       ? "bg-pink-600 text-white shadow-xs"
                       : "text-slate-600 hover:text-slate-900"
                   )}
                 >
-                  Women's ({womenCount})
+                  Women's Fits ({womenCount})
                 </button>
               </div>
             </div>
+          </div>
 
-            {/* Search Bar */}
-            <div className="p-3 border-b border-slate-100 bg-white flex items-center justify-between gap-3">
-              <div className="relative flex-1">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <Input
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Filter blanks by garment name or slug..."
-                  className="pl-9 h-8 text-xs bg-slate-50/60 border-slate-200 rounded-lg"
-                />
+          {/* Storefront Product Grid */}
+          <CardContent className="p-4">
+            {loading ? (
+              <div className="py-20 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
+                <RefreshCw className="w-6 h-6 animate-spin text-indigo-600" />
+                <p className="text-xs font-semibold">Loading catalog blanks...</p>
               </div>
-              <span className="text-xs font-medium text-slate-500 shrink-0">
-                {filteredProducts.length} {filteredProducts.length === 1 ? "blank" : "blanks"}
-              </span>
-            </div>
-
-            {/* Products Grid */}
-            <CardContent className="p-4">
-              {loading ? (
-                <div className="py-16 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
-                  <RefreshCw className="w-6 h-6 animate-spin text-indigo-500" />
-                  <p className="text-xs font-medium">Loading catalog blanks...</p>
-                </div>
-              ) : filteredProducts.length === 0 ? (
-                <div className="py-16 text-center text-slate-500 space-y-3 bg-slate-50/50 rounded-xl border border-dashed border-slate-200 p-8">
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-500 flex items-center justify-center mx-auto">
-                    <Shirt className="w-6 h-6 stroke-[1.5]" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-slate-900 text-sm">No Garment Blanks Found</h3>
-                    <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                      {searchTerm
-                        ? "No products matched your search term. Try adjusting your query."
-                        : "You haven't added any garment blanks to your catalog yet."}
-                    </p>
-                  </div>
-                  <Button
-                    size="sm"
-                    disabled={blocked}
-                    onClick={() => setLocation("/admin/clothes")}
-                    className="h-8 gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Create First Blank
-                  </Button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {filteredProducts.map((p) => {
-                    const currentSide = cardSides[p.id] || "front";
-                    const cat = p.category || (p.slug?.includes("women") ? "women" : "men");
-
-                    const rawDesigns = p.designs;
-                    let frontImg = null;
-                    let backImg = null;
-
-                    if (Array.isArray(rawDesigns)) {
-                      const frontObj = rawDesigns.find(
-                        (d) => d && String(d.side || "").toLowerCase() === "front"
-                      );
-                      const backObj = rawDesigns.find(
-                        (d) => d && String(d.side || "").toLowerCase() === "back"
-                      );
-                      frontImg =
-                        normalizeImage(frontObj) || (rawDesigns[0] ? normalizeImage(rawDesigns[0]) : null);
-                      backImg =
-                        normalizeImage(backObj) || (rawDesigns[1] ? normalizeImage(rawDesigns[1]) : null);
-                    } else if (rawDesigns && typeof rawDesigns === "object") {
-                      frontImg =
-                        normalizeImage(rawDesigns.front) ||
-                        (rawDesigns[0] ? normalizeImage(rawDesigns[0]) : null);
-                      backImg =
-                        normalizeImage(rawDesigns.back) ||
-                        (rawDesigns[1] ? normalizeImage(rawDesigns[1]) : null);
-                    }
-
-                    if (!frontImg && p.front_image) frontImg = normalizeImage(p.front_image);
-                    if (!backImg && p.back_image) backImg = normalizeImage(p.back_image);
-                    if (!frontImg && p.image) frontImg = normalizeImage(p.image);
-
-                    const activeImg = currentSide === "back" && backImg ? backImg : frontImg || backImg;
-
-                    return (
-                      <div
-                        key={p.id}
-                        className="rounded-xl border border-slate-200 bg-white hover:border-slate-300 hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col justify-between group"
-                      >
-                        {/* Preview Top Area */}
-                        <div>
-                          <div className="relative h-44 flex items-center justify-center bg-slate-50/70 p-3 overflow-hidden border-b border-slate-100">
-                            {/* Category Badge */}
-                            <div className="absolute top-2.5 left-2.5 z-10">
-                              <Badge
-                                className={cn(
-                                  "text-[10px] font-bold px-2 py-0.5 uppercase tracking-wider shadow-2xs",
-                                  cat === "women"
-                                    ? "bg-pink-100 text-pink-700 border-pink-200"
-                                    : "bg-blue-100 text-blue-700 border-blue-200"
-                                )}
-                              >
-                                {cat === "women" ? "Women's Fit" : "Men's Fit"}
-                              </Badge>
-                            </div>
-
-                            {/* Front / Back Switcher */}
-                            {frontImg && backImg && (
-                              <div className="absolute top-2.5 right-2.5 z-10 flex bg-white/90 backdrop-blur rounded-full p-0.5 shadow-2xs border border-slate-200 text-[10px] font-medium">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setCardSides((prev) => ({ ...prev, [p.id]: "front" }));
-                                  }}
-                                  className={cn(
-                                    "px-2 py-0.5 rounded-full transition-all",
-                                    currentSide === "front"
-                                      ? "bg-indigo-600 text-white font-bold shadow-xs"
-                                      : "text-slate-600 hover:text-slate-900"
-                                  )}
-                                >
-                                  Front
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setCardSides((prev) => ({ ...prev, [p.id]: "back" }));
-                                  }}
-                                  className={cn(
-                                    "px-2 py-0.5 rounded-full transition-all",
-                                    currentSide === "back"
-                                      ? "bg-indigo-600 text-white font-bold shadow-xs"
-                                      : "text-slate-600 hover:text-slate-900"
-                                  )}
-                                >
-                                  Back
-                                </button>
-                              </div>
-                            )}
-
-                            {/* Garment Image */}
-                            {activeImg ? (
-                              <img
-                                src={activeImg}
-                                alt={p.name}
-                                className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover:scale-105"
-                                onError={(e) => {
-                                  if (e.currentTarget.dataset.retried) return;
-                                  e.currentTarget.dataset.retried = "true";
-                                  if (activeImg.startsWith("/uploads/")) {
-                                    e.currentTarget.src = activeImg.replace("/uploads/", "/attached_assets/");
-                                  } else if (activeImg.startsWith("/attached_assets/")) {
-                                    e.currentTarget.src = activeImg.replace("/attached_assets/", "/uploads/");
-                                  }
-                                }}
-                              />
-                            ) : (
-                              <div className="text-xs text-slate-400 flex flex-col items-center gap-1">
-                                <Shirt className="w-8 h-8 text-slate-300 stroke-1" />
-                                <span>No preview</span>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Product Info */}
-                          <div className="p-3.5 pb-2">
-                            <h3 className="font-bold text-slate-900 text-sm line-clamp-1 group-hover:text-indigo-600 transition-colors">
-                              {p.name}
-                            </h3>
-                            <p className="text-[11px] text-slate-400 font-mono mt-0.5">
-                              {p.slug || "custom-cut"}
-                            </p>
-
-                            {/* Pricing Tiers Card */}
-                            <div className="mt-2.5 p-2 bg-slate-50/80 rounded-lg border border-slate-100 text-xs space-y-1">
-                              <div className="flex items-center justify-between">
-                                <span className="text-slate-500">Single Piece:</span>
-                                <span className="font-bold text-slate-800">₹{formatPrice(p.single_price)}</span>
-                              </div>
-                              <div className="flex items-center justify-between text-indigo-700">
-                                <span className="flex items-center gap-1 font-medium">
-                                  <span>Bulk Tier:</span>
-                                  <span className="text-[10px] text-slate-400">({p.bulk_min || 50}+ pcs)</span>
-                                </span>
-                                <span className="font-extrabold">₹{formatPrice(p.bulk_price)}</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Actions Toolbar */}
-                        <div className="p-3 pt-0 flex items-center gap-1.5 border-t border-slate-100 bg-white">
-                          <Button
-                            size="sm"
-                            disabled={blocked}
-                            onClick={() => setLocation("/admin/clothes?productId=" + encodeId(p.id))}
-                            className="flex-1 h-8 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white gap-1 shadow-2xs"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                            Edit
-                          </Button>
-
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            onClick={() => copyProductLink(p)}
-                            className="h-8 w-8 rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50"
-                            title="Copy Catalog Link"
-                          >
-                            {copiedId === p.id ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </Button>
-
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            disabled={blocked}
-                            onClick={() => setProductToDelete(p.id)}
-                            className="h-8 w-8 rounded-lg border-slate-200 text-slate-400 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200"
-                            title="Delete Blank"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right Column: Live Production Queue & Operations Rail (4 cols) */}
-        <div className="lg:col-span-4 space-y-4">
-          {/* Recent Orders Queue Card */}
-          <Card className="rounded-xl border border-slate-200 shadow-sm overflow-hidden bg-white">
-            <CardHeader className="p-4 pb-3 border-b border-slate-100 bg-slate-50/50 flex flex-row items-center justify-between space-y-0">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 bg-amber-100 text-amber-700 rounded-lg">
-                  <Clock className="w-4 h-4" />
+            ) : filteredProducts.length === 0 ? (
+              <div className="py-16 text-center text-slate-500 space-y-3 bg-slate-50/50 rounded-xl border border-dashed border-slate-200 p-8">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto">
+                  <Shirt className="w-6 h-6 stroke-[1.5]" />
                 </div>
                 <div>
-                  <CardTitle className="text-sm font-bold text-slate-900">
-                    Live Production Queue
-                  </CardTitle>
-                  <p className="text-[11px] text-slate-500">Orders requiring printing & fulfillment</p>
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setLocation("/admin/orders")}
-                className="h-7 text-xs font-semibold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 px-2"
-              >
-                View Board
-                <ArrowRight className="w-3 h-3 ml-1" />
-              </Button>
-            </CardHeader>
-
-            <CardContent className="p-0">
-              {ordersLoading ? (
-                <div className="p-8 text-center text-slate-400 flex flex-col items-center justify-center gap-1.5">
-                  <RefreshCw className="w-4 h-4 animate-spin text-indigo-500" />
-                  <p className="text-xs">Loading queue...</p>
-                </div>
-              ) : orders.length === 0 ? (
-                <div className="p-8 text-center text-slate-400 space-y-1.5">
-                  <ShoppingBag className="w-8 h-8 mx-auto text-slate-300 stroke-1" />
-                  <p className="text-xs font-semibold text-slate-600">No Orders in Queue</p>
-                  <p className="text-[11px] text-slate-400">
-                    Customer orders placed with affiliated designers will stream here.
+                  <h3 className="font-bold text-slate-900 text-sm">No Garment Blanks Found</h3>
+                  <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                    {searchTerm
+                      ? "No blanks matched your filter. Try adjusting your query or category."
+                      : "Your catalog has no active garment blanks."}
                   </p>
                 </div>
-              ) : (
-                <div className="divide-y divide-slate-100">
-                  {orders.slice(0, 4).map((o, idx) => {
-                    const status = (o.status || "pending").toLowerCase();
-                    const isPending = ["pending", "placed", "processing", "in_production"].includes(status);
-                    return (
-                      <div
-                        key={o.id || o.created_at || idx}
-                        onClick={() => setLocation("/admin/orders")}
-                        className="p-3.5 hover:bg-slate-50/80 transition-colors cursor-pointer flex items-center justify-between gap-3"
-                      >
-                        <div className="space-y-0.5 flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-900 text-xs">
-                              Order #{o.id || idx + 101}
-                            </span>
+                <Button
+                  size="sm"
+                  disabled={blocked}
+                  onClick={() => setLocation("/admin/clothes")}
+                  className="h-8 gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold cursor-pointer shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add Garment
+                </Button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                {filteredProducts.map((p) => {
+                  const currentSide = cardSides[p.id] || "front";
+                  const cat = p.category || (p.slug?.includes("women") ? "women" : "men");
+
+                  const rawDesigns = p.designs;
+                  let frontImg = null;
+                  let backImg = null;
+
+                  if (Array.isArray(rawDesigns)) {
+                    const frontObj = rawDesigns.find(
+                      (d) => d && String(d.side || "").toLowerCase() === "front"
+                    );
+                    const backObj = rawDesigns.find(
+                      (d) => d && String(d.side || "").toLowerCase() === "back"
+                    );
+                    frontImg =
+                      normalizeImage(frontObj) || (rawDesigns[0] ? normalizeImage(rawDesigns[0]) : null);
+                    backImg =
+                      normalizeImage(backObj) || (rawDesigns[1] ? normalizeImage(rawDesigns[1]) : null);
+                  } else if (rawDesigns && typeof rawDesigns === "object") {
+                    frontImg =
+                      normalizeImage(rawDesigns.front) ||
+                      (rawDesigns[0] ? normalizeImage(rawDesigns[0]) : null);
+                    backImg =
+                      normalizeImage(rawDesigns.back) ||
+                      (rawDesigns[1] ? normalizeImage(rawDesigns[1]) : null);
+                  }
+
+                  if (!frontImg && p.front_image) frontImg = normalizeImage(p.front_image);
+                  if (!backImg && p.back_image) backImg = normalizeImage(p.back_image);
+                  if (!frontImg && p.image) frontImg = normalizeImage(p.image);
+
+                  const activeImg = currentSide === "back" && backImg ? backImg : frontImg || backImg;
+
+                  return (
+                    <div
+                      key={p.id}
+                      className="rounded-xl border border-slate-200 bg-white hover:border-indigo-300 hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col justify-between group max-w-[240px]"
+                    >
+                      {/* Preview Top Area */}
+                      <div>
+                        <div className="relative h-28 sm:h-32 flex items-center justify-center bg-slate-50/80 p-2 overflow-hidden border-b border-slate-100">
+                          {/* Department Badge & Draft Badge */}
+                          <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1">
                             <Badge
                               className={cn(
-                                "text-[10px] font-bold py-0 px-1.5",
-                                isPending
-                                  ? "bg-amber-100 text-amber-800 border-amber-300 animate-pulse"
-                                  : "bg-emerald-100 text-emerald-800 border-emerald-300"
+                                "text-[8px] font-extrabold px-1.5 py-0.2 uppercase tracking-wider shadow-2xs leading-tight",
+                                cat === "women"
+                                  ? "bg-pink-100 text-pink-700 border-pink-200"
+                                  : "bg-blue-100 text-blue-700 border-blue-200"
                               )}
                             >
-                              {o.status || "Pending"}
+                              {cat === "women" ? "Women's Fit" : "Men's Fit"}
                             </Badge>
+                            {p.status === "draft" && (
+                              <Badge className="text-[8px] font-extrabold px-1.5 py-0.2 uppercase tracking-wider shadow-2xs leading-tight bg-amber-500 text-white border-transparent">
+                                Draft
+                              </Badge>
+                            )}
                           </div>
-                          <p className="text-[11px] text-slate-500 truncate">
-                            {o.supplier?.name || o.supplier?.email || "Direct Merchandiser"}
-                          </p>
-                          <p className="text-[10px] text-slate-400">
-                            {o.created_at ? format(new Date(o.created_at), "MMM dd, h:mm a") : "Recent"}
-                            {" · "}
-                            {o.items?.length || 1} {o.items?.length === 1 ? "item" : "items"}
-                          </p>
+
+                          {/* Front / Back Switcher */}
+                          {frontImg && backImg && (
+                            <div className="absolute top-1.5 right-1.5 z-10 flex bg-white/95 backdrop-blur rounded-full p-0.5 shadow-2xs border border-slate-200 text-[8px] font-medium">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCardSides((prev) => ({ ...prev, [p.id]: "front" }));
+                                }}
+                                className={cn(
+                                  "px-1.5 py-0.2 rounded-full transition-all cursor-pointer leading-tight",
+                                  currentSide === "front"
+                                    ? "bg-indigo-600 text-white font-bold shadow-xs"
+                                    : "text-slate-600 hover:text-slate-900"
+                                )}
+                              >
+                                Front
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCardSides((prev) => ({ ...prev, [p.id]: "back" }));
+                                }}
+                                className={cn(
+                                  "px-1.5 py-0.2 rounded-full transition-all cursor-pointer leading-tight",
+                                  currentSide === "back"
+                                    ? "bg-indigo-600 text-white font-bold shadow-xs"
+                                    : "text-slate-600 hover:text-slate-900"
+                                )}
+                              >
+                                Back
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Garment Image */}
+                          {activeImg ? (
+                            <img
+                              src={activeImg}
+                              alt={p.name}
+                              className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover:scale-105"
+                              onError={(e) => {
+                                if (e.currentTarget.dataset.retried) return;
+                                e.currentTarget.dataset.retried = "true";
+                                if (activeImg.startsWith("/uploads/")) {
+                                  e.currentTarget.src = activeImg.replace("/uploads/", "/attached_assets/");
+                                } else if (activeImg.startsWith("/attached_assets/")) {
+                                  e.currentTarget.src = activeImg.replace("/attached_assets/", "/uploads/");
+                                }
+                              }}
+                            />
+                          ) : (
+                            <div className="text-xs text-slate-400 flex flex-col items-center gap-1">
+                              <Shirt className="w-6 h-6 text-slate-300 stroke-1" />
+                              <span className="text-[10px]">No preview</span>
+                            </div>
+                          )}
                         </div>
 
-                        <div className="text-right shrink-0">
-                          <span className="font-extrabold text-slate-900 text-sm">
-                            ₹{formatPrice(o.total)}
-                          </span>
-                          <span className="block text-[10px] text-indigo-600 font-semibold flex items-center justify-end gap-0.5 mt-0.5">
-                            Inspect
-                            <ChevronRight className="w-3 h-3" />
-                          </span>
+                        {/* Product Info */}
+                        <div className="p-2.5 pb-1.5">
+                          <h3 className="font-bold text-slate-900 text-xs line-clamp-1 group-hover:text-indigo-600 transition-colors">
+                            {p.name}
+                          </h3>
+                          <p className="text-[9px] text-slate-400 font-mono mt-0.5 truncate">
+                            SKU: {p.slug || "custom-cut"}
+                          </p>
+
+                          {/* Pricing Callout Box (Compact Side-by-Side) */}
+                          <div className="mt-2 p-1.5 bg-slate-50/90 rounded-lg border border-slate-100 flex items-center justify-between text-[11px]">
+                            <div>
+                              <span className="text-slate-400 block text-[9px] font-medium leading-none mb-0.5">Single</span>
+                              <span className="font-extrabold text-slate-900 text-xs leading-none">
+                                ₹{formatPrice(p.single_price)}
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-indigo-500 block text-[9px] font-medium leading-none mb-0.5">Bulk ({p.bulk_min || 50}+)</span>
+                              <span className="font-black text-indigo-700 text-xs leading-none">
+                                ₹{formatPrice(p.bulk_price)}
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
 
-          {/* Quick Facility Shortcuts & Tools */}
-          <Card className="rounded-xl border border-slate-200 shadow-sm overflow-hidden bg-white">
-            <CardHeader className="p-4 pb-2 border-b border-slate-100 bg-slate-50/50">
-              <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Store className="w-4 h-4 text-indigo-600" />
-                Facility Operations & Tools
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-2 space-y-1">
-              <button
-                disabled={blocked}
-                onClick={() => setLocation("/admin/clothes")}
-                className="w-full p-2.5 rounded-lg hover:bg-slate-50 transition-colors flex items-center justify-between text-left group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                    <Shirt className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-900">Blank Studio & Presets</h4>
-                    <p className="text-[11px] text-slate-500">Configure sizing charts & color variants</p>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all" />
-              </button>
+                      {/* Streamlined Actions Toolbar */}
+                      <div className="p-2 pt-1 flex items-center gap-1 border-t border-slate-100 bg-white">
+                        <Button
+                          size="sm"
+                          disabled={blocked}
+                          onClick={() => setLocation("/admin/clothes?productId=" + encodeId(p.id))}
+                          className="flex-1 h-7 rounded-md text-[11px] font-semibold bg-indigo-600 hover:bg-indigo-700 text-white gap-1 shadow-2xs cursor-pointer"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                          Edit Blank
+                        </Button>
 
-              <button
-                disabled={blocked}
-                onClick={() => setLocation("/admin/orders")}
-                className="w-full p-2.5 rounded-lg hover:bg-slate-50 transition-colors flex items-center justify-between text-left group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-amber-50 text-amber-600 group-hover:bg-amber-600 group-hover:text-white transition-colors">
-                    <ShoppingBag className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-900">Orders Fulfillment Board</h4>
-                    <p className="text-[11px] text-slate-500">View print files and mark shipments</p>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all" />
-              </button>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          onClick={() => copyProductLink(p)}
+                          className="h-7 w-7 rounded-md border-slate-200 text-slate-600 hover:bg-slate-50 cursor-pointer"
+                          title="Copy Catalog Link"
+                        >
+                          {copiedId === p.id ? (
+                            <Check className="w-3 h-3 text-emerald-600" />
+                          ) : (
+                            <Copy className="w-3 h-3" />
+                          )}
+                        </Button>
 
-              <button
-                disabled={blocked}
-                onClick={() => setLocation("/admin/designers")}
-                className="w-full p-2.5 rounded-lg hover:bg-slate-50 transition-colors flex items-center justify-between text-left group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-sky-50 text-sky-600 group-hover:bg-sky-600 group-hover:text-white transition-colors">
-                    <Users className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-900">Designers Directory</h4>
-                    <p className="text-[11px] text-slate-500">Inspect affiliated brands & designers</p>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all" />
-              </button>
-
-              <button
-                onClick={() => setLocation("/admin/profile")}
-                className="w-full p-2.5 rounded-lg hover:bg-slate-50 transition-colors flex items-center justify-between text-left group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-slate-100 text-slate-600 group-hover:bg-slate-900 group-hover:text-white transition-colors">
-                    <Factory className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-900">Facility Profile & Settings</h4>
-                    <p className="text-[11px] text-slate-500">Contact information & credentials</p>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all" />
-              </button>
-            </CardContent>
-          </Card>
-        </div>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          disabled={blocked}
+                          onClick={() => setProductToDelete(p.id)}
+                          className="h-7 w-7 rounded-md border-slate-200 text-slate-400 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 cursor-pointer"
+                          title="Delete Blank"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Blocking Dialog for Restricted Accounts */}

@@ -171,9 +171,16 @@ function StoreCard({
 
       <CardContent className="p-5 flex flex-col flex-grow justify-between gap-4">
         <div className="space-y-1.5">
-          <div className="flex items-center gap-1.5 text-[11px] text-indigo-600 font-bold uppercase tracking-wider">
-            <Shirt className="size-3.5" />
-            <span>Custom Apparel</span>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-[11px] text-indigo-600 font-bold uppercase tracking-wider">
+              <Shirt className="size-3.5" />
+              <span>Custom Apparel</span>
+            </div>
+            {listing.designer_name && (
+              <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200 truncate max-w-[130px]" title={`Designed by ${listing.designer_name}`}>
+                by {listing.designer_name}
+              </span>
+            )}
           </div>
           <h3 className="font-extrabold text-base text-slate-900 group-hover:text-indigo-600 transition-colors leading-snug line-clamp-1">
             {listing.title}
@@ -252,13 +259,16 @@ export default function StorePage() {
     })();
   }, [supplierId]);
   const isOwner = Boolean(
-    user && (user.role === "supplier" || user.role === "designer") && (String(user.id) === String(supplierId) || Number(user.id) === Number(supplierId))
+    user && (user.role === "supplier" || user.role === "designer" || user.role === "admin" || user.role === "print_provider") && (String(user.id) === String(supplierId) || Number(user.id) === Number(supplierId))
   );
   const [listingToDelete, setListingToDelete] = useState(null);
   const { toast } = useToast();
   const executeDeleteListing = async (id) => {
     try {
-      const res = await fetch(`/api/supplier/listings/${encodeURIComponent(id)}`, {
+      const endpoint = (user?.role === "admin" || user?.role === "print_provider")
+        ? `/api/admin/listings/${encodeURIComponent(id)}`
+        : `/api/supplier/listings/${encodeURIComponent(id)}`;
+      const res = await fetch(endpoint, {
         method: "DELETE",
         headers: {
           Authorization: token ? `Bearer ${token}` : "",
@@ -352,7 +362,7 @@ export default function StorePage() {
           <div className="space-y-3 max-w-2xl">
             <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-bold uppercase tracking-wider ${themeStyle.heroBadge}`}>
               <Sparkles className="size-3.5" />
-              Verified Designer Collection
+              {designer?.is_provider ? 'Official Production Facility Store' : 'Verified Designer Collection'}
             </div>
             
             <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight leading-tight">
@@ -398,11 +408,11 @@ export default function StorePage() {
           </div>
 
           {
-    /* Right Action Console (Designer Controls) */
+    /* Right Action Console (Owner Controls) */
   }
           {isOwner && <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2.5">
               <Button
-    onClick={() => setLocation("/supplier/customize-store")}
+    onClick={() => setLocation(user?.role === "admin" || user?.role === "print_provider" ? "/admin/customize-store" : "/supplier/customize-store")}
     className="px-4 py-2.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs backdrop-blur-md border border-white/20 shadow-md transition-all flex items-center justify-center gap-2"
   >
                 <Paintbrush className="size-4" />
@@ -410,7 +420,7 @@ export default function StorePage() {
               </Button>
 
               <Button
-    onClick={() => setLocation("/supplier/listings/create")}
+    onClick={() => setLocation(user?.role === "admin" || user?.role === "print_provider" ? "/admin/listings/create" : "/supplier/listings/create")}
     className={`px-4 py-2.5 rounded-xl font-bold text-xs shadow-lg transition-all flex items-center justify-center gap-1.5 ${themeStyle.accentBtn}`}
   >
                 <StoreIcon className="size-4" />
