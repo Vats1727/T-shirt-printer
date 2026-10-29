@@ -36,6 +36,7 @@ import Checkout from '@/pages/Store/Checkout.jsx';
 import PortalAdminDashboard from '@/pages/Portal/Dashboard.jsx';
 import PortalAdminRequests from '@/pages/Portal/Requests.jsx';
 import PortalAdminFinancials from '@/pages/Portal/FinancialSettings.jsx';
+import PortalAdminLedger from '@/pages/Portal/PartnerLedger.jsx';
 import PortalAdminRoute from '@/routes/PortalAdminRoute.jsx';
 
 import CustomerDashboard from '@/pages/Customer/Dashboard.jsx';
@@ -120,6 +121,7 @@ export function AppRoutes() {
       <PortalAdminRoute path="/portal/dashboard" component={PortalAdminDashboard} />
       <PortalAdminRoute path="/portal/requests" component={PortalAdminRequests} />
       <PortalAdminRoute path="/portal/financials" component={PortalAdminFinancials} />
+      <PortalAdminRoute path="/portal/ledger" component={PortalAdminLedger} />
 
       {/* 404 Catch-All */}
       <Route component={NotFound} />

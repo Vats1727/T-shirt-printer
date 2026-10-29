@@ -74,8 +74,8 @@ export default function SupplierOrders() {
         const orderList = Array.isArray(data)
           ? data
           : Array.isArray(data?.orders)
-          ? data.orders
-          : [];
+            ? data.orders
+            : [];
         setOrders(orderList);
 
         if (viewingOrder) {
@@ -389,7 +389,7 @@ export default function SupplierOrders() {
                 )}
               >
                 <Package className="w-3.5 h-3.5" />
-                Sample Batches ({sampleOrders.length})
+                Wholesale & Samples ({sampleOrders.length})
               </Button>
             )}
           </div>
@@ -484,16 +484,26 @@ export default function SupplierOrders() {
                         <div className="space-y-1">
                           <span
                             className={cn(
-                              "text-[10px] font-bold px-1.5 py-0.2 rounded border inline-block",
-                              isCustomerOrder
-                                ? "bg-indigo-50 text-indigo-700 border-indigo-200"
-                                : "bg-slate-100 text-slate-700 border-slate-200"
+                              "text-[10px] font-bold px-1.5 py-0.5 rounded border inline-block",
+                              o.is_b2b_order
+                                ? o.order_type === "sample"
+                                  ? "bg-amber-50 text-amber-700 border-amber-200"
+                                  : "bg-blue-50 text-blue-700 border-blue-200"
+                                : isCustomerOrder
+                                  ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                                  : "bg-slate-100 text-slate-700 border-slate-200"
                             )}
                           >
-                            {isCustomerOrder ? "Storefront Sale" : "Sample Batch"}
+                            {o.is_b2b_order
+                              ? o.order_type === "sample"
+                                ? "Sample Purchase (1-4 pcs)"
+                                : "Wholesale Bulk Order"
+                              : isCustomerOrder
+                                ? "Storefront Sale"
+                                : "Sample Batch"}
                           </span>
                           <div className="font-bold text-xs text-slate-900 leading-tight">
-                            {clientName}
+                            {o.is_b2b_order ? `Provider: ${o.provider_name || 'Print Provider'}` : clientName}
                           </div>
                         </div>
                       </TableCell>
@@ -501,11 +511,16 @@ export default function SupplierOrders() {
                       {/* Garment Creation */}
                       <TableCell>
                         <div className="flex items-center gap-2.5">
-                          {firstItem.preview_url ? (
+                          {(firstItem.preview_url || firstItem.custom_mockup_url) ? (
                             <img
-                              src={firstItem.preview_url}
+                              src={firstItem.preview_url || firstItem.custom_mockup_url}
                               alt="Garment Preview"
                               className="w-10 h-10 object-contain rounded-lg border border-slate-200 bg-slate-50 shrink-0"
+                              onError={(e) => {
+                                if (!e.target.src.includes('/templates/tshirt.png')) {
+                                  e.target.src = '/templates/tshirt.png';
+                                }
+                              }}
                             />
                           ) : (
                             <div className="w-10 h-10 rounded-lg border border-slate-200 bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
@@ -546,6 +561,8 @@ export default function SupplierOrders() {
                           <div className="flex items-center gap-1 text-emerald-700 font-black font-mono text-xs bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-lg w-fit">
                             <span>+₹{designerEarnings.toFixed(2)}</span>
                           </div>
+                        ) : o.is_b2b_order ? (
+                          <span className="text-indigo-600 text-[11px] font-bold">B2B Purchase</span>
                         ) : (
                           <span className="text-slate-400 text-xs font-mono">-</span>
                         )}
@@ -768,11 +785,16 @@ export default function SupplierOrders() {
                   {viewingOrder.items?.map((it, idx) => (
                     <div key={idx} className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                       <div className="flex items-center gap-3.5">
-                        {it.preview_url ? (
+                        {(it.preview_url || it.custom_mockup_url) ? (
                           <img
-                            src={it.preview_url}
+                            src={it.preview_url || it.custom_mockup_url}
                             alt="Garment Preview"
                             className="w-16 h-16 object-contain rounded-xl border border-slate-200 bg-slate-50 p-1"
+                            onError={(e) => {
+                              if (!e.target.src.includes('/templates/tshirt.png')) {
+                                e.target.src = '/templates/tshirt.png';
+                              }
+                            }}
                           />
                         ) : (
                           <div className="w-16 h-16 rounded-xl border border-slate-200 bg-slate-100 flex items-center justify-center text-slate-400">
@@ -786,7 +808,7 @@ export default function SupplierOrders() {
                           <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 mt-1">
                             <span className="font-semibold text-slate-900">Qty: {it.quantity}</span>
                             <span>•</span>
-                            <span className="font-semibold">Size: {it.size_label || it.size || "M"}</span>
+                            <span className="font-semibold">Size: {it.size_label || it.size || it.garment_size || "M"}</span>
                             <span>•</span>
                             <span className="inline-flex items-center gap-1">
                               {it.color_hex && (
@@ -803,7 +825,7 @@ export default function SupplierOrders() {
 
                       <div className="text-right sm:self-center">
                         <div className="font-mono font-bold text-sm text-slate-900">
-                          ₹{(it.total_price_cents ? it.total_price_cents / 100 : (it.line_total || (it.unit_price || 0) * (it.quantity || 1))).toFixed(2)}
+                          ₹{(it.line_total_cents ? it.line_total_cents / 100 : (it.total_price_cents ? it.total_price_cents / 100 : (it.line_total || (it.unit_price || 0) * (it.quantity || 1)))).toFixed(2)}
                         </div>
                         <div className="text-[11px] text-slate-400">
                           ₹{(it.unit_price_cents ? it.unit_price_cents / 100 : (it.unit_price || 0)).toFixed(2)} / pc

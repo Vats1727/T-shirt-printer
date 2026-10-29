@@ -17,7 +17,8 @@ import {
   LayoutTemplate,
   UserCheck,
   Users,
-  DollarSign
+  DollarSign,
+  FileText
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { Button } from '@/components/ui/button';
@@ -102,6 +103,13 @@ export function AppSidebar() {
       icon: DollarSign,
       url: '/portal/financials',
       active: location.startsWith('/portal/financials'),
+      hidden: !isPortalAdmin
+    },
+    {
+      title: 'Partner Ledger',
+      icon: FileText,
+      url: '/portal/ledger',
+      active: location.startsWith('/portal/ledger'),
       hidden: !isPortalAdmin
     },
     {

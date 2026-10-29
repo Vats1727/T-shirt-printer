@@ -1,6 +1,7 @@
 import orderService from '../services/order.service.js';
 import * as productsStore from '../services/productsStore.js';
 import customerOrderModel from '../models/customerOrder.model.js';
+import b2bOrderModel from '../models/b2bOrder.model.js';
 import { pool } from '../config/database.js';
 
 export async function createCustomerOrder(req, res, next) {
@@ -203,7 +204,15 @@ export async function listSupplierOrders(req, res, next) {
     // 2. Fetch legacy sample purchase orders placed by this designer
     const legacyOrders = await orderService.listSupplierOrders(userId);
 
-    // Combine both sets
+    // 3. Fetch dedicated B2B orders (Sample & Bulk) placed by this designer
+    let b2bOrders = [];
+    try {
+      b2bOrders = await b2bOrderModel.listOrdersForDesigner(userId);
+    } catch (b2bErr) {
+      console.warn('Could not load B2B orders for designer:', b2bErr.message);
+    }
+
+    // Combine all sets
     const combined = [
       ...customerOrders.map(o => ({
         ...o,
@@ -214,6 +223,26 @@ export async function listSupplierOrders(req, res, next) {
         ...o,
         is_customer_order: false,
         order_type: 'sample_purchase'
+      })),
+      ...(b2bOrders || []).map(o => ({
+        ...o,
+        is_b2b_order: true,
+        is_customer_order: false,
+        order_type: o.order_type || 'bulk', // 'sample' or 'bulk'
+        provider_name: o.provider_name,
+        provider_email: o.provider_email,
+        total: (o.total_cents || 0) / 100,
+        items: (o.items || []).map(i => ({
+          ...i,
+          product_title: i.product_name,
+          product: i.product_name,
+          size: i.garment_size,
+          color: i.color_name,
+          color_hex: i.color_hex,
+          preview_url: i.custom_mockup_url || '/templates/tshirt.png',
+          unit_price: (i.unit_price_cents || 0) / 100,
+          price: (i.line_total_cents || 0) / 100
+        }))
       }))
     ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
@@ -232,6 +261,28 @@ export async function getSupplierOrder(req, res, next) {
     if (custOrder) {
       return res.json(custOrder);
     }
+
+    // Try B2B designer order
+    try {
+      const b2bOrder = await b2bOrderModel.getB2BOrderById(id);
+      if (b2bOrder) {
+        return res.json({
+          ...b2bOrder,
+          is_b2b_order: true,
+          items: (b2bOrder.items || []).map(i => ({
+            ...i,
+            product_title: i.product_name,
+            product: i.product_name,
+            size: i.garment_size,
+            color: i.color_name,
+            color_hex: i.color_hex,
+            preview_url: i.custom_mockup_url || '/templates/tshirt.png',
+            unit_price: (i.unit_price_cents || 0) / 100,
+            price: (i.line_total_cents || 0) / 100
+          }))
+        });
+      }
+    } catch (e) {}
 
     // Fallback to legacy supplier order
     const order = await orderService.getSupplierOrder(id);
@@ -256,6 +307,18 @@ export async function listAdminOrders(req, res, next) {
 
     const legacyOrders = await orderService.listAdminOrders(userId);
 
+    // Fetch B2B wholesale / sample orders
+    let b2bOrders = [];
+    try {
+      if (userRole === 'admin' || userRole === 'portal_admin') {
+        b2bOrders = await b2bOrderModel.listAllB2BOrdersForAdmin();
+      } else {
+        b2bOrders = await b2bOrderModel.listOrdersForProvider(userId);
+      }
+    } catch (b2bErr) {
+      console.warn('Could not load B2B orders for provider:', b2bErr.message);
+    }
+
     const combined = [
       ...customerOrders.map(o => ({
         ...o,
@@ -266,6 +329,34 @@ export async function listAdminOrders(req, res, next) {
         ...o,
         is_customer_order: false,
         order_type: 'designer_batch'
+      })),
+      ...(b2bOrders || []).map(o => ({
+        ...o,
+        is_b2b_order: true,
+        is_customer_order: false,
+        order_type: o.order_type || 'bulk', // 'sample' or 'bulk'
+        customer_name: o.designer_name || 'Wholesale Designer',
+        customer_email: o.designer_email || '',
+        customer_phone: o.shipping_address?.phone || '',
+        shipping_address_display: o.shipping_address ? `${o.shipping_address.name}, ${o.shipping_address.address}, ${o.shipping_address.city} ${o.shipping_address.pincode}` : '',
+        designer: {
+          id: o.designer_id,
+          name: o.designer_name,
+          email: o.designer_email
+        },
+        total: (o.total_cents || 0) / 100,
+        provider_earnings_cents: o.provider_earnings_cents,
+        items: (o.items || []).map(i => ({
+          ...i,
+          product_title: i.product_name,
+          product: i.product_name,
+          size: i.garment_size,
+          color: i.color_name,
+          color_hex: i.color_hex,
+          preview_url: i.custom_mockup_url || '/templates/tshirt.png',
+          unit_price: (i.unit_price_cents || 0) / 100,
+          price: (i.line_total_cents || 0) / 100
+        }))
       }))
     ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
@@ -284,6 +375,27 @@ export async function getAdminOrder(req, res, next) {
     if (custOrder) {
       return res.json(custOrder);
     }
+
+    try {
+      const b2bOrder = await b2bOrderModel.getB2BOrderById(id);
+      if (b2bOrder) {
+        return res.json({
+          ...b2bOrder,
+          is_b2b_order: true,
+          items: (b2bOrder.items || []).map(i => ({
+            ...i,
+            product_title: i.product_name,
+            product: i.product_name,
+            size: i.garment_size,
+            color: i.color_name,
+            color_hex: i.color_hex,
+            preview_url: i.custom_mockup_url || '/templates/tshirt.png',
+            unit_price: (i.unit_price_cents || 0) / 100,
+            price: (i.line_total_cents || 0) / 100
+          }))
+        });
+      }
+    } catch (e) {}
 
     const order = await orderService.getAdminOrder(id, userId);
     if (!order) return res.status(404).json({ message: 'Order not found' });
@@ -356,12 +468,17 @@ export async function updateOrderStatus(req, res, next) {
       return res.status(400).json({ message: `Invalid status. Allowed: ${allowedStatuses.join(', ')}` });
     }
 
-    // Disambiguate between customer storefront order and designer batch order
+    // Disambiguate between customer storefront order, B2B wholesale order, and legacy designer batch order
     let updated = null;
-    if (req.body.is_customer_order === false || req.body.order_type === 'designer_batch') {
+    if (req.body.is_b2b_order || req.body.order_type === 'sample' || req.body.order_type === 'bulk') {
+      updated = await b2bOrderModel.updateOrderStatus(orderId, status, tracking_info, req.user?.role === 'portal_admin' ? null : providerId);
+    } else if (req.body.is_customer_order === false || req.body.order_type === 'designer_batch') {
       updated = await orderService.updateOrderStatus(orderId, status, providerId);
     } else {
       updated = await customerOrderModel.updateOrderStatus(orderId, status, tracking_info);
+      if (!updated) {
+        updated = await b2bOrderModel.updateOrderStatus(orderId, status, tracking_info, req.user?.role === 'portal_admin' ? null : providerId);
+      }
       if (!updated) {
         updated = await orderService.updateOrderStatus(orderId, status, providerId);
       }

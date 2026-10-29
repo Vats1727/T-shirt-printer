@@ -8,6 +8,7 @@ import assetRoutes from './asset.routes.js';
 import customerRoutes from './customer.routes.js';
 import orderRoutes from './order.routes.js';
 import paymentRoutes from './payment.routes.js';
+import b2bOrderRoutes from './b2bOrder.routes.js';
 import userController from '../controllers/user.controller.js';
 import supplierController from '../controllers/supplier.controller.js';
 import portalController from '../controllers/portal.controller.js';
@@ -25,9 +26,11 @@ router.use('/assets', assetRoutes);
 router.use('/customer', customerRoutes);
 router.use('/orders', orderRoutes);
 router.use('/payments', paymentRoutes);
+router.use('/b2b-orders', b2bOrderRoutes);
 
 // Public Financial & Pricing Governance Rules
 router.get('/settings/financial', portalController.getPublicFinancialSettings);
+router.get('/settings/b2b-financial', portalController.getPublicB2BFinancialSettings);
 
 // Public Providers & Storefront
 router.get('/public/providers', userController.getPublicProviders);

@@ -78,10 +78,8 @@ export async function createOrder({
 
     const totalCents = subtotalCents + effectiveShippingCostCents + effectiveTaxCents;
 
-    // Dynamic global financial split configured by Portal Superadmin:
-    const pctFee = Math.round(subtotalCents * (settings.platform_fee_percent / 100));
-    const fixedFee = Math.round(settings.platform_fixed_fee * 100);
-    const platformFeeCents = Math.max(0, pctFee + fixedFee);
+    // Dynamic global financial split configured by Portal Superadmin (pure percentage commission, no flat fee):
+    const platformFeeCents = Math.round(subtotalCents * (settings.platform_fee_percent / 100));
 
     let designerEarningsCents = 0;
     let providerEarningsCents = 0;

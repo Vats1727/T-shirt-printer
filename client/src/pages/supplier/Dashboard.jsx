@@ -23,7 +23,8 @@ import {
   RefreshCw,
   Building2,
   Factory,
-  SlidersHorizontal
+  SlidersHorizontal,
+  ShoppingCart
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { encodeId } from "@/utils/idEncoder";
@@ -634,7 +635,18 @@ export default function SupplierDashboard() {
                           className="flex-1 h-7 text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-2xs cursor-pointer"
                         >
                           <Paintbrush className="w-3 h-3 mr-1" />
-                          Start Designing
+                          Design
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setLocation(`/supplier/product/${encodeId(p.id)}/order`)}
+                          className="h-7 px-2 text-[11px] font-bold border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:border-indigo-300 rounded-lg shadow-2xs cursor-pointer gap-1"
+                          title="Order Single Sample or Bulk Wholesale Garments"
+                        >
+                          <ShoppingCart className="w-3 h-3" />
+                          Order B2B
                         </Button>
 
                         <Button

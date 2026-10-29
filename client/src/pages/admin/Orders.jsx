@@ -105,11 +105,11 @@ export default function AdminOrders() {
     const list = Array.isArray(rawOrdersData)
       ? rawOrdersData
       : Array.isArray(rawOrdersData?.orders)
-      ? rawOrdersData.orders
-      : [];
+        ? rawOrdersData.orders
+        : [];
     return list.map((o, idx) => ({
       ...o,
-      _uniqueKey: `${o.is_customer_order ? "cust" : "leg"}-${o.id}-${o.order_number || idx}`
+      _uniqueKey: `${o.is_b2b_order ? "b2b" : o.is_customer_order ? "cust" : "leg"}-${o.id}-${o.order_number || idx}`
     }));
   }, [rawOrdersData]);
 
@@ -142,13 +142,16 @@ export default function AdminOrders() {
     const isObj = orderOrId && typeof orderOrId === "object";
     const orderId = isObj ? orderOrId.id : orderOrId;
     const isCustomerOrder = isObj ? Boolean(orderOrId.is_customer_order) : true;
+    const isB2BOrder = isObj ? Boolean(orderOrId.is_b2b_order) : false;
     const uniqueKey = isObj ? orderOrId._uniqueKey : null;
 
     try {
       setUpdatingId(orderId);
       const body = {
         status,
-        is_customer_order: isCustomerOrder
+        is_customer_order: isCustomerOrder,
+        is_b2b_order: isB2BOrder,
+        order_type: orderOrId?.order_type
       };
       if (trackingPayload) {
         body.tracking_info = trackingPayload;
@@ -312,6 +315,11 @@ export default function AdminOrders() {
     [orders]
   );
 
+  const b2bOrders = useMemo(
+    () => orders.filter((o) => o.is_b2b_order === true),
+    [orders]
+  );
+
   const totalPayout = useMemo(
     () =>
       orders.reduce((sum, o) => {
@@ -336,6 +344,8 @@ export default function AdminOrders() {
         return deliveredOrders;
       case "cancelled":
         return cancelledOrders;
+      case "b2b":
+        return b2bOrders;
       case "all":
       default:
         return orders;
@@ -348,7 +358,8 @@ export default function AdminOrders() {
     printingOrders,
     shippedOrders,
     deliveredOrders,
-    cancelledOrders
+    cancelledOrders,
+    b2bOrders
   ]);
 
   // Instant In-Memory Search Filtering
@@ -562,6 +573,21 @@ export default function AdminOrders() {
 
             <Button
               size="sm"
+              variant={activeTab === "b2b" ? "default" : "outline"}
+              onClick={() => handleTabChange("b2b")}
+              className={cn(
+                "h-8 rounded-lg text-xs font-bold px-3 gap-1.5 transition-all",
+                activeTab === "b2b"
+                  ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
+                  : "bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50"
+              )}
+            >
+              <Package className="w-3.5 h-3.5" />
+              B2B Wholesale ({b2bOrders.length})
+            </Button>
+
+            <Button
+              size="sm"
               variant={activeTab === "pending" ? "default" : "outline"}
               onClick={() => handleTabChange("pending")}
               className={cn(
@@ -741,13 +767,23 @@ export default function AdminOrders() {
                           <div className="flex items-center gap-1.5">
                             <span
                               className={cn(
-                                "text-[10px] font-bold px-1.5 py-0.2 rounded border",
-                                isCustomerOrder
-                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                  : "bg-purple-50 text-purple-700 border-purple-200"
+                                "text-[10px] font-bold px-1.5 py-0.5 rounded border",
+                                o.is_b2b_order
+                                  ? o.order_type === "sample"
+                                    ? "bg-amber-50 text-amber-700 border-amber-200"
+                                    : "bg-blue-50 text-blue-700 border-blue-200"
+                                  : isCustomerOrder
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    : "bg-purple-50 text-purple-700 border-purple-200"
                               )}
                             >
-                              {isCustomerOrder ? "Customer Storefront" : "Designer Batch"}
+                              {o.is_b2b_order
+                                ? o.order_type === "sample"
+                                  ? "B2B Designer Sample"
+                                  : "B2B Wholesale Batch"
+                                : isCustomerOrder
+                                  ? "Customer Storefront"
+                                  : "Designer Batch"}
                             </span>
                           </div>
                           <div className="font-bold text-xs text-slate-900 leading-tight">
@@ -764,11 +800,16 @@ export default function AdminOrders() {
                       {/* Garment Specification */}
                       <TableCell>
                         <div className="flex items-center gap-2.5">
-                          {firstItem.preview_url ? (
+                          {(firstItem.preview_url || firstItem.custom_mockup_url) ? (
                             <img
-                              src={firstItem.preview_url}
+                              src={firstItem.preview_url || firstItem.custom_mockup_url}
                               alt="Garment Preview"
                               className="w-10 h-10 object-contain rounded-lg border border-slate-200 bg-slate-50 shrink-0"
+                              onError={(e) => {
+                                if (!e.target.src.includes('/templates/tshirt.png')) {
+                                  e.target.src = '/templates/tshirt.png';
+                                }
+                              }}
                             />
                           ) : (
                             <div className="w-10 h-10 rounded-lg border border-slate-200 bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
@@ -1130,7 +1171,7 @@ export default function AdminOrders() {
                         {[
                           viewingOrder.shipping_address.city,
                           viewingOrder.shipping_address.state,
-                          viewingOrder.shipping_address.postal_code || viewingOrder.shipping_address.zip
+                          viewingOrder.shipping_address.postal_code || viewingOrder.shipping_address.pincode || viewingOrder.shipping_address.zip
                         ]
                           .filter(Boolean)
                           .join(", ")}
@@ -1184,18 +1225,23 @@ export default function AdminOrders() {
                   {viewingOrder.items?.map((it, idx) => (
                     <div key={idx} className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                       <div className="flex items-center gap-3.5">
-                        {it.preview_url ? (
+                        {(it.preview_url || it.custom_mockup_url) ? (
                           <a
-                            href={it.preview_url}
+                            href={it.preview_url || it.custom_mockup_url}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="group relative block"
                             title="Click to view full size design"
                           >
                             <img
-                              src={it.preview_url}
+                              src={it.preview_url || it.custom_mockup_url}
                               alt="Garment Preview"
                               className="w-16 h-16 object-contain rounded-xl border border-slate-200 bg-slate-50 p-1 group-hover:scale-105 transition-transform"
+                              onError={(e) => {
+                                if (!e.target.src.includes('/templates/tshirt.png')) {
+                                  e.target.src = '/templates/tshirt.png';
+                                }
+                              }}
                             />
                             <div className="absolute inset-0 bg-black/30 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold">
                               Zoom
@@ -1211,26 +1257,30 @@ export default function AdminOrders() {
                             {it.product_title || it.product || "Custom Apparel"}
                           </div>
                           <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 mt-1">
-                            <span className="font-semibold text-slate-900">Qty: {it.quantity}</span>
+                            <span className="font-bold text-slate-900">Qty: {it.quantity} pcs</span>
                             <span>•</span>
-                            <span className="font-semibold">Size: {it.size_label || it.size || "M"}</span>
-                            <span>•</span>
-                            <span className="inline-flex items-center gap-1">
-                              {it.color_hex && (
-                                <span
-                                  className="w-2.5 h-2.5 rounded-full border border-slate-300"
-                                  style={{ backgroundColor: it.color_hex }}
-                                />
-                              )}
-                              <span>Color: {it.color_name || it.color || "Standard"}</span>
+                            <span className="font-black px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 border border-slate-200">
+                              Size: {it.size_label || it.size || it.garment_size || "M"}
                             </span>
+                            {it.color_hex && it.color_name && it.color_name !== "Standard" && (
+                              <>
+                                <span>•</span>
+                                <span className="inline-flex items-center gap-1 font-semibold">
+                                  <span
+                                    className="w-2.5 h-2.5 rounded-full border border-slate-300"
+                                    style={{ backgroundColor: it.color_hex }}
+                                  />
+                                  <span>Color: {it.color_name}</span>
+                                </span>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>
 
                       <div className="text-right sm:self-center">
                         <div className="font-mono font-bold text-sm text-slate-900">
-                          ₹{(it.total_price_cents ? it.total_price_cents / 100 : (it.line_total || (it.unit_price || 0) * (it.quantity || 1))).toFixed(2)}
+                          ₹{(it.line_total_cents ? it.line_total_cents / 100 : (it.total_price_cents ? it.total_price_cents / 100 : (it.line_total || (it.unit_price || 0) * (it.quantity || 1)))).toFixed(2)}
                         </div>
                         <div className="text-[11px] text-slate-400">
                           ₹{(it.unit_price_cents ? it.unit_price_cents / 100 : (it.unit_price || 0)).toFixed(2)} / pc

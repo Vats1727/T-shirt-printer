@@ -12,7 +12,19 @@ router.patch('/providers/:id', requireAuth, requireRole('portal_admin'), portalC
 router.get('/financial-settings', requireAuth, requireRole('portal_admin'), portalController.getFinancialSettings);
 router.put('/financial-settings', requireAuth, requireRole('portal_admin'), portalController.updateFinancialSettings);
 
+// Portal Admin B2B Wholesale Financial Governance
+router.get('/b2b-financial-settings', requireAuth, requireRole('portal_admin'), portalController.getB2BFinancialSettings);
+router.put('/b2b-financial-settings', requireAuth, requireRole('portal_admin'), portalController.updateB2BFinancialSettings);
+router.get('/b2b-financial-settings/public', portalController.getPublicB2BFinancialSettings);
+
 // Portal Admin Orders & Revenue Oversight
 router.get('/orders', requireAuth, requireRole('portal_admin'), orderController.listAdminOrders);
+
+// Partner Financial Ledger Reports (Print Providers & Designers)
+router.get('/ledger/providers', requireAuth, requireRole('portal_admin'), portalController.getProviderLedger);
+router.get('/ledger/designers', requireAuth, requireRole('portal_admin'), portalController.getDesignerLedger);
+router.get('/ledger/statement/:id', requireAuth, requireRole('portal_admin'), portalController.getPartnerStatement);
+router.get('/ledger/export/pdf', requireAuth, requireRole('portal_admin'), portalController.exportLedgerPdf);
+router.get('/ledger/export/excel', requireAuth, requireRole('portal_admin'), portalController.exportLedgerExcel);
 
 export default router;

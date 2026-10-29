@@ -25,8 +25,10 @@ import {
   Sparkles,
   ArrowRight,
   TrendingUp,
-  Package
+  Package,
+  Store
 } from "lucide-react";
+import B2BFinancialSettings from "./B2BFinancialSettings";
 
 const DEFAULT_SETTINGS = {
   standard_shipping_charge: 50.00,
@@ -48,6 +50,7 @@ export default function FinancialSettings() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const [activeGovernanceTab, setActiveGovernanceTab] = useState("b2c"); // 'b2c' | 'b2b'
   const [form, setForm] = useState(DEFAULT_SETTINGS);
   const [saving, setSaving] = useState(false);
   const [simulatedPrice, setSimulatedPrice] = useState(500);
@@ -163,7 +166,7 @@ export default function FinancialSettings() {
   const simGst = (form.gst_enabled && simGstRate > 0)
     ? Number(((simSubtotal * simGstRate) / 100).toFixed(2))
     : 0;
-  const simPlatformFee = Math.round(simSubtotal * (Number(form.platform_fee_percent) / 100)) + Number(form.platform_fixed_fee);
+  const simPlatformFee = Math.round(simSubtotal * (Number(form.platform_fee_percent) / 100));
   const simProvider = Math.round(simSubtotal * (Number(form.provider_margin_percent) / 100));
   const simDesigner = Math.max(0, simSubtotal - simProvider - simPlatformFee);
   const simTotalCustomer = Number((simSubtotal + simShipping + simGst).toFixed(2));
@@ -200,38 +203,77 @@ export default function FinancialSettings() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 shrink-0">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleReset}
-            disabled={saving}
-            className="h-10 px-3.5 border-slate-200 text-slate-600 hover:text-slate-900 rounded-xl text-xs font-bold gap-1.5 cursor-pointer"
-          >
-            <RotateCcw className="size-3.5" />
-            <span>Reset Defaults</span>
-          </Button>
+        {activeGovernanceTab === "b2c" && (
+          <div className="flex items-center gap-2.5 shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleReset}
+              disabled={saving}
+              className="h-10 px-3.5 border-slate-200 text-slate-600 hover:text-slate-900 rounded-xl text-xs font-bold gap-1.5 cursor-pointer"
+            >
+              <RotateCcw className="size-3.5" />
+              <span>Reset Defaults</span>
+            </Button>
 
-          <Button
-            type="button"
-            onClick={handleSave}
-            disabled={saving || !isSplitValid}
-            className={`h-10 px-5 text-white rounded-xl text-xs font-bold shadow-md gap-2 cursor-pointer transition-all ${
-              isSplitValid
-                ? "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20"
-                : "bg-slate-400 opacity-60 cursor-not-allowed hover:bg-slate-400"
-            }`}
-            title={!isSplitValid ? `Cannot save: Sum is ${totalSplitPercent}% (must equal 100.0%)` : "Save global rules"}
-          >
-            {saving ? (
-              <div className="size-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-            ) : (
-              <Save className="size-4" />
-            )}
-            <span>Save Global Rules</span>
-          </Button>
-        </div>
+            <Button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || !isSplitValid}
+              className={`h-10 px-5 text-white rounded-xl text-xs font-bold shadow-md gap-2 cursor-pointer transition-all ${
+                isSplitValid
+                  ? "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20"
+                  : "bg-slate-400 opacity-60 cursor-not-allowed hover:bg-slate-400"
+              }`}
+              title={!isSplitValid ? `Cannot save: Sum is ${totalSplitPercent}% (must equal 100.0%)` : "Save global rules"}
+            >
+              {saving ? (
+                <div className="size-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+              ) : (
+                <Save className="size-4" />
+              )}
+              <span>Save Global Rules</span>
+            </Button>
+          </div>
+        )}
       </div>
+
+      {/* Governance Scope Switcher: Retail B2C Storefront vs Designer Wholesale B2B */}
+      <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-2xl w-fit border border-slate-200 shadow-2xs">
+        <button
+          type="button"
+          onClick={() => setActiveGovernanceTab("b2c")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            activeGovernanceTab === "b2c"
+              ? "bg-white text-indigo-700 shadow-xs"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+        >
+          <Store className="size-3.5" />
+          <span>Retail Storefront Split (B2C)</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveGovernanceTab("b2b")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            activeGovernanceTab === "b2b"
+              ? "bg-white text-indigo-700 shadow-xs"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+        >
+          <Factory className="size-3.5" />
+          <span>Designer Wholesale & Sample Governance (B2B)</span>
+          <Badge className="bg-indigo-100 text-indigo-700 border-none text-[9px] px-1.5 py-0 font-extrabold uppercase">
+            Isolated
+          </Badge>
+        </button>
+      </div>
+
+      {activeGovernanceTab === "b2b" ? (
+        <B2BFinancialSettings />
+      ) : (
+        <>
 
       {/* KPI Overview Strip */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5">
@@ -261,8 +303,8 @@ export default function FinancialSettings() {
           </CardHeader>
           <CardContent className="p-4 pt-0">
             <div className="text-2xl font-black text-slate-900">{Number(form.platform_fee_percent).toFixed(1)}%</div>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              + ₹{Number(form.platform_fixed_fee).toFixed(2)} fixed fee
+            <p className="text-[11px] text-indigo-600 font-semibold mt-0.5">
+              Pure % platform revenue
             </p>
           </CardContent>
         </Card>
@@ -463,58 +505,114 @@ export default function FinancialSettings() {
             </CardContent>
           </Card>
 
-          {/* Section 2: Platform Fee & Commission */}
-          <Card className="rounded-2xl border-slate-200/80 bg-white shadow-xs">
-            <CardHeader className="p-5 pb-3 border-b border-slate-100 flex flex-row items-center justify-between">
+          {/* Section 2: Portal Admin Commission (Percentage Only) */}
+          <Card className="rounded-2xl border-indigo-200/90 bg-gradient-to-br from-indigo-50/30 via-white to-white shadow-xs">
+            <CardHeader className="p-5 pb-3 border-b border-indigo-100 flex flex-row items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-indigo-50 text-indigo-600">
+                <div className="p-2 rounded-xl bg-indigo-600 text-white shadow-xs">
                   <Percent className="size-4" />
                 </div>
                 <div>
-                  <CardTitle className="text-sm font-bold text-slate-900">2. Platform Commission & Gateway Fees</CardTitle>
+                  <CardTitle className="text-sm font-extrabold text-slate-900">
+                    2. Portal Admin Platform Commission (%)
+                  </CardTitle>
                   <CardDescription className="text-xs text-slate-500">
-                    Retained by the platform to cover Razorpay gateway fees and platform operation.
+                    Your percentage commission retained directly on every garment sold across all storefronts.
                   </CardDescription>
                 </div>
               </div>
-              <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-bold">
-                Platform Revenue
+              <Badge className="bg-indigo-100 text-indigo-800 border-indigo-300 text-[10px] font-black uppercase tracking-wider">
+                Platform Earnings
               </Badge>
             </CardHeader>
 
             <CardContent className="p-5 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700">Platform Commission Rate (%)</label>
-                  <div className="relative">
-                    <Input
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.5"
-                      value={form.platform_fee_percent}
-                      onChange={(e) => handleChange("platform_fee_percent", e.target.value)}
-                      className="pr-7 rounded-xl text-xs font-bold text-indigo-700"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">%</span>
-                  </div>
-                  <p className="text-[11px] text-slate-400">Percentage deducted from gross garment subtotal.</p>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-800">
+                  Manage Portal Admin Commission Rate (%)
+                </label>
+                <div className="relative max-w-sm">
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.5"
+                    value={form.platform_fee_percent}
+                    onChange={(e) => handleChange("platform_fee_percent", e.target.value)}
+                    className="pr-8 rounded-xl text-sm font-black text-indigo-700 h-11 border-indigo-200 focus-visible:ring-indigo-500"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-indigo-400 text-xs font-black">%</span>
                 </div>
+                <p className="text-[11px] text-slate-500">
+                  Percentage automatically credited to Portal Admin from garment subtotal. (Pure percentage, no flat fees).
+                </p>
+              </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700">Fixed Order Handling Fee (₹)</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">₹</span>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="1"
-                      value={form.platform_fixed_fee}
-                      onChange={(e) => handleChange("platform_fixed_fee", e.target.value)}
-                      className="pl-7 rounded-xl text-xs font-bold"
-                    />
-                  </div>
-                  <p className="text-[11px] text-slate-400">Flat operational fee per order (optional, default ₹0.00).</p>
+              {/* Quick Auto-Balance Assistant */}
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                    Auto-Adjust Remaining {Number((100 - Number(form.platform_fee_percent || 0)).toFixed(2))}%
+                  </span>
+                  <span className="text-[10px] text-slate-400">1-click balance helper</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const adminP = Number(form.platform_fee_percent || 0);
+                      const rem = Math.max(0, 100 - adminP);
+                      const desgP = Number(form.designer_margin_percent || 35);
+                      const provP = Number((rem - desgP).toFixed(2));
+                      setForm((prev) => ({
+                        ...prev,
+                        provider_margin_percent: Math.max(0, provP)
+                      }));
+                    }}
+                    className="h-7 text-[10px] font-bold rounded-lg bg-white hover:bg-slate-100 border-slate-200 text-slate-700 cursor-pointer"
+                  >
+                    Adjust Provider Share
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const adminP = Number(form.platform_fee_percent || 0);
+                      const rem = Math.max(0, 100 - adminP);
+                      const provP = Number(form.provider_margin_percent || 55);
+                      const desgP = Number((rem - provP).toFixed(2));
+                      setForm((prev) => ({
+                        ...prev,
+                        designer_margin_percent: Math.max(0, desgP)
+                      }));
+                    }}
+                    className="h-7 text-[10px] font-bold rounded-lg bg-white hover:bg-slate-100 border-slate-200 text-slate-700 cursor-pointer"
+                  >
+                    Adjust Designer Share
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const adminP = Number(form.platform_fee_percent || 0);
+                      const rem = Math.max(0, 100 - adminP);
+                      const provRatio = 55 / 90;
+                      const provP = Number((rem * provRatio).toFixed(1));
+                      const desgP = Number((rem - provP).toFixed(1));
+                      setForm((prev) => ({
+                        ...prev,
+                        provider_margin_percent: provP,
+                        designer_margin_percent: desgP
+                      }));
+                    }}
+                    className="h-7 text-[10px] font-bold rounded-lg bg-indigo-50 hover:bg-indigo-100 border-indigo-200 text-indigo-700 cursor-pointer"
+                  >
+                    Balance Both Pro-Rata
+                  </Button>
                 </div>
               </div>
             </CardContent>
@@ -887,6 +985,8 @@ export default function FinancialSettings() {
           </Card>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }
