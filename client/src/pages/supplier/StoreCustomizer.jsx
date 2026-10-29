@@ -17,11 +17,15 @@ import {
   Globe,
   Check,
   Upload,
-  Trash2
+  Trash2,
+  Lock,
+  Eye,
+  Globe2
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { encodeId } from "@/utils/idEncoder";
+import { cn } from "@/utils/cn";
 const THEME_OPTIONS = [
   {
     id: "midnight",
@@ -74,6 +78,8 @@ export default function StoreCustomizer() {
   const [storeName, setStoreName] = useState("");
   const [tagline, setTagline] = useState("");
   const [theme, setTheme] = useState("midnight");
+  const [isPublic, setIsPublic] = useState(true);
+  const [showInCustomerPortal, setShowInCustomerPortal] = useState(true);
   const [showAnnouncement, setShowAnnouncement] = useState(true);
   const [announcement, setAnnouncement] = useState("\u{1F525} NEW DROP AVAILABLE \u2022 FREE SHIPPING OVER \u20B9500");
   const [instagram, setInstagram] = useState("");
@@ -97,6 +103,8 @@ export default function StoreCustomizer() {
           setStoreName(s.store_name || data.name || "Signature Threads");
           setTagline(s.tagline || "Exclusive custom apparel crafted with precision and printed on high quality blanks.");
           setTheme(s.theme || "midnight");
+          setIsPublic(s.is_public !== false);
+          setShowInCustomerPortal(s.show_in_customer_portal !== false);
           setShowAnnouncement(s.show_announcement ?? true);
           setAnnouncement(s.announcement || "\u{1F525} NEW DROP AVAILABLE \u2022 FREE SHIPPING OVER \u20B9500");
           setInstagram(s.social_instagram || "");
@@ -179,6 +187,8 @@ export default function StoreCustomizer() {
           store_name: storeName.trim(),
           tagline: tagline.trim(),
           theme,
+          is_public: isPublic,
+          show_in_customer_portal: showInCustomerPortal,
           show_announcement: showAnnouncement,
           announcement: announcement.trim(),
           social_instagram: instagram.trim(),
@@ -373,6 +383,72 @@ export default function StoreCustomizer() {
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Storefront Privacy & Customer Directory Controls */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="size-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <Globe2 className="size-4" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-slate-900">Visibility & Customer Access</h3>
+                  <p className="text-[11px] text-slate-500">Control public storefront access and marketplace discovery</p>
+                </div>
+              </div>
+              <Badge className={isPublic ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"}>
+                {isPublic ? "Publicly Live" : "Private Draft"}
+              </Badge>
+            </div>
+
+            <div className="space-y-4">
+              {/* Toggle 1: Public Storefront */}
+              <div className="flex items-start justify-between gap-4 p-3.5 rounded-xl bg-slate-50/70 border border-slate-200/70">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-slate-800">
+                    {isPublic ? <Eye className="size-3.5 text-emerald-600" /> : <Lock className="size-3.5 text-amber-600" />}
+                    <span>Make Storefront Public</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    When enabled, anyone with your store link can view your apparel catalog and order. When disabled, your storefront is set to private draft mode (accessible only to you).
+                  </p>
+                </div>
+                <Switch
+                  checked={isPublic}
+                  onCheckedChange={(val) => {
+                    setIsPublic(val);
+                    if (!val) setShowInCustomerPortal(false);
+                  }}
+                />
+              </div>
+
+              {/* Toggle 2: Show in Customer Portal */}
+              <div className={cn(
+                "flex items-start justify-between gap-4 p-3.5 rounded-xl border transition-all",
+                !isPublic ? "bg-slate-100/50 border-slate-200/50 opacity-60" : "bg-slate-50/70 border-slate-200/70"
+              )}>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-slate-800">
+                    <Store className="size-3.5 text-indigo-600" />
+                    <span>Show Store in Customer Portal Directory</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Feature your store card on the customer marketplace dashboard so registered customers can discover and browse your store.
+                  </p>
+                  {!isPublic && (
+                    <span className="text-[10px] text-amber-600 font-semibold block pt-0.5">
+                      (Disabled because store is set to private)
+                    </span>
+                  )}
+                </div>
+                <Switch
+                  checked={showInCustomerPortal && isPublic}
+                  disabled={!isPublic}
+                  onCheckedChange={setShowInCustomerPortal}
+                />
               </div>
             </div>
           </div>

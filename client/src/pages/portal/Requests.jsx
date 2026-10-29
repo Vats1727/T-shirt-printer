@@ -148,10 +148,10 @@ export default function PortalAdminRequests() {
     activeTab === "pending"
       ? pendingRequests
       : activeTab === "active"
-      ? activeRequests
-      : activeTab === "rejected"
-      ? rejectedRequests
-      : providers;
+        ? activeRequests
+        : activeTab === "rejected"
+          ? rejectedRequests
+          : providers;
 
   // Search filtering
   const filteredRequests = currentTabList.filter((p) => {
@@ -214,8 +214,8 @@ export default function PortalAdminRequests() {
             activeTab === "pending"
               ? "border-amber-400 bg-amber-50/70 shadow-xs ring-2 ring-amber-300/40"
               : pendingRequests.length > 0
-              ? "border-amber-300 bg-gradient-to-br from-amber-50 to-white shadow-xs"
-              : "border-slate-200 bg-white"
+                ? "border-amber-300 bg-gradient-to-br from-amber-50 to-white shadow-xs"
+                : "border-slate-200 bg-white"
           )}
         >
           <CardHeader className="p-4 pb-1.5 flex flex-row items-center justify-between space-y-0">
@@ -452,8 +452,8 @@ export default function PortalAdminRequests() {
                         <p className="text-[11px] text-slate-400 flex items-center gap-1">
                           <Calendar className="w-3 h-3 text-slate-400" />
                           {status === "pending"
-                            ? `Submitted on ${p.createdAt ? format(new Date(p.createdAt), "MMMM dd, yyyy") : "Recently"}`
-                            : `Registered on ${p.createdAt ? format(new Date(p.createdAt), "MMMM dd, yyyy") : "Recently"}`}
+                            ? `Submitted on ${p.createdAt ? format(new Date(p.createdAt), "dd-MM-yyyy") : "Recently"}`
+                            : `Registered on ${p.createdAt ? format(new Date(p.createdAt), "dd-MM-yyyy") : "Recently"}`}
                         </p>
                       </div>
                     </div>
@@ -680,7 +680,7 @@ export default function PortalAdminRequests() {
               </div>
 
               <div className="pt-2 text-xs text-slate-400 text-center">
-                Registration submitted on {viewingProvider.createdAt ? format(new Date(viewingProvider.createdAt), "PPP") : "N/A"}
+                Registration submitted on {viewingProvider.createdAt ? format(new Date(viewingProvider.createdAt), "dd-MM-yyyy") : "N/A"}
               </div>
             </div>
           )}

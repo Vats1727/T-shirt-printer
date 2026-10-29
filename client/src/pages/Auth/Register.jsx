@@ -65,7 +65,7 @@ export default function Register() {
     }
 
     // Role validation
-    if (role !== "print_provider" && role !== "designer") {
+    if (role !== "print_provider" && role !== "designer" && role !== "customer") {
       errs.role = "Please select a valid role";
     }
 
@@ -283,9 +283,16 @@ export default function Register() {
                   onChange={(e) => setRole(e.target.value)}
                   className="block w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
+                  <option value="customer">Customer (Storefront Shopper)</option>
                   <option value="designer">Designer</option>
                   <option value="print_provider">Print Provider</option>
                 </select>
+                {role === "customer" && (
+                  <p className="text-xs text-emerald-700 flex items-center gap-1 mt-1 bg-emerald-50 p-1.5 rounded border border-emerald-200/60">
+                    <Check className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
+                    <span>Instant access to browse all store collections and place orders.</span>
+                  </p>
+                )}
                 {role === "print_provider" && (
                   <p className="text-xs text-amber-700 flex items-center gap-1 mt-1 bg-amber-50 p-1.5 rounded border border-amber-200/60">
                     <Info className="w-3.5 h-3.5 shrink-0 text-amber-600" />

@@ -74,6 +74,8 @@ export default function Login() {
         window.location.replace("/admin/dashboard");
       } else if (role === "designer" || role === "supplier") {
         window.location.replace("/supplier/dashboard");
+      } else if (role === "customer") {
+        window.location.replace("/customer/dashboard");
       } else {
         window.location.replace("/");
       }

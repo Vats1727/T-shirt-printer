@@ -5,8 +5,12 @@ import designRoutes from './design.routes.js';
 import productRoutes from './product.routes.js';
 import supplierRoutes from './supplier.routes.js';
 import assetRoutes from './asset.routes.js';
+import customerRoutes from './customer.routes.js';
+import orderRoutes from './order.routes.js';
+import paymentRoutes from './payment.routes.js';
 import userController from '../controllers/user.controller.js';
 import supplierController from '../controllers/supplier.controller.js';
+import portalController from '../controllers/portal.controller.js';
 import { pool } from '../config/database.js';
 
 const router = Router();
@@ -18,6 +22,12 @@ router.use('/designs', designRoutes);
 router.use('/admin', productRoutes);
 router.use('/supplier', supplierRoutes);
 router.use('/assets', assetRoutes);
+router.use('/customer', customerRoutes);
+router.use('/orders', orderRoutes);
+router.use('/payments', paymentRoutes);
+
+// Public Financial & Pricing Governance Rules
+router.get('/settings/financial', portalController.getPublicFinancialSettings);
 
 // Public Providers & Storefront
 router.get('/public/providers', userController.getPublicProviders);

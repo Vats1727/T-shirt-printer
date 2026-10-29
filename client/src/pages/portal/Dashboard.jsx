@@ -28,7 +28,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Palette,
-  Mail
+  Mail,
+  DollarSign
 } from "lucide-react";
 import {
   AlertDialog,
@@ -76,6 +77,24 @@ export default function PortalAdminDashboard() {
     enabled: !!token,
     refetchInterval: 10000
   });
+
+  // Query orders to track platform commission revenue
+  const { data: portalOrdersRaw } = useQuery({
+    queryKey: ["/api/portal/orders"],
+    queryFn: async () => {
+      const res = await fetch("/api/portal/orders", {
+        headers: { Authorization: token ? `Bearer ${token}` : "" }
+      });
+      if (!res.ok) return { orders: [] };
+      return res.json();
+    },
+    enabled: !!token,
+    refetchInterval: 10000
+  });
+
+  const portalOrders = Array.isArray(portalOrdersRaw?.orders) ? portalOrdersRaw.orders : [];
+  const totalPlatformRevenue = portalOrders.reduce((acc, o) => acc + (Number(o.platform_fee_cents || 0) / 100), 0);
+  const totalCustomerOrdersCount = portalOrders.filter((o) => o.is_customer_order || o.order_type === 'production_fulfillment').length;
 
   // Include both print_providers and designers
   const allAccounts = (Array.isArray(providersRaw) ? providersRaw : providersRaw?.providers || []).filter(
@@ -200,6 +219,15 @@ export default function PortalAdminDashboard() {
         </div>
 
         <div className="flex items-center gap-2.5">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setLocation("/portal/financials")}
+            className="h-8 gap-1.5 border-indigo-200 text-indigo-700 hover:bg-indigo-50 shadow-2xs rounded-lg text-xs font-semibold cursor-pointer"
+          >
+            <DollarSign className="w-3.5 h-3.5 text-indigo-600" />
+            Financial Governance
+          </Button>
           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-full text-xs font-semibold">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             Superadmin Active
@@ -218,7 +246,28 @@ export default function PortalAdminDashboard() {
       </div>
 
       {/* KPI Overview Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+        {/* Platform Commission Revenue Card */}
+        <Card
+          onClick={() => setLocation("/portal/financials")}
+          className="cursor-pointer transition-all duration-200 rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50/70 via-white to-white hover:shadow-md hover:border-indigo-400 group"
+        >
+          <CardHeader className="p-4 pb-1.5 flex flex-row items-center justify-between space-y-0">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-700">
+              Platform Revenue
+            </span>
+            <div className="p-1.5 rounded-lg bg-indigo-100 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+              <DollarSign className="w-3.5 h-3.5" />
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="text-2xl font-black text-indigo-950">₹{totalPlatformRevenue.toFixed(2)}</div>
+            <p className="text-[11px] text-indigo-700 mt-0.5 font-medium flex items-center justify-between">
+              <span>{totalCustomerOrdersCount} orders</span>
+              <span className="text-[10px] bg-indigo-100 px-1.5 py-0.5 rounded font-bold">Manage Margins &rarr;</span>
+            </p>
+          </CardContent>
+        </Card>
         {/* Total Governed Accounts Card */}
         <Card
           onClick={() => {
@@ -536,7 +585,7 @@ export default function PortalAdminDashboard() {
                       <TableCell className="text-xs text-slate-500">
                         <div className="flex items-center gap-1.5">
                           <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                          <span>{p.createdAt ? format(new Date(p.createdAt), "MMM dd, yyyy") : "N/A"}</span>
+                          <span>{p.createdAt ? format(new Date(p.createdAt), "dd-MM-yyyy") : "N/A"}</span>
                         </div>
                       </TableCell>
 
@@ -784,7 +833,7 @@ export default function PortalAdminDashboard() {
               </div>
 
               <div className="pt-2 text-xs text-slate-400 text-center">
-                Member registered on {viewingProvider.createdAt ? format(new Date(viewingProvider.createdAt), "PPP") : "N/A"}
+                Member registered on {viewingProvider.createdAt ? format(new Date(viewingProvider.createdAt), "dd-MM-yyyy") : "N/A"}
               </div>
             </div>
           )}

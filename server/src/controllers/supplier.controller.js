@@ -1,3 +1,5 @@
+import jwt from 'jsonwebtoken';
+import env from '../config/env.js';
 import productModel from '../models/product.model.js';
 import inventoryModel from '../models/inventory.model.js';
 import userModel from '../models/user.model.js';
@@ -132,10 +134,23 @@ async function resolveListingPreview(l) {
   let preview_url = null;
   let preview_asset_id = null;
   let preview_group = null;
+  let preview_by_color = [];
   let designer_name = null;
   let designer_email = null;
   let product_name = null;
+  let design_color = null;
+  let available_colors = [];
+  let available_sizes = [];
+  let vPayload = null;
+  let d = null;
   const designKey = String(l.design_key || '');
+
+  const normalize = (img) => {
+    if (!img) return null;
+    img = String(img);
+    if (img.startsWith('http') || img.startsWith('/') || img.startsWith('data:')) return img;
+    return `/uploads/${img}`;
+  };
 
   let numericId = null;
   const mId = designKey.match(/design-(\d+)/i);
@@ -146,9 +161,10 @@ async function resolveListingPreview(l) {
   if (numericId && pool) {
     try {
       const dRes = await pool.query(
-        `SELECT d.id, d.owner_id, d.image, d.back_image, d.product,
+        `SELECT d.id, d.owner_id, d.image, d.back_image, d.product, d.product_id, d.slogan,
+                d.color as design_color, d.template_color,
                 u.name as designer_name, u.email as designer_email,
-                pf.name as product_name
+                pf.id as pf_id, pf.name as product_name, pf.colors as pf_colors, pf.sizes as pf_sizes, pf.size_chart as pf_size_chart
          FROM designs d
          LEFT JOIN users u ON u.id = d.owner_id
          LEFT JOIN products_full pf ON pf.id = d.product_id
@@ -156,10 +172,68 @@ async function resolveListingPreview(l) {
         [numericId]
       );
       if (dRes?.rows?.length) {
-        const d = dRes.rows[0];
+        d = dRes.rows[0];
         designer_name = d.designer_name || null;
         designer_email = d.designer_email || null;
         product_name = d.product_name || d.product || null;
+        design_color = d.design_color || d.template_color || null;
+
+        let pfColors = d.pf_colors;
+        let pfSizes = d.pf_sizes;
+
+        // If product_id was not linked, try finding product by slug or name
+        if ((!pfColors || !pfSizes) && d.product) {
+          try {
+            const pMatch = await pool.query(
+              `SELECT id, name, colors, sizes, size_chart FROM products_full WHERE slug = $1 OR lower(name) = lower($1) OR category = $1 LIMIT 1`,
+              [d.product]
+            );
+            if (pMatch?.rows?.length) {
+              if (!pfColors) pfColors = pMatch.rows[0].colors;
+              if (!pfSizes) pfSizes = pMatch.rows[0].sizes;
+              if (!product_name) product_name = pMatch.rows[0].name;
+            }
+          } catch (e) {}
+        }
+
+        // Fetch colors from colors table
+        if (Array.isArray(pfColors) && pfColors.length > 0) {
+          const cIds = pfColors.map(Number).filter(n => !isNaN(n));
+          if (cIds.length > 0) {
+            try {
+              const cRes = await pool.query('SELECT id, name, hex FROM colors WHERE id = ANY($1)', [cIds]);
+              available_colors = cRes.rows || [];
+            } catch (e) {}
+          }
+        }
+
+        // If design itself has a color, ensure it's in available_colors
+        if (design_color) {
+          const match = available_colors.find(c => c.hex && c.hex.toLowerCase() === design_color.toLowerCase());
+          if (!match) {
+            try {
+              const hexRes = await pool.query('SELECT id, name, hex FROM colors WHERE lower(hex) = lower($1) LIMIT 1', [design_color]);
+              if (hexRes?.rows?.length) {
+                available_colors.unshift(hexRes.rows[0]);
+              } else {
+                available_colors.unshift({ id: 'custom', name: 'Design Color', hex: design_color });
+              }
+            } catch (e) {
+              available_colors.unshift({ id: 'custom', name: 'Design Color', hex: design_color });
+            }
+          }
+        }
+
+        // Fetch sizes from sizes table
+        if (Array.isArray(pfSizes) && pfSizes.length > 0) {
+          const sIds = pfSizes.map(Number).filter(n => !isNaN(n));
+          if (sIds.length > 0) {
+            try {
+              const sRes = await pool.query('SELECT id, label FROM sizes WHERE id = ANY($1) ORDER BY id', [sIds]);
+              available_sizes = sRes.rows || [];
+            } catch (e) {}
+          }
+        }
 
         const vRes = await pool.query('SELECT payload FROM design_versions WHERE design_id = $1 ORDER BY id DESC LIMIT 1', [numericId]);
         let meta = {};
@@ -168,14 +242,10 @@ async function resolveListingPreview(l) {
           if (typeof p === 'string') {
             try { p = JSON.parse(p); } catch (e) {}
           }
+          vPayload = p;
           meta = p?.metadata || {};
         }
-        const normalize = (img) => {
-          if (!img) return null;
-          img = String(img);
-          if (img.startsWith('http') || img.startsWith('/') || img.startsWith('data:')) return img;
-          return `/uploads/${img}`;
-        };
+
         const front = normalize(meta.preview_front || d.image);
         const back = normalize(meta.preview_back || d.back_image);
         preview_group = {
@@ -185,10 +255,79 @@ async function resolveListingPreview(l) {
           any: front ? { url: front } : (back ? { url: back } : null)
         };
         preview_url = preview_group.front?.url || preview_group.back?.url || null;
+
+        // Extract color-specific front/back previews
+        if (Array.isArray(meta.preview_by_color) && meta.preview_by_color.length > 0) {
+          preview_by_color = meta.preview_by_color.map(c => ({
+            id: c.id,
+            hex: c.hex,
+            name: c.name,
+            preview_front: normalize(c.preview_front || c.front),
+            preview_back: normalize(c.preview_back || c.back)
+          }));
+        }
+      } else {
+        // Direct product listing (e.g. for print providers)
+        try {
+          const pRes = await pool.query('SELECT id, name, colors, sizes, size_chart, designs FROM products_full WHERE id = $1', [numericId]);
+          if (pRes?.rows?.length) {
+            const prod = pRes.rows[0];
+            product_name = prod.name;
+            if (Array.isArray(prod.colors) && prod.colors.length > 0) {
+              const cIds = prod.colors.map(Number).filter(n => !isNaN(n));
+              if (cIds.length > 0) {
+                const cRes = await pool.query('SELECT id, name, hex FROM colors WHERE id = ANY($1)', [cIds]);
+                available_colors = cRes.rows || [];
+              }
+            }
+            if (Array.isArray(prod.sizes) && prod.sizes.length > 0) {
+              const sIds = prod.sizes.map(Number).filter(n => !isNaN(n));
+              if (sIds.length > 0) {
+                const sRes = await pool.query('SELECT id, label FROM sizes WHERE id = ANY($1) ORDER BY id', [sIds]);
+                available_sizes = sRes.rows || [];
+              }
+            }
+            if (prod.designs) {
+              let pDesigns = prod.designs;
+              if (typeof pDesigns === 'string') {
+                try { pDesigns = JSON.parse(pDesigns); } catch (e) {}
+              }
+              if (Array.isArray(pDesigns) && pDesigns.length > 0) {
+                const pfFront = pDesigns.find(x => x.side === 'front')?.image;
+                const pfBack = pDesigns.find(x => x.side === 'back')?.image;
+                if (pfFront || pfBack) {
+                  const normFront = normalize(pfFront);
+                  const normBack = normalize(pfBack);
+                  preview_group = {
+                    key: designKey,
+                    front: normFront ? { url: normFront } : null,
+                    back: normBack ? { url: normBack } : null,
+                    any: normFront ? { url: normFront } : (normBack ? { url: normBack } : null)
+                  };
+                  preview_url = preview_group.front?.url || preview_group.back?.url || null;
+                }
+              }
+            }
+          }
+        } catch (e) {}
       }
     } catch (e) {
       // ignore
     }
+  }
+
+  // Fallback defaults if no colors or sizes found in database
+  if (pool && available_colors.length === 0) {
+    try {
+      const fbC = await pool.query('SELECT id, name, hex FROM colors ORDER BY id LIMIT 5');
+      available_colors = fbC.rows || [];
+    } catch (e) {}
+  }
+  if (pool && available_sizes.length === 0) {
+    try {
+      const fbS = await pool.query('SELECT id, label FROM sizes ORDER BY id LIMIT 6');
+      available_sizes = fbS.rows || [];
+    } catch (e) {}
   }
 
   // 2. Resolve from assets table fallback
@@ -243,9 +382,22 @@ async function resolveListingPreview(l) {
     preview_url,
     preview_asset_id,
     preview_group,
+    preview_by_color,
+    design_version: vPayload ? {
+      template: vPayload.template || (d ? d.product : null) || 'tshirt',
+      sides: vPayload.sides || [],
+      metadata: {
+        canvasDimensions: vPayload.metadata?.canvasDimensions || { width: 400, height: 400 }
+      }
+    } : null,
+    template: vPayload?.template || (d ? d.product : null) || 'tshirt',
+    slogan: (d ? d.slogan : null) || null,
     designer_name,
     designer_email,
-    product_name
+    product_name,
+    design_color,
+    available_colors,
+    available_sizes
   };
 }
 
@@ -273,6 +425,37 @@ export async function getStoreFront(req, res, next) {
       }
     } catch (e) {}
 
+    const storeSettings = designerInfo?.store_settings || {};
+    const isPublic = storeSettings.is_public !== false; // default true
+
+    // Check if requester is owner or admin
+    let isOwner = false;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, env.JWT_SECRET);
+        if (decoded && (Number(decoded.sub) === Number(supplierId) || decoded.role === 'admin' || decoded.role === 'portal_admin')) {
+          isOwner = true;
+        }
+      } catch {}
+    }
+
+    if (!isPublic && !isOwner) {
+      return res.status(403).json({
+        is_private: true,
+        message: 'This storefront is currently set to private by the store owner.',
+        store_settings: {
+          store_name: storeSettings.store_name || designerInfo?.name || 'Private Storefront',
+          tagline: 'This store is currently not open to the public.',
+          is_public: false,
+          theme: storeSettings.theme || 'midnight'
+        },
+        designer: designerInfo ? { id: designerInfo.id, name: designerInfo.name, role: designerInfo.role } : null,
+        listings: []
+      });
+    }
+
     const enhanced = await Promise.all((listings || []).map(resolveListingPreview));
 
     return res.json({
@@ -280,7 +463,9 @@ export async function getStoreFront(req, res, next) {
       count: enhanced.length,
       listings: enhanced,
       designer: designerInfo,
-      store_settings: designerInfo?.store_settings || {}
+      store_settings: designerInfo?.store_settings || {},
+      is_owner: isOwner,
+      is_public: isPublic
     });
   } catch (err) {
     next(err);

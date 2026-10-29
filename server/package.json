@@ -19,6 +19,7 @@
     "node-fetch": "^3.3.2",
     "pdfkit": "^0.13.0",
     "pg": "^8.16.3",
+    "razorpay": "^2.9.8",
     "ws": "^8.18.0",
     "zod": "^3.24.2",
     "zod-validation-error": "^3.4.0"

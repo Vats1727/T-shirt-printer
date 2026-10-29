@@ -6,11 +6,11 @@ import {
   Upload,
   Camera,
   Paintbrush,
-  Search,
-  LogIn
+  Search
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
+import { useCart } from "@/context/CartContext";
 export default function Header({
   storeSettings,
   storeTitle = "Signature Threads",
@@ -23,6 +23,8 @@ export default function Header({
   cartCount = 0
 }) {
   const [, setLocation] = useLocation();
+  const { setIsCartOpen, cartCount: globalCartCount } = useCart();
+  const effectiveCartCount = globalCartCount !== undefined ? globalCartCount : cartCount;
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -123,13 +125,9 @@ export default function Header({
       });
     }
   };
-  const navCategories = [
-    { id: "all", label: "All Garments" },
-    { id: "t-shirt", label: "T-Shirts" },
-    { id: "hoodie", label: "Hoodies" },
-    { id: "sweatshirt", label: "Sweatshirts" }
-  ];
-  return <header className="sticky top-0 z-40 w-full backdrop-blur-xl bg-slate-900/90 border-b border-slate-800 text-slate-100 shadow-md transition-all">
+
+  return (
+    <header className="sticky top-0 z-40 w-full backdrop-blur-xl bg-slate-900/90 border-b border-slate-800 text-slate-100 shadow-md transition-all">
       {
     /* Hidden File Input for Logo Upload */
   }
@@ -196,92 +194,71 @@ export default function Header({
             </Button>}
         </div>
 
-        {
-    /* Center Category Navigation (Desktop) */
-  }
-        {onSelectCategory && <nav className="hidden md:flex items-center gap-1 bg-slate-950/40 p-1.5 rounded-2xl border border-slate-800/80">
-            {navCategories.map((cat) => {
-    const active = selectedCategory === cat.id;
-    return <button
-      key={cat.id}
-      onClick={() => onSelectCategory(cat.id)}
-      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${active ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/30" : "text-slate-400 hover:text-white hover:bg-slate-800/50"}`}
-    >
-                  {cat.label}
-                </button>;
-  })}
-          </nav>}
-
-        {
-    /* Right Action Section */
-  }
+        {/* Right Action Section */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {
-    /* Quick Search Toggle if supported */
-  }
-          {onSearchChange && <div className="relative flex items-center">
-              {showSearch ? <div className="flex items-center gap-1 bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1 text-xs">
+          {/* Quick Search Toggle if supported */}
+          {onSearchChange && (
+            <div className="relative flex items-center">
+              {showSearch ? (
+                <div className="flex items-center gap-1 bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1 text-xs">
                   <Search className="size-3.5 text-slate-400" />
                   <input
-    type="text"
-    value={searchQuery}
-    onChange={(e) => onSearchChange(e.target.value)}
-    placeholder="Search collection..."
-    autoFocus
-    className="bg-transparent border-none outline-hidden text-xs text-white placeholder-slate-500 w-32 sm:w-48"
-    onBlur={() => !searchQuery && setShowSearch(false)}
-  />
-                </div> : <Button
-    size="icon"
-    variant="ghost"
-    onClick={() => setShowSearch(true)}
-    className="size-9 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800"
-    title="Search Store"
-  >
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => onSearchChange(e.target.value)}
+                    placeholder="Search collection..."
+                    autoFocus
+                    className="bg-transparent border-none outline-hidden text-xs text-white placeholder-slate-500 w-32 sm:w-48"
+                    onBlur={() => !searchQuery && setShowSearch(false)}
+                  />
+                </div>
+              ) : (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setShowSearch(true)}
+                  className="size-9 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800"
+                  title="Search Store"
+                >
                   <Search className="size-4" />
-                </Button>}
-            </div>}
+                </Button>
+              )}
+            </div>
+          )}
 
-          {
-    /* Cart Icon */
-  }
+          {/* Cart Icon */}
           <div className="relative">
             <Button
-    size="icon"
-    variant="ghost"
-    className="size-9 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 relative"
-    title="Cart"
-  >
+              size="icon"
+              variant="ghost"
+              onClick={() => setIsCartOpen(true)}
+              className="size-9 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 relative cursor-pointer"
+              title="View Cart"
+            >
               <ShoppingBag className="size-4" />
-              {cartCount > 0 && <span className="absolute -top-1 -right-1 size-4 bg-indigo-500 text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-xs">
-                  {cartCount}
-                </span>}
+              {effectiveCartCount > 0 && (
+                <span className="absolute -top-1 -right-1 size-4 bg-indigo-500 text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-xs">
+                  {effectiveCartCount}
+                </span>
+              )}
             </Button>
           </div>
 
-          {
-    /* Owner Quick Action or Public Auth Link */
-  }
-          {isOwner ? <div className="flex items-center gap-2">
+          {/* Owner Quick Action */}
+          {isOwner && (
+            <div className="flex items-center gap-2">
               <Button
-    size="sm"
-    onClick={() => setLocation("/supplier/customize-store")}
-    className="hidden sm:inline-flex items-center gap-1.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl h-9 px-3.5 shadow-md shadow-indigo-600/20"
-  >
+                size="sm"
+                onClick={() => setLocation("/supplier/customize-store")}
+                className="hidden sm:inline-flex items-center gap-1.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl h-9 px-3.5 shadow-md shadow-indigo-600/20"
+              >
                 <Paintbrush className="size-3.5" />
                 <span>Customize Store</span>
               </Button>
-            </div> : <Link href="/login">
-              <Button
-    size="sm"
-    variant="outline"
-    className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700 h-9 px-3.5 rounded-xl"
-  >
-                <LogIn className="size-3.5" />
-                <span>Sign In</span>
-              </Button>
-            </Link>}
+            </div>
+          )}
         </div>
       </div>
-    </header>;
+    </header>
+  );
 }

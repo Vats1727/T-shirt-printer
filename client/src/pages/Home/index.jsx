@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion } from "framer-motion";
+import { formatDate } from "@/utils/dateFormatter";
 import { Palette, PenTool, Loader2, Save, Image as ImageIcon, Move, Type, Trash2, RotateCcw } from "lucide-react";
 import { insertDesignV2Schema } from "@shared/schema";
 import { useCreateDesign, useDesigns } from "@/hooks/use-designs";
@@ -477,7 +478,7 @@ export default function Home() {
                         <div className="mt-3 px-1">
                           <p className="font-semibold text-sm truncate">{design.slogan || "Custom Design"}</p>
                           <p className="text-xs text-muted-foreground">
-                            {new Date(design.createdAt).toLocaleDateString()}
+                            {formatDate(design.createdAt)}
                           </p>
                         </div>
                       </motion.div>)}

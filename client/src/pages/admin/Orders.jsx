@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useLocation } from "wouter";
 import { DesignCanvas } from "@/components/common/DesignCanvas";
 import {
@@ -29,7 +31,6 @@ import {
   ArrowLeft,
   Loader2,
   ShoppingBag,
-  UserCheck,
   Package,
   Search,
   RefreshCw,
@@ -40,100 +41,177 @@ import {
   ChevronLeft,
   ChevronRight,
   Inbox,
-  DollarSign,
-  AlertCircle
+  Printer,
+  Truck,
+  ExternalLink,
+  MapPin,
+  Phone,
+  Mail,
+  User,
+  ShieldCheck,
+  Building2,
+  CreditCard
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { getMaskedCode } from "@/utils/idEncoder";
 import { cn } from "@/utils/cn";
+import { formatDate } from "@/utils/dateFormatter";
 
 const PAGE_SIZE = 10;
 
 export default function AdminOrders() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [, setLocation] = useLocation();
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+
   const [updatingId, setUpdatingId] = useState(null);
   const [viewingOrder, setViewingOrder] = useState(null);
 
+  // Dispatch / Shipping Modal State
+  const [shippingModalOrder, setShippingModalOrder] = useState(null);
+  const [courierName, setCourierName] = useState("Blue Dart");
+  const [trackingNumber, setTrackingNumber] = useState("");
+  const [trackingUrl, setTrackingUrl] = useState("");
+  const [shippingNotes, setShippingNotes] = useState("");
+  const [shippingSubmitting, setShippingSubmitting] = useState(false);
+
   // Filters & Pagination State
-  const [activeTab, setActiveTab] = useState("all"); // "all" | "pending" | "confirmed" | "cancelled"
+  const [activeTab, setActiveTab] = useState("all"); // "all" | "pending" | "confirmed" | "in_printing" | "shipped" | "delivered" | "cancelled"
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
 
-  const fetchOrders = async () => {
-    try {
-      setLoading(true);
+  // Real-time Query Hook with Auto 5s Polling & Instant Fresh Cache
+  const {
+    data: rawOrdersData,
+    isLoading: loading,
+    refetch: fetchOrders
+  } = useQuery({
+    queryKey: ["/api/admin/orders"],
+    queryFn: async () => {
       const res = await fetch("/api/admin/orders", {
         headers: { Authorization: token ? `Bearer ${token}` : "" }
       });
-      if (!res.ok) return;
-      const js = await res.json();
-      const orderList = Array.isArray(js)
-        ? js
-        : Array.isArray(js?.orders)
-        ? js.orders
-        : [];
-      setOrders(orderList);
+      if (!res.ok) throw new Error("Failed to load production orders");
+      return res.json();
+    },
+    enabled: !!token,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchInterval: 5000
+  });
 
-      // Keep viewingOrder refreshed if open
-      if (viewingOrder) {
-        const found = orderList.find((x) => x.id === viewingOrder.id);
-        if (found) setViewingOrder(found);
+  // Assign guaranteed unique key to every order to prevent React DOM reconciliation collisions
+  const orders = useMemo(() => {
+    const list = Array.isArray(rawOrdersData)
+      ? rawOrdersData
+      : Array.isArray(rawOrdersData?.orders)
+      ? rawOrdersData.orders
+      : [];
+    return list.map((o, idx) => ({
+      ...o,
+      _uniqueKey: `${o.is_customer_order ? "cust" : "leg"}-${o.id}-${o.order_number || idx}`
+    }));
+  }, [rawOrdersData]);
+
+  // Keep viewingOrder in sync when orders refresh
+  useEffect(() => {
+    if (viewingOrder && orders.length > 0) {
+      const found = orders.find(
+        (x) =>
+          x._uniqueKey === viewingOrder._uniqueKey ||
+          (x.id === viewingOrder.id && x.is_customer_order === viewingOrder.is_customer_order)
+      );
+      if (found) {
+        setViewingOrder(found);
       }
-    } catch (e) {
-      console.error("Failed to load orders", e);
-      toast({
-        title: "Load Error",
-        description: "Failed to load garment orders.",
-        variant: "destructive"
-      });
-    } finally {
-      setLoading(false);
     }
+  }, [orders]);
+
+  // Synchronous Filter and Page Switch Handlers for Instant UI Response
+  const handleTabChange = (newTab) => {
+    setActiveTab(newTab);
+    setCurrentPage(1);
   };
 
-  useEffect(() => {
-    fetchOrders();
-  }, [token]);
-
-  // Reset page when switching tabs or typing search
-  useEffect(() => {
+  const handleSearchChange = (val) => {
+    setSearchTerm(val);
     setCurrentPage(1);
-  }, [activeTab, searchTerm]);
+  };
 
-  const handleUpdateStatus = async (orderId, status) => {
+  const handleUpdateStatus = async (orderOrId, status, trackingPayload = null) => {
+    const isObj = orderOrId && typeof orderOrId === "object";
+    const orderId = isObj ? orderOrId.id : orderOrId;
+    const isCustomerOrder = isObj ? Boolean(orderOrId.is_customer_order) : true;
+    const uniqueKey = isObj ? orderOrId._uniqueKey : null;
+
     try {
       setUpdatingId(orderId);
+      const body = {
+        status,
+        is_customer_order: isCustomerOrder
+      };
+      if (trackingPayload) {
+        body.tracking_info = trackingPayload;
+      }
+
       const res = await fetch(`/api/admin/orders/${orderId}/status`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           Authorization: token ? `Bearer ${token}` : ""
         },
-        body: JSON.stringify({ status })
+        body: JSON.stringify(body)
       });
+
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
         throw new Error(txt || "Failed to update order status");
       }
 
-      setOrders((prev) =>
-        prev.map((o) => (o.id === orderId ? { ...o, status } : o))
-      );
+      // Optimistically update React Query cache immediately
+      queryClient.setQueryData(["/api/admin/orders"], (oldData) => {
+        if (!oldData) return oldData;
+        const list = Array.isArray(oldData) ? oldData : (oldData.orders || []);
+        const updatedList = list.map((o) => {
+          const match = uniqueKey
+            ? (`${o.is_customer_order ? "cust" : "leg"}-${o.id}-${o.order_number}` === uniqueKey || o.id === orderId)
+            : o.id === orderId;
+          if (match) {
+            return {
+              ...o,
+              status,
+              ...(trackingPayload ? { tracking_info: trackingPayload } : {})
+            };
+          }
+          return o;
+        });
+
+        return Array.isArray(oldData) ? updatedList : { ...oldData, orders: updatedList };
+      });
 
       if (viewingOrder && viewingOrder.id === orderId) {
-        setViewingOrder((prev) => ({ ...prev, status }));
+        setViewingOrder((prev) => ({
+          ...prev,
+          status,
+          tracking_info: trackingPayload || prev.tracking_info
+        }));
       }
 
+      const statusLabels = {
+        confirmed: "Order Approved",
+        in_printing: "Order In Printing Production",
+        shipped: "Order Dispatched & Tracking Added",
+        delivered: "Order Marked as Delivered",
+        cancelled: "Order Declined"
+      };
+
       toast({
-        title: status === "confirmed" ? "Order Approved" : "Order Declined",
-        description:
-          status === "confirmed"
-            ? "Production order approved. Designer is authorized to design and save this product."
-            : "Purchase request has been declined."
+        title: statusLabels[status] || "Status Updated",
+        description: `Order #${getMaskedCode(orderId, "ORD")} status changed to ${status.replace("_", " ")}.`
       });
+
+      // Background refetch for full backend synchronization
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/orders"] });
     } catch (err) {
       toast({
         title: "Update Failed",
@@ -145,74 +223,195 @@ export default function AdminOrders() {
     }
   };
 
-  // Grouped status lists for KPI calculation
-  const pendingOrders = orders.filter((o) => {
-    const s = (o.status || "").toLowerCase();
-    return !s || ["pending", "placed", "processing", "in_production"].includes(s);
-  });
+  const submitShipping = async (e) => {
+    e?.preventDefault();
+    if (!shippingModalOrder) return;
+    if (!trackingNumber.trim()) {
+      toast({
+        title: "Tracking Number Required",
+        description: "Please enter the courier tracking / AWB number.",
+        variant: "destructive"
+      });
+      return;
+    }
 
-  const confirmedOrders = orders.filter((o) => {
-    const s = (o.status || "").toLowerCase();
-    return ["confirmed", "approved", "paid", "completed"].includes(s);
-  });
+    try {
+      setShippingSubmitting(true);
+      const trackingPayload = {
+        courier: courierName,
+        tracking_number: trackingNumber.trim(),
+        tracking_url:
+          trackingUrl.trim() ||
+          `https://www.google.com/search?q=${encodeURIComponent(courierName + " tracking " + trackingNumber)}`,
+        notes: shippingNotes.trim(),
+        shipped_at: new Date().toISOString()
+      };
 
-  const cancelledOrders = orders.filter((o) => {
-    const s = (o.status || "").toLowerCase();
-    return ["cancelled", "rejected", "declined"].includes(s);
-  });
+      await handleUpdateStatus(shippingModalOrder, "shipped", trackingPayload);
+      setShippingModalOrder(null);
+      setTrackingNumber("");
+      setTrackingUrl("");
+      setShippingNotes("");
+    } finally {
+      setShippingSubmitting(false);
+    }
+  };
 
-  const totalFulfillmentCents = orders.reduce(
-    (sum, o) => sum + Number(o.total || 0),
-    0
+  // Grouped memoized counts for tabs
+  const pendingOrders = useMemo(
+    () =>
+      orders.filter((o) => {
+        const s = (o.status || "").toLowerCase().trim();
+        return ["pending", "placed"].includes(s);
+      }),
+    [orders]
   );
 
-  // Tab Filtering
-  const currentTabOrders =
-    activeTab === "pending"
-      ? pendingOrders
-      : activeTab === "confirmed"
-      ? confirmedOrders
-      : activeTab === "cancelled"
-      ? cancelledOrders
-      : orders;
+  const confirmedOrders = useMemo(
+    () =>
+      orders.filter((o) => {
+        const s = (o.status || "").toLowerCase().trim();
+        return ["confirmed", "approved", "paid"].includes(s);
+      }),
+    [orders]
+  );
 
-  // Search Filtering
-  const filteredOrders = currentTabOrders.filter((o) => {
-    if (!searchTerm.trim()) return true;
+  const printingOrders = useMemo(
+    () =>
+      orders.filter((o) => {
+        const s = (o.status || "").toLowerCase().trim();
+        return ["in_printing", "printing", "processing"].includes(s);
+      }),
+    [orders]
+  );
+
+  const shippedOrders = useMemo(
+    () =>
+      orders.filter((o) => {
+        const s = (o.status || "").toLowerCase().trim();
+        return ["shipped"].includes(s);
+      }),
+    [orders]
+  );
+
+  const deliveredOrders = useMemo(
+    () =>
+      orders.filter((o) => {
+        const s = (o.status || "").toLowerCase().trim();
+        return ["delivered", "completed"].includes(s);
+      }),
+    [orders]
+  );
+
+  const cancelledOrders = useMemo(
+    () =>
+      orders.filter((o) => {
+        const s = (o.status || "").toLowerCase().trim();
+        return ["cancelled", "rejected", "declined"].includes(s);
+      }),
+    [orders]
+  );
+
+  const totalPayout = useMemo(
+    () =>
+      orders.reduce((sum, o) => {
+        const cents = o.provider_earnings_cents || (o.total ? o.total * 100 : 0);
+        return sum + Number(cents || 0) / 100;
+      }, 0),
+    [orders]
+  );
+
+  // Instant In-Memory Tab Filtering
+  const currentTabOrders = useMemo(() => {
+    switch (activeTab) {
+      case "pending":
+        return pendingOrders;
+      case "confirmed":
+        return confirmedOrders;
+      case "in_printing":
+        return printingOrders;
+      case "shipped":
+        return shippedOrders;
+      case "delivered":
+        return deliveredOrders;
+      case "cancelled":
+        return cancelledOrders;
+      case "all":
+      default:
+        return orders;
+    }
+  }, [
+    activeTab,
+    orders,
+    pendingOrders,
+    confirmedOrders,
+    printingOrders,
+    shippedOrders,
+    deliveredOrders,
+    cancelledOrders
+  ]);
+
+  // Instant In-Memory Search Filtering
+  const filteredOrders = useMemo(() => {
+    if (!searchTerm.trim()) return currentTabOrders;
     const term = searchTerm.toLowerCase();
-    const maskedCode = getMaskedCode(o.id, "ORD").toLowerCase();
-    const designerName = (o.designer?.name || o.designer_name || o.customer_name || "").toLowerCase();
-    const designerEmail = (o.designer?.email || o.designer_email || o.customer_email || "").toLowerCase();
-    const productTitles = (o.items || [])
-      .map((it) => (it.product || "").toLowerCase())
-      .join(" ");
+    return currentTabOrders.filter((o) => {
+      const orderNo = (o.order_number || getMaskedCode(o.id, "ORD")).toLowerCase();
+      const customer = (o.customer_name || o.designer?.name || o.designer_name || "").toLowerCase();
+      const email = (o.customer_email || o.designer?.email || o.designer_email || "").toLowerCase();
+      const productTitles = (o.items || [])
+        .map((it) => (it.product_title || it.product || "").toLowerCase())
+        .join(" ");
 
-    return (
-      maskedCode.includes(term) ||
-      designerName.includes(term) ||
-      designerEmail.includes(term) ||
-      productTitles.includes(term)
-    );
-  });
+      return (
+        orderNo.includes(term) ||
+        customer.includes(term) ||
+        email.includes(term) ||
+        productTitles.includes(term)
+      );
+    });
+  }, [currentTabOrders, searchTerm]);
 
-  // Pagination calculation
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
-  const paginatedOrders = filteredOrders.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE
-  );
+  const paginatedOrders = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredOrders.slice(start, start + PAGE_SIZE);
+  }, [filteredOrders, currentPage]);
 
   const renderStatusBadge = (status) => {
     const s = String(status || "pending").toLowerCase();
     switch (s) {
-      case "confirmed":
-      case "approved":
-      case "paid":
+      case "in_printing":
+      case "printing":
+      case "processing":
+        return (
+          <Badge className="bg-amber-100 text-amber-800 border-amber-300 font-bold gap-1.5 px-2.5 py-0.5 text-xs animate-pulse">
+            <Printer className="w-3.5 h-3.5 text-amber-600" />
+            In Printing
+          </Badge>
+        );
+      case "shipped":
+        return (
+          <Badge className="bg-blue-100 text-blue-800 border-blue-300 font-bold gap-1.5 px-2.5 py-0.5 text-xs">
+            <Truck className="w-3.5 h-3.5 text-blue-600" />
+            In Transit / Shipped
+          </Badge>
+        );
+      case "delivered":
       case "completed":
         return (
           <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 font-bold gap-1.5 px-2.5 py-0.5 text-xs">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-            Approved
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+            Delivered
+          </Badge>
+        );
+      case "confirmed":
+      case "approved":
+      case "paid":
+        return (
+          <Badge className="bg-indigo-100 text-indigo-800 border-indigo-300 font-bold gap-1.5 px-2.5 py-0.5 text-xs">
+            <Check className="w-3.5 h-3.5 text-indigo-600" />
+            Confirmed & Ready
           </Badge>
         );
       case "cancelled":
@@ -220,182 +419,123 @@ export default function AdminOrders() {
       case "declined":
         return (
           <Badge className="bg-rose-100 text-rose-800 border-rose-300 font-bold gap-1.5 px-2.5 py-0.5 text-xs">
-            <X className="w-3 h-3 text-rose-600" />
-            Declined
+            <XCircle className="w-3.5 h-3.5 text-rose-600" />
+            Cancelled
           </Badge>
         );
       case "pending":
+      case "placed":
       default:
         return (
-          <Badge className="bg-amber-100 text-amber-800 border-amber-300 font-bold gap-1.5 px-2.5 py-0.5 text-xs animate-pulse">
-            <Clock className="w-3 h-3 text-amber-600" />
-            Pending Approval
+          <Badge className="bg-slate-100 text-slate-700 border-slate-300 font-bold gap-1.5 px-2.5 py-0.5 text-xs">
+            <Clock className="w-3.5 h-3.5 text-slate-500" />
+            Awaiting Confirmation
           </Badge>
         );
     }
   };
 
   return (
-    <div className="w-full space-y-5 animate-in fade-in duration-300">
-      {/* Top Header - Compact Enterprise Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-xs">
-            <ShoppingBag className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-indigo-600">
-              <span>Print Provider Production Hub</span>
-              <span className="text-slate-300">•</span>
-              <span className="text-slate-500">Order Management</span>
-            </div>
-            <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 leading-tight">
-              Garment Purchase Requests & Orders
-            </h1>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2.5">
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 border border-amber-200 text-amber-800 rounded-full text-xs font-semibold">
-            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-            {pendingOrders.length} Pending Approval
-          </div>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchOrders}
-            disabled={loading}
-            className="h-8 gap-1.5 border-slate-200 shadow-2xs hover:bg-slate-50 rounded-lg text-xs"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-indigo-600" : ""}`} />
-            Refresh
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setLocation("/admin/dashboard")}
-            className="h-8 gap-1.5 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            Dashboard
-          </Button>
-        </div>
-      </div>
-
+    <div className="w-full space-y-5 animate-in fade-in duration-300 pb-12">
       {/* KPI Overview Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* KPI 1: Pending Orders */}
+        {/* KPI 1: Ready to Print */}
         <Card
-          onClick={() => setActiveTab("pending")}
+          onClick={() => handleTabChange("confirmed")}
           className={cn(
             "cursor-pointer rounded-xl border transition-all duration-200 hover:shadow-md",
-            activeTab === "pending"
-              ? "border-amber-400 bg-amber-50/70 shadow-xs ring-2 ring-amber-300/40"
-              : pendingOrders.length > 0
-              ? "border-amber-300 bg-gradient-to-br from-amber-50/60 to-white shadow-xs"
-              : "border-slate-200 bg-white"
-          )}
-        >
-          <CardHeader className="p-4 pb-1.5 flex flex-row items-center justify-between space-y-0">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-700">
-              Pending Approval
-            </span>
-            <div
-              className={`p-1.5 rounded-lg ${
-                pendingOrders.length > 0
-                  ? "bg-amber-500 text-white animate-pulse"
-                  : "bg-amber-100 text-amber-600"
-              }`}
-            >
-              <Clock className="w-3.5 h-3.5" />
-            </div>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="text-2xl font-black text-slate-900">{pendingOrders.length}</div>
-            <p className="text-[11px] text-amber-700 mt-0.5 font-medium">
-              {pendingOrders.length > 0 ? "Requires review & action" : "Queue is clear"}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* KPI 2: Approved Orders */}
-        <Card
-          onClick={() => setActiveTab("confirmed")}
-          className={cn(
-            "cursor-pointer transition-all duration-200 rounded-xl border hover:shadow-md",
             activeTab === "confirmed"
-              ? "border-emerald-500 bg-emerald-50/70 shadow-xs ring-2 ring-emerald-300/40"
-              : "border-slate-200 bg-white"
-          )}
-        >
-          <CardHeader className="p-4 pb-1.5 flex flex-row items-center justify-between space-y-0">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">
-              Approved Orders
-            </span>
-            <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-600">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-            </div>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="text-2xl font-black text-slate-900">{confirmedOrders.length}</div>
-            <p className="text-[11px] text-emerald-700 mt-0.5 font-medium">
-              Authorized for production
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* KPI 3: Declined Orders */}
-        <Card
-          onClick={() => setActiveTab("cancelled")}
-          className={cn(
-            "cursor-pointer transition-all duration-200 rounded-xl border hover:shadow-md",
-            activeTab === "cancelled"
-              ? "border-rose-500 bg-rose-50/70 shadow-xs ring-2 ring-rose-300/40"
-              : "border-slate-200 bg-white"
-          )}
-        >
-          <CardHeader className="p-4 pb-1.5 flex flex-row items-center justify-between space-y-0">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-rose-700">
-              Declined Requests
-            </span>
-            <div className="p-1.5 rounded-lg bg-rose-100 text-rose-600">
-              <XCircle className="w-3.5 h-3.5" />
-            </div>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="text-2xl font-black text-slate-900">{cancelledOrders.length}</div>
-            <p className="text-[11px] text-rose-700 mt-0.5 font-medium">
-              Rejected or cancelled
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* KPI 4: Total Volume */}
-        <Card
-          onClick={() => setActiveTab("all")}
-          className={cn(
-            "cursor-pointer transition-all duration-200 rounded-xl border hover:shadow-md",
-            activeTab === "all"
-              ? "border-indigo-500 bg-indigo-50/60 shadow-xs ring-2 ring-indigo-300/40"
+              ? "border-indigo-400 bg-indigo-50/70 shadow-xs ring-2 ring-indigo-300/40"
               : "border-slate-200 bg-white"
           )}
         >
           <CardHeader className="p-4 pb-1.5 flex flex-row items-center justify-between space-y-0">
             <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-700">
-              Total Order Volume
+              Ready to Print
             </span>
-            <div className="p-1.5 rounded-lg bg-indigo-100 text-indigo-700 font-bold text-xs">
+            <div className="p-1.5 rounded-lg bg-indigo-100 text-indigo-700">
+              <Printer className="w-3.5 h-3.5" />
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="text-2xl font-black text-slate-900">{confirmedOrders.length}</div>
+            <p className="text-[11px] text-slate-500 mt-0.5 font-medium">
+              Confirmed & waiting for printing run
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* KPI 2: On The Press */}
+        <Card
+          onClick={() => handleTabChange("in_printing")}
+          className={cn(
+            "cursor-pointer rounded-xl border transition-all duration-200 hover:shadow-md",
+            activeTab === "in_printing"
+              ? "border-amber-400 bg-amber-50/70 shadow-xs ring-2 ring-amber-300/40"
+              : "border-slate-200 bg-white"
+          )}
+        >
+          <CardHeader className="p-4 pb-1.5 flex flex-row items-center justify-between space-y-0">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-700">
+              On The Press
+            </span>
+            <div className="p-1.5 rounded-lg bg-amber-100 text-amber-700">
+              <Clock className="w-3.5 h-3.5" />
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="text-2xl font-black text-slate-900">{printingOrders.length}</div>
+            <p className="text-[11px] text-slate-500 mt-0.5 font-medium">
+              Actively printing & curing
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* KPI 3: In Transit */}
+        <Card
+          onClick={() => handleTabChange("shipped")}
+          className={cn(
+            "cursor-pointer rounded-xl border transition-all duration-200 hover:shadow-md",
+            activeTab === "shipped"
+              ? "border-blue-400 bg-blue-50/70 shadow-xs ring-2 ring-blue-300/40"
+              : "border-slate-200 bg-white"
+          )}
+        >
+          <CardHeader className="p-4 pb-1.5 flex flex-row items-center justify-between space-y-0">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-blue-700">
+              Dispatched & En Route
+            </span>
+            <div className="p-1.5 rounded-lg bg-blue-100 text-blue-700">
+              <Truck className="w-3.5 h-3.5" />
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="text-2xl font-black text-slate-900">{shippedOrders.length}</div>
+            <p className="text-[11px] text-slate-500 mt-0.5 font-medium">
+              With courier tracking assigned
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* KPI 4: Total Payout Volume */}
+        <Card
+          onClick={() => handleTabChange("all")}
+          className="rounded-xl border border-slate-200 bg-white shadow-xs cursor-pointer hover:shadow-md transition-all duration-200"
+        >
+          <CardHeader className="p-4 pb-1.5 flex flex-row items-center justify-between space-y-0">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
+              Fulfillment Volume
+            </span>
+            <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-700 font-bold text-xs">
               ₹
             </div>
           </CardHeader>
           <CardContent className="p-4 pt-0">
             <div className="text-2xl font-black text-slate-900">
-              ₹{totalFulfillmentCents.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ₹{totalPayout.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
             <p className="text-[11px] text-slate-500 mt-0.5 font-medium">
-              Across {orders.length} total orders
+              Print manufacturing revenue
             </p>
           </CardContent>
         </Card>
@@ -403,15 +543,15 @@ export default function AdminOrders() {
 
       {/* Main Orders Data Table Card */}
       <Card className="rounded-xl border border-slate-200 shadow-sm overflow-hidden bg-white">
-        {/* Filter Tabs and Search Bar (matching portal admin) */}
+        {/* Filter Tabs and Search Bar */}
         <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-50/50">
           <div className="flex flex-wrap gap-1.5">
             <Button
               size="sm"
               variant={activeTab === "all" ? "default" : "outline"}
-              onClick={() => setActiveTab("all")}
+              onClick={() => handleTabChange("all")}
               className={cn(
-                "h-8 rounded-lg text-xs font-bold px-3 gap-1.5",
+                "h-8 rounded-lg text-xs font-bold px-3 gap-1.5 transition-all",
                 activeTab === "all"
                   ? "bg-slate-900 hover:bg-slate-800 text-white shadow-xs"
                   : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
@@ -423,9 +563,9 @@ export default function AdminOrders() {
             <Button
               size="sm"
               variant={activeTab === "pending" ? "default" : "outline"}
-              onClick={() => setActiveTab("pending")}
+              onClick={() => handleTabChange("pending")}
               className={cn(
-                "h-8 rounded-lg text-xs font-bold px-3 gap-1.5",
+                "h-8 rounded-lg text-xs font-bold px-3 gap-1.5 transition-all",
                 activeTab === "pending"
                   ? "bg-amber-600 hover:bg-amber-700 text-white shadow-xs"
                   : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
@@ -438,31 +578,76 @@ export default function AdminOrders() {
             <Button
               size="sm"
               variant={activeTab === "confirmed" ? "default" : "outline"}
-              onClick={() => setActiveTab("confirmed")}
+              onClick={() => handleTabChange("confirmed")}
               className={cn(
-                "h-8 rounded-lg text-xs font-bold px-3 gap-1.5",
+                "h-8 rounded-lg text-xs font-bold px-3 gap-1.5 transition-all",
                 activeTab === "confirmed"
+                  ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
+                  : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+              )}
+            >
+              <Printer className="w-3.5 h-3.5" />
+              Ready to Print ({confirmedOrders.length})
+            </Button>
+
+            <Button
+              size="sm"
+              variant={activeTab === "in_printing" ? "default" : "outline"}
+              onClick={() => handleTabChange("in_printing")}
+              className={cn(
+                "h-8 rounded-lg text-xs font-bold px-3 gap-1.5 transition-all",
+                activeTab === "in_printing"
+                  ? "bg-amber-600 hover:bg-amber-700 text-white shadow-xs"
+                  : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+              )}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              In Printing ({printingOrders.length})
+            </Button>
+
+            <Button
+              size="sm"
+              variant={activeTab === "shipped" ? "default" : "outline"}
+              onClick={() => handleTabChange("shipped")}
+              className={cn(
+                "h-8 rounded-lg text-xs font-bold px-3 gap-1.5 transition-all",
+                activeTab === "shipped"
+                  ? "bg-blue-600 hover:bg-blue-700 text-white shadow-xs"
+                  : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+              )}
+            >
+              <Truck className="w-3.5 h-3.5" />
+              Dispatched ({shippedOrders.length})
+            </Button>
+
+            <Button
+              size="sm"
+              variant={activeTab === "delivered" ? "default" : "outline"}
+              onClick={() => handleTabChange("delivered")}
+              className={cn(
+                "h-8 rounded-lg text-xs font-bold px-3 gap-1.5 transition-all",
+                activeTab === "delivered"
                   ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
                   : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
               )}
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
-              Approved ({confirmedOrders.length})
+              Delivered ({deliveredOrders.length})
             </Button>
 
             <Button
               size="sm"
               variant={activeTab === "cancelled" ? "default" : "outline"}
-              onClick={() => setActiveTab("cancelled")}
+              onClick={() => handleTabChange("cancelled")}
               className={cn(
-                "h-8 rounded-lg text-xs font-bold px-3 gap-1.5",
+                "h-8 rounded-lg text-xs font-bold px-3 gap-1.5 transition-all",
                 activeTab === "cancelled"
                   ? "bg-rose-600 hover:bg-rose-700 text-white shadow-xs"
                   : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
               )}
             >
               <XCircle className="w-3.5 h-3.5" />
-              Declined ({cancelledOrders.length})
+              Cancelled ({cancelledOrders.length})
             </Button>
           </div>
 
@@ -470,8 +655,8 @@ export default function AdminOrders() {
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <Input
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search by order ref, designer, garment..."
+              onChange={(e) => handleSearchChange(e.target.value)}
+              placeholder="Search by order #, customer, garment..."
               className="pl-9 h-8 rounded-lg border-slate-200 text-xs bg-white"
             />
           </div>
@@ -482,7 +667,7 @@ export default function AdminOrders() {
           {loading ? (
             <div className="p-16 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
               <RefreshCw className="w-6 h-6 animate-spin text-indigo-500" />
-              <p className="text-xs font-medium">Loading garment orders...</p>
+              <p className="text-xs font-medium">Loading production queue...</p>
             </div>
           ) : filteredOrders.length === 0 ? (
             <div className="p-16 text-center text-slate-500 flex flex-col items-center justify-center gap-2.5">
@@ -490,10 +675,10 @@ export default function AdminOrders() {
                 <Inbox className="w-6 h-6" />
               </div>
               <p className="font-semibold text-slate-800 text-sm">
-                No orders found in this view
+                No orders match your filter
               </p>
               <p className="text-xs text-slate-400 max-w-sm">
-                Try adjusting your search query or selecting a different status tab above.
+                All production jobs in this category are up to date.
               </p>
             </div>
           ) : (
@@ -501,123 +686,137 @@ export default function AdminOrders() {
               <TableHeader className="bg-slate-50/70 border-b border-slate-200">
                 <TableRow>
                   <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 pl-6">
-                    Order Reference & Date
+                    Order Ref & Date
                   </TableHead>
                   <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600">
-                    Designer / Creative Client
+                    Channel & Client
                   </TableHead>
                   <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600">
-                    Blank Garment Specification
+                    Garment Specs
                   </TableHead>
                   <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600">
-                    Total Volume
+                    Volume & Value
                   </TableHead>
                   <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600">
-                    Status
+                    Fulfillment Status
                   </TableHead>
                   <TableHead className="text-right font-bold text-xs uppercase tracking-wider text-slate-600 pr-6">
-                    Actions
+                    Actions & Pipeline
                   </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {paginatedOrders.map((o, idx) => {
                   const status = (o.status || "pending").toLowerCase();
-                  const isPending = [
-                    "pending",
-                    "placed",
-                    "processing",
-                    "in_production"
-                  ].includes(status);
+                  const isCustomerOrder = Boolean(o.is_customer_order || o.customer_email || o.order_number);
+                  const orderCode = o.order_number || getMaskedCode(o.id || idx + 1, "ORD");
+                  const clientName = o.customer_name || o.designer?.name || o.designer_name || "Direct Customer";
+                  const clientEmail = o.customer_email || o.designer?.email || o.designer_email || "";
                   const firstItem = o.items?.[0] || {};
-                  const isBulk = Number(firstItem.quantity || 0) > 10;
-                  const designerName =
-                    o.designer?.name || o.designer_name || o.customer_name || "Designer Client";
-                  const designerEmail =
-                    o.designer?.email || o.designer_email || o.customer_email || "designer@platform.com";
+                  const garmentTitle = firstItem.product_title || firstItem.product || "Custom Printed Garment";
+                  const totalUnits = (o.items || []).reduce((acc, it) => acc + Number(it.quantity || 1), 0);
+                  const orderTotal = o.total_cents ? o.total_cents / 100 : Number(o.total || 0);
+                  const providerPayout = o.provider_earnings_cents ? o.provider_earnings_cents / 100 : orderTotal;
 
                   return (
-                    <TableRow key={o.id || idx} className="hover:bg-slate-50/70 transition-colors">
+                    <TableRow key={o._uniqueKey} className="hover:bg-slate-50/70 transition-colors">
                       {/* Order Ref & Placed Date */}
                       <TableCell className="py-3.5 pl-6">
                         <div className="space-y-0.5">
                           <span className="font-bold text-slate-900 text-xs font-mono">
-                            {getMaskedCode(o.id || idx + 1, "ORD")}
+                            {orderCode}
                           </span>
                           <div className="text-[11px] text-slate-400 flex items-center gap-1">
                             <Calendar className="w-3 h-3 text-slate-400" />
                             <span>
-                              {o.created_at
-                                ? new Date(o.created_at).toLocaleDateString("en-IN", {
-                                    day: "numeric",
-                                    month: "short",
-                                    year: "numeric"
-                                  })
-                                : "Recent"}
+                              {o.created_at ? formatDate(o.created_at) : "Recent"}
                             </span>
                           </div>
                         </div>
                       </TableCell>
 
-                      {/* Designer Contact Info */}
-                      <TableCell>
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold flex items-center justify-center text-xs shrink-0">
-                            {designerName.slice(0, 2).toUpperCase()}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="font-bold text-xs text-slate-900 truncate">
-                              {designerName}
-                            </div>
-                            <div className="text-[11px] text-slate-500 font-mono truncate">
-                              {designerEmail}
-                            </div>
-                          </div>
-                        </div>
-                      </TableCell>
-
-                      {/* Requested Garment & Quantity */}
+                      {/* Channel & Client Info */}
                       <TableCell>
                         <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-xs text-slate-900">
-                              {firstItem.product || "Garment Blank"}
-                            </span>
+                          <div className="flex items-center gap-1.5">
                             <span
                               className={cn(
-                                "text-[10px] font-bold px-2 py-0.5 rounded-full border",
-                                isBulk
-                                  ? "bg-purple-50 text-purple-700 border-purple-200"
-                                  : "bg-blue-50 text-blue-700 border-blue-200"
+                                "text-[10px] font-bold px-1.5 py-0.2 rounded border",
+                                isCustomerOrder
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  : "bg-purple-50 text-purple-700 border-purple-200"
                               )}
                             >
-                              {isBulk ? "Bulk Wholesale" : "Unit Sample"}
+                              {isCustomerOrder ? "Customer Storefront" : "Designer Batch"}
                             </span>
                           </div>
-                          <div className="text-xs text-slate-500">
-                            <strong>{firstItem.quantity || 1}</strong> pcs @ ₹
-                            {(firstItem.unit_price || 0).toFixed(2)}/pc
+                          <div className="font-bold text-xs text-slate-900 leading-tight">
+                            {clientName}
+                          </div>
+                          {clientEmail && (
+                            <div className="text-[11px] text-slate-400 font-mono leading-tight">
+                              {clientEmail}
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+
+                      {/* Garment Specification */}
+                      <TableCell>
+                        <div className="flex items-center gap-2.5">
+                          {firstItem.preview_url ? (
+                            <img
+                              src={firstItem.preview_url}
+                              alt="Garment Preview"
+                              className="w-10 h-10 object-contain rounded-lg border border-slate-200 bg-slate-50 shrink-0"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-lg border border-slate-200 bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
+                              <ShoppingBag className="w-4 h-4" />
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <div className="font-bold text-xs text-slate-900 truncate max-w-[180px]">
+                              {garmentTitle}
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
+                              {firstItem.color_hex && (
+                                <span
+                                  className="w-2.5 h-2.5 rounded-full border border-slate-300 inline-block shrink-0"
+                                  style={{ backgroundColor: firstItem.color_hex }}
+                                  title={firstItem.color_name || "Color"}
+                                />
+                              )}
+                              <span>{firstItem.color_name || firstItem.color || "Standard"}</span>
+                              <span>•</span>
+                              <span className="font-semibold">{firstItem.size_label || firstItem.size || "M"}</span>
+                              {o.items?.length > 1 && (
+                                <span className="text-slate-400">+{o.items.length - 1} more</span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </TableCell>
 
-                      {/* Total Amount */}
+                      {/* Volume & Payout */}
                       <TableCell>
-                        <span className="font-extrabold text-sm text-slate-900 font-mono">
-                          ₹
-                          {(o.total || 0).toLocaleString("en-IN", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2
-                          })}
-                        </span>
+                        <div className="space-y-0.5">
+                          <div className="font-extrabold text-xs text-slate-900 font-mono">
+                            ₹{providerPayout.toFixed(2)}
+                          </div>
+                          <div className="text-[11px] text-slate-400">
+                            {totalUnits} unit{totalUnits > 1 ? "s" : ""}
+                          </div>
+                        </div>
                       </TableCell>
 
-                      {/* Status Badge */}
+                      {/* Fulfillment Status */}
                       <TableCell>{renderStatusBadge(o.status)}</TableCell>
 
-                      {/* Actions */}
+                      {/* Actions & Pipeline Buttons */}
                       <TableCell className="text-right pr-6">
                         <div className="flex items-center justify-end gap-1.5">
+                          {/* View Inspector */}
                           <Button
                             size="icon"
                             variant="ghost"
@@ -628,33 +827,79 @@ export default function AdminOrders() {
                             <Eye className="w-4 h-4" />
                           </Button>
 
-                          {isPending && (
+                          {/* Quick Pipeline Status Actions */}
+                          {(status === "confirmed" || status === "approved" || status === "paid") && (
+                            <Button
+                              size="sm"
+                              disabled={updatingId === o.id}
+                              onClick={() => handleUpdateStatus(o, "in_printing")}
+                              className="h-8 px-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold gap-1 shadow-2xs transition-colors"
+                              title="Start Printing Job"
+                            >
+                              {updatingId === o.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Printer className="w-3.5 h-3.5" />
+                              )}
+                              <span>Start Printing</span>
+                            </Button>
+                          )}
+
+                          {(status === "in_printing" || status === "printing" || status === "processing") && (
+                            <Button
+                              size="sm"
+                              disabled={updatingId === o.id}
+                              onClick={() => {
+                                setShippingModalOrder(o);
+                                setTrackingNumber(o.tracking_info?.tracking_number || "");
+                                setCourierName(o.tracking_info?.courier || "Blue Dart");
+                              }}
+                              className="h-8 px-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold gap-1 shadow-2xs transition-colors"
+                              title="Mark Shipped & Assign Courier"
+                            >
+                              <Truck className="w-3.5 h-3.5" />
+                              <span>Dispatch</span>
+                            </Button>
+                          )}
+
+                          {status === "shipped" && (
+                            <Button
+                              size="sm"
+                              disabled={updatingId === o.id}
+                              onClick={() => handleUpdateStatus(o, "delivered")}
+                              className="h-8 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold gap-1 shadow-2xs transition-colors"
+                              title="Confirm Delivery to Customer"
+                            >
+                              {updatingId === o.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                              )}
+                              <span>Delivered</span>
+                            </Button>
+                          )}
+
+                          {(status === "pending" || status === "placed") && (
                             <>
                               <Button
                                 size="sm"
                                 disabled={updatingId === o.id}
-                                onClick={() => handleUpdateStatus(o.id, "confirmed")}
-                                className="h-8 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold gap-1 shadow-2xs transition-colors"
-                                title="Approve Production Order"
+                                onClick={() => handleUpdateStatus(o, "confirmed")}
+                                className="h-8 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold gap-1 shadow-2xs"
+                                title="Confirm Order for Printing"
                               >
-                                {updatingId === o.id ? (
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                ) : (
-                                  <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-                                )}
-                                <span className="hidden xl:inline">Approve</span>
+                                <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                                <span>Confirm</span>
                               </Button>
-
                               <Button
                                 size="sm"
                                 variant="outline"
                                 disabled={updatingId === o.id}
-                                onClick={() => handleUpdateStatus(o.id, "cancelled")}
-                                className="h-8 px-2 border-rose-200 text-rose-700 hover:bg-rose-50 hover:border-rose-300 rounded-lg text-xs font-semibold gap-1 transition-colors"
+                                onClick={() => handleUpdateStatus(o, "cancelled")}
+                                className="h-8 px-2 border-rose-200 text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-semibold"
                                 title="Decline Order"
                               >
-                                <X className="w-3.5 h-3.5 stroke-[2.5]" />
-                                <span className="hidden xl:inline">Decline</span>
+                                <X className="w-3.5 h-3.5" />
                               </Button>
                             </>
                           )}
@@ -668,13 +913,13 @@ export default function AdminOrders() {
           )}
         </CardContent>
 
-        {/* Data Table Pagination Controls (Max 10 records per page) */}
+        {/* Data Table Pagination Controls */}
         {filteredOrders.length > 0 && (
           <div className="p-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/50">
             <span className="text-xs text-slate-500 font-medium">
               Showing {(currentPage - 1) * PAGE_SIZE + 1} to{" "}
               {Math.min(currentPage * PAGE_SIZE, filteredOrders.length)} of{" "}
-              {filteredOrders.length} orders
+              {filteredOrders.length} production orders
             </span>
 
             <div className="flex items-center gap-1">
@@ -723,7 +968,102 @@ export default function AdminOrders() {
         )}
       </Card>
 
-      {/* Order Details Modal (View Details Dialog) */}
+      {/* Dispatch / Shipping Tracking Modal */}
+      <Dialog open={!!shippingModalOrder} onOpenChange={(open) => !open && setShippingModalOrder(null)}>
+        <DialogContent className="rounded-2xl max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-2 text-blue-600 font-bold text-xs uppercase tracking-wider">
+              <Truck className="w-4 h-4" />
+              <span>Fulfillment Dispatch</span>
+            </div>
+            <DialogTitle className="text-lg font-black text-slate-900 mt-1">
+              Dispatch & Enter Tracking Info
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Provide courier details and tracking number. The customer will be able to track this shipment directly.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={submitShipping} className="space-y-4 pt-2">
+            <div>
+              <Label className="text-xs font-bold text-slate-700">Courier / Shipping Carrier</Label>
+              <select
+                value={courierName}
+                onChange={(e) => setCourierName(e.target.value)}
+                className="w-full mt-1.5 h-9 rounded-xl border border-slate-200 px-3 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="Blue Dart">Blue Dart Express</option>
+                <option value="Delhivery">Delhivery</option>
+                <option value="DTDC">DTDC Courier</option>
+                <option value="Ekart">Ekart Logistics</option>
+                <option value="India Post Speed Post">India Post (Speed Post)</option>
+                <option value="FedEx India">FedEx India</option>
+                <option value="Shadowfax">Shadowfax</option>
+                <option value="Other Carrier">Other Standard Courier</option>
+              </select>
+            </div>
+
+            <div>
+              <Label className="text-xs font-bold text-slate-700">Tracking / AWB Number *</Label>
+              <Input
+                required
+                value={trackingNumber}
+                onChange={(e) => setTrackingNumber(e.target.value)}
+                placeholder="e.g. BD789456123IN"
+                className="mt-1.5 text-xs font-mono font-bold"
+              />
+            </div>
+
+            <div>
+              <Label className="text-xs font-bold text-slate-700">Tracking URL (Optional)</Label>
+              <Input
+                value={trackingUrl}
+                onChange={(e) => setTrackingUrl(e.target.value)}
+                placeholder="https://track.bluedart.com/..."
+                className="mt-1.5 text-xs font-mono"
+              />
+              <span className="text-[10px] text-slate-400 mt-1 block">
+                If omitted, an automatic direct search link will be generated.
+              </span>
+            </div>
+
+            <div>
+              <Label className="text-xs font-bold text-slate-700">Dispatch Notes (Optional)</Label>
+              <Input
+                value={shippingNotes}
+                onChange={(e) => setShippingNotes(e.target.value)}
+                placeholder="e.g. Packed in reinforced garment polybag"
+                className="mt-1.5 text-xs"
+              />
+            </div>
+
+            <DialogFooter className="gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShippingModalOrder(null)}
+                className="rounded-xl text-xs"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={shippingSubmitting}
+                className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold gap-1.5"
+              >
+                {shippingSubmitting ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Truck className="w-3.5 h-3.5" />
+                )}
+                Mark Shipped
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Full Order Details Inspection Modal */}
       <Dialog open={!!viewingOrder} onOpenChange={(open) => !open && setViewingOrder(null)}>
         <DialogContent className="rounded-2xl max-w-2xl max-h-[90vh] overflow-y-auto">
           {viewingOrder && (
@@ -731,142 +1071,264 @@ export default function AdminOrders() {
               <DialogHeader>
                 <div className="flex items-center justify-between pr-4">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono font-bold text-lg text-slate-900">
-                      {getMaskedCode(viewingOrder.id, "ORD")}
+                    <span className="font-mono font-black text-lg text-slate-900">
+                      {viewingOrder.order_number || getMaskedCode(viewingOrder.id, "ORD")}
                     </span>
                     {renderStatusBadge(viewingOrder.status)}
                   </div>
                   <span className="text-xs text-slate-400">
-                    Placed: {new Date(viewingOrder.created_at).toLocaleString()}
+                    Placed: {formatDate(viewingOrder.created_at)}
                   </span>
                 </div>
-                <DialogTitle className="text-base text-slate-700 font-semibold mt-1">
-                  Garment Purchase Order Specifications
+                <DialogTitle className="text-sm text-slate-700 font-semibold mt-1">
+                  Production Order & Customer Shipping Manifest
                 </DialogTitle>
                 <DialogDescription className="text-xs text-slate-500">
-                  Inspect buyer contact details, garment batch sizing, and line item financial totals.
+                  Inspect printing specifications, delivery destination address, and update workflow status.
                 </DialogDescription>
               </DialogHeader>
 
-              {/* Designer Card */}
-              <div className="p-4 rounded-xl border border-indigo-100 bg-indigo-50/40 flex items-center justify-between">
-                <div>
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-700">
-                    Purchasing Designer Client
+              {/* Customer & Delivery Card */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* Client / Buyer Info */}
+                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Customer Information</span>
                   </div>
-                  <div className="font-bold text-sm text-slate-900 mt-0.5">
-                    {viewingOrder.designer?.name || viewingOrder.designer_name || viewingOrder.customer_name || "Designer"}
+                  <div className="font-bold text-sm text-slate-900">
+                    {viewingOrder.customer_name || viewingOrder.designer?.name || viewingOrder.designer_name || "Direct Customer"}
                   </div>
-                  <div className="text-xs text-slate-600 font-mono">
-                    {viewingOrder.designer?.email || viewingOrder.designer_email || viewingOrder.customer_email}
+                  <div className="text-xs text-slate-600 space-y-0.5">
+                    {(viewingOrder.customer_email || viewingOrder.designer_email) && (
+                      <div className="flex items-center gap-1.5 text-slate-600">
+                        <Mail className="w-3.5 h-3.5 text-slate-400" />
+                        <span>{viewingOrder.customer_email || viewingOrder.designer_email}</span>
+                      </div>
+                    )}
+                    {viewingOrder.customer_phone && (
+                      <div className="flex items-center gap-1.5 text-slate-600">
+                        <Phone className="w-3.5 h-3.5 text-slate-400" />
+                        <span>{viewingOrder.customer_phone}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                <div className="text-right">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                    Order Total
+                {/* Shipping Destination */}
+                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Shipping Destination</span>
                   </div>
-                  <div className="text-xl font-black text-slate-900 font-mono">
-                    ₹{(viewingOrder.total || 0).toFixed(2)}
-                  </div>
+                  {viewingOrder.shipping_address ? (
+                    <div className="text-xs text-slate-700 leading-relaxed">
+                      <div className="font-semibold text-slate-900">
+                        {viewingOrder.shipping_address.street || viewingOrder.shipping_address.address}
+                      </div>
+                      <div>
+                        {[
+                          viewingOrder.shipping_address.city,
+                          viewingOrder.shipping_address.state,
+                          viewingOrder.shipping_address.postal_code || viewingOrder.shipping_address.zip
+                        ]
+                          .filter(Boolean)
+                          .join(", ")}
+                      </div>
+                      <div>{viewingOrder.shipping_address.country || "India"}</div>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-slate-400 italic">No physical delivery address recorded</div>
+                  )}
                 </div>
               </div>
 
-              {/* Line Items List */}
-              <div className="space-y-3">
-                <div className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                  Garment Line Items
-                </div>
-                <div className="divide-y divide-slate-100 border rounded-xl overflow-hidden bg-white">
-                  {viewingOrder.items?.map((it, idx) => (
-                    <div key={idx} className="p-4 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-sm text-slate-900">
-                          {it.product}
-                        </span>
-                        <span className="font-bold text-sm text-slate-900 font-mono">
-                          ₹{(it.line_total || 0).toFixed(2)}
-                        </span>
+              {/* Courier Tracking Box if shipped */}
+              {viewingOrder.tracking_info && (
+                <div className="p-4 rounded-xl border border-blue-200 bg-blue-50/60 flex items-center justify-between">
+                  <div className="space-y-1">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-blue-800 flex items-center gap-1.5">
+                      <Truck className="w-4 h-4 text-blue-600" />
+                      <span>Shipment Dispatched with {viewingOrder.tracking_info.courier}</span>
+                    </div>
+                    <div className="text-sm font-mono font-bold text-slate-900">
+                      Tracking / AWB: {viewingOrder.tracking_info.tracking_number}
+                    </div>
+                    {viewingOrder.tracking_info.notes && (
+                      <div className="text-xs text-slate-600 italic">
+                        Notes: {viewingOrder.tracking_info.notes}
                       </div>
-                      <div className="flex flex-wrap items-center gap-4 text-xs text-slate-600">
-                        <div>
-                          Quantity: <strong>{it.quantity} pcs</strong>
-                        </div>
-                        <div>
-                          Rate: <strong>₹{(it.unit_price || 0).toFixed(2)}</strong>
-                        </div>
-                        {it.size && (
-                          <div>
-                            Size: <strong>{it.size}</strong>
+                    )}
+                  </div>
+
+                  {viewingOrder.tracking_info.tracking_url && (
+                    <a
+                      href={viewingOrder.tracking_info.tracking_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-2xs"
+                    >
+                      <span>Track Package</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+                </div>
+              )}
+
+              {/* Garment Items List */}
+              <div className="space-y-2">
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                  Garments to Print & Fulfill ({viewingOrder.items?.length || 0})
+                </div>
+                <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-white">
+                  {viewingOrder.items?.map((it, idx) => (
+                    <div key={idx} className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                      <div className="flex items-center gap-3.5">
+                        {it.preview_url ? (
+                          <a
+                            href={it.preview_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="group relative block"
+                            title="Click to view full size design"
+                          >
+                            <img
+                              src={it.preview_url}
+                              alt="Garment Preview"
+                              className="w-16 h-16 object-contain rounded-xl border border-slate-200 bg-slate-50 p-1 group-hover:scale-105 transition-transform"
+                            />
+                            <div className="absolute inset-0 bg-black/30 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold">
+                              Zoom
+                            </div>
+                          </a>
+                        ) : (
+                          <div className="w-16 h-16 rounded-xl border border-slate-200 bg-slate-100 flex items-center justify-center text-slate-400">
+                            <ShoppingBag className="w-6 h-6" />
                           </div>
                         )}
-                        {it.color && (
-                          <div>
-                            Color: <strong>{it.color?.name || it.color}</strong>
+                        <div>
+                          <div className="font-bold text-sm text-slate-900">
+                            {it.product_title || it.product || "Custom Apparel"}
                           </div>
-                        )}
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 mt-1">
+                            <span className="font-semibold text-slate-900">Qty: {it.quantity}</span>
+                            <span>•</span>
+                            <span className="font-semibold">Size: {it.size_label || it.size || "M"}</span>
+                            <span>•</span>
+                            <span className="inline-flex items-center gap-1">
+                              {it.color_hex && (
+                                <span
+                                  className="w-2.5 h-2.5 rounded-full border border-slate-300"
+                                  style={{ backgroundColor: it.color_hex }}
+                                />
+                              )}
+                              <span>Color: {it.color_name || it.color || "Standard"}</span>
+                            </span>
+                          </div>
+                        </div>
                       </div>
 
-                      {it.design_snapshot && (
-                        <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-4">
-                          <div className="w-20 h-20 rounded-lg border bg-slate-50 flex items-center justify-center overflow-hidden shrink-0">
-                            <DesignCanvas
-                              width={80}
-                              height={80}
-                              readonly
-                              showTemplate={true}
-                              slogan={it.design_snapshot.front?.slogan || ""}
-                              color={it.design_snapshot.front?.color || "#000"}
-                              template={it.design_snapshot.front?.template || "tshirt"}
-                              templateColor={it.design_snapshot.front?.templateColor}
-                              templateImage={it.design_snapshot.front?.templateImage}
-                              image={it.design_snapshot.front?.image}
-                              imageScale={it.design_snapshot.front?.imageScale || 100}
-                              imageRotation={it.design_snapshot.front?.imageRotation || 0}
-                              imagePosition={it.design_snapshot.front?.imagePosition || { x: 150, y: 150 }}
-                              tintImage={false}
-                            />
-                          </div>
-                          <div className="text-xs text-slate-500">
-                            <div className="font-semibold text-slate-700">Design Mockup Snapshot</div>
-                            <div>Attached graphics and typography embedded with purchase.</div>
-                          </div>
+                      <div className="text-right sm:self-center">
+                        <div className="font-mono font-bold text-sm text-slate-900">
+                          ₹{(it.total_price_cents ? it.total_price_cents / 100 : (it.line_total || (it.unit_price || 0) * (it.quantity || 1))).toFixed(2)}
                         </div>
-                      )}
+                        <div className="text-[11px] text-slate-400">
+                          ₹{(it.unit_price_cents ? it.unit_price_cents / 100 : (it.unit_price || 0)).toFixed(2)} / pc
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Actions in Dialog */}
+              {/* Payout & Financial Breakdown */}
+              <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 flex items-center justify-between text-xs">
+                <div>
+                  <span className="font-bold text-slate-700">Payment Channel:</span>{" "}
+                  <span className="uppercase font-semibold text-indigo-700">
+                    {viewingOrder.payment_method || "Online"}
+                  </span>{" "}
+                  • Status:{" "}
+                  <span className="font-bold text-emerald-700 capitalize">
+                    {viewingOrder.payment_status || "Paid"}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="font-bold text-slate-700">Provider Payout:</span>{" "}
+                  <span className="text-base font-black text-slate-900 font-mono">
+                    ₹{(viewingOrder.provider_earnings_cents ? viewingOrder.provider_earnings_cents / 100 : Number(viewingOrder.total || 0)).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Action Buttons in Modal Footer */}
               <DialogFooter className="gap-2 sm:justify-between pt-2">
                 <Button
                   variant="outline"
                   onClick={() => setViewingOrder(null)}
-                  className="rounded-xl"
+                  className="rounded-xl text-xs"
                 >
                   Close
                 </Button>
 
-                {viewingOrder.status === "pending" && (
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      disabled={updatingId === viewingOrder.id}
-                      onClick={() => handleUpdateStatus(viewingOrder.id, "cancelled")}
-                      className="border-rose-200 text-rose-700 hover:bg-rose-50 rounded-xl"
-                    >
-                      <X className="w-4 h-4 mr-1.5" /> Decline Request
-                    </Button>
+                <div className="flex items-center gap-2">
+                  {(viewingOrder.status === "confirmed" || viewingOrder.status === "paid") && (
                     <Button
                       disabled={updatingId === viewingOrder.id}
-                      onClick={() => handleUpdateStatus(viewingOrder.id, "confirmed")}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs"
+                      onClick={() => handleUpdateStatus(viewingOrder, "in_printing")}
+                      className="bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold gap-1.5 shadow-xs"
                     >
-                      <Check className="w-4 h-4 mr-1.5" /> Approve Production
+                      <Printer className="w-3.5 h-3.5" />
+                      <span>Start Printing Run</span>
                     </Button>
-                  </div>
-                )}
+                  )}
+
+                  {(viewingOrder.status === "in_printing" || viewingOrder.status === "printing" || viewingOrder.status === "processing") && (
+                    <Button
+                      disabled={updatingId === viewingOrder.id}
+                      onClick={() => {
+                        setShippingModalOrder(viewingOrder);
+                        setTrackingNumber(viewingOrder.tracking_info?.tracking_number || "");
+                        setCourierName(viewingOrder.tracking_info?.courier || "Blue Dart");
+                      }}
+                      className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold gap-1.5 shadow-xs"
+                    >
+                      <Truck className="w-3.5 h-3.5" />
+                      <span>Dispatch & Ship Order</span>
+                    </Button>
+                  )}
+
+                  {viewingOrder.status === "shipped" && (
+                    <Button
+                      disabled={updatingId === viewingOrder.id}
+                      onClick={() => handleUpdateStatus(viewingOrder, "delivered")}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold gap-1.5 shadow-xs"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Mark Delivered</span>
+                    </Button>
+                  )}
+
+                  {viewingOrder.status === "pending" && (
+                    <>
+                      <Button
+                        variant="outline"
+                        disabled={updatingId === viewingOrder.id}
+                        onClick={() => handleUpdateStatus(viewingOrder, "cancelled")}
+                        className="border-rose-200 text-rose-700 hover:bg-rose-50 rounded-xl text-xs"
+                      >
+                        <X className="w-3.5 h-3.5 mr-1" /> Decline
+                      </Button>
+                      <Button
+                        disabled={updatingId === viewingOrder.id}
+                        onClick={() => handleUpdateStatus(viewingOrder, "confirmed")}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs"
+                      >
+                        <Check className="w-3.5 h-3.5 mr-1" /> Approve
+                      </Button>
+                    </>
+                  )}
+                </div>
               </DialogFooter>
             </div>
           )}

@@ -27,17 +27,21 @@ export function requireAuth(req, res, next) {
   }
 }
 
+export const authenticateToken = requireAuth;
+export const authenticateOptional = expressAuthenticateOptional;
+
 export function requireRole(role) {
   return (req, res, next) => {
     const user = req.user;
     if (!user) return res.status(401).json({ message: 'Not authenticated' });
 
     const roleMap = {
-      'print_provider': ['print_provider', 'admin'],
-      'designer': ['designer', 'supplier'],
+      'print_provider': ['print_provider', 'admin', 'portal_admin'],
+      'designer': ['designer', 'supplier', 'admin', 'portal_admin'],
       'portal_admin': ['portal_admin'],
       'admin': ['admin', 'portal_admin'],
-      'supplier': ['supplier', 'designer']
+      'supplier': ['supplier', 'designer', 'admin', 'portal_admin'],
+      'customer': ['customer', 'admin', 'portal_admin']
     };
 
     const allowedRoles = roleMap[role] || [role];

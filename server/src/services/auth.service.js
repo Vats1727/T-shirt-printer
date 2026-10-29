@@ -8,7 +8,7 @@ export async function register({ name, email, password, role, associated_provide
     err.status = 400;
     throw err;
   }
-  if (role !== 'print_provider' && role !== 'designer') {
+  if (role !== 'print_provider' && role !== 'designer' && role !== 'customer') {
     const err = new Error('invalid role');
     err.status = 400;
     throw err;

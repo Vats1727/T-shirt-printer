@@ -17,6 +17,8 @@ export const env = {
   JWT_SECRET: process.env.JWT_SECRET || 'dev-secret',
   JWT_EXPIRY: process.env.JWT_EXPIRY || '7d',
   CORS_ORIGIN: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID || '',
+  RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET || '',
 };
 
 export default env;

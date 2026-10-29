@@ -16,7 +16,8 @@ import {
   Paintbrush,
   LayoutTemplate,
   UserCheck,
-  Users
+  Users,
+  DollarSign
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { Button } from '@/components/ui/button';
@@ -94,6 +95,13 @@ export function AppSidebar() {
       url: '/portal/requests',
       active: location.startsWith('/portal/requests'),
       badge: pendingRequestsCount > 0 ? pendingRequestsCount : null,
+      hidden: !isPortalAdmin
+    },
+    {
+      title: 'Financial Governance',
+      icon: DollarSign,
+      url: '/portal/financials',
+      active: location.startsWith('/portal/financials'),
       hidden: !isPortalAdmin
     },
     {

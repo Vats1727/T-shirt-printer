@@ -28,7 +28,6 @@ import {
   XCircle,
   ArrowLeft,
   Loader2,
-  Paintbrush,
   ShoppingBag,
   Search,
   RefreshCw,
@@ -37,10 +36,18 @@ import {
   ChevronLeft,
   ChevronRight,
   Inbox,
-  DollarSign
+  TrendingUp,
+  Truck,
+  Printer,
+  ExternalLink,
+  Store,
+  DollarSign,
+  User,
+  MapPin
 } from "lucide-react";
 import { getMaskedCode } from "@/utils/idEncoder";
 import { cn } from "@/utils/cn";
+import { formatDate } from "@/utils/dateFormatter";
 
 const PAGE_SIZE = 10;
 
@@ -52,7 +59,7 @@ export default function SupplierOrders() {
   const [viewingOrder, setViewingOrder] = useState(null);
 
   // Filters & Pagination State
-  const [activeTab, setActiveTab] = useState("all"); // "all" | "pending" | "confirmed" | "cancelled"
+  const [activeTab, setActiveTab] = useState("all"); // "all" | "sales" | "in_production" | "shipped" | "samples"
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -91,50 +98,54 @@ export default function SupplierOrders() {
     setCurrentPage(1);
   }, [activeTab, searchTerm]);
 
-  // Grouped status lists for KPI calculation
-  const pendingOrders = orders.filter((o) => {
+  // Tab categorization
+  const storeSalesOrders = orders.filter((o) => o.is_customer_order || o.order_type === "customer_sale");
+  const sampleOrders = orders.filter((o) => !o.is_customer_order && o.order_type !== "customer_sale");
+
+  const inProductionOrders = orders.filter((o) => {
     const s = (o.status || "").toLowerCase();
-    return !s || ["pending", "placed", "processing", "in_production"].includes(s);
+    return ["in_printing", "printing", "confirmed", "approved", "processing"].includes(s);
   });
 
-  const confirmedOrders = orders.filter((o) => {
+  const shippedOrders = orders.filter((o) => {
     const s = (o.status || "").toLowerCase();
-    return ["confirmed", "approved", "paid", "completed"].includes(s);
+    return ["shipped", "delivered"].includes(s);
   });
 
-  const cancelledOrders = orders.filter((o) => {
-    const s = (o.status || "").toLowerCase();
-    return ["cancelled", "rejected", "declined"].includes(s);
-  });
+  // Designer Net Earnings from Store Sales
+  const totalDesignerEarnings = storeSalesOrders.reduce((sum, o) => {
+    return sum + (Number(o.designer_earnings_cents || 0) / 100);
+  }, 0);
 
-  const totalSpendCents = orders.reduce(
-    (sum, o) => sum + Number(o.total || 0),
-    0
-  );
-
-  // Tab Filtering
-  const currentTabOrders =
-    activeTab === "pending"
-      ? pendingOrders
-      : activeTab === "confirmed"
-      ? confirmedOrders
-      : activeTab === "cancelled"
-      ? cancelledOrders
-      : orders;
+  // Filtered dataset based on tab
+  const currentTabOrders = (() => {
+    switch (activeTab) {
+      case "sales":
+        return storeSalesOrders;
+      case "in_production":
+        return inProductionOrders;
+      case "shipped":
+        return shippedOrders;
+      case "samples":
+        return sampleOrders;
+      default:
+        return orders;
+    }
+  })();
 
   // Search Filtering
   const filteredOrders = currentTabOrders.filter((o) => {
     if (!searchTerm.trim()) return true;
     const term = searchTerm.toLowerCase();
-    const maskedCode = getMaskedCode(o.id, "ORD").toLowerCase();
+    const orderCode = (o.order_number || getMaskedCode(o.id, "ORD")).toLowerCase();
+    const customer = (o.customer_name || "").toLowerCase();
     const productTitles = (o.items || [])
-      .map((it) => (it.product || "").toLowerCase())
+      .map((it) => (it.product_title || it.product || "").toLowerCase())
       .join(" ");
 
-    return maskedCode.includes(term) || productTitles.includes(term);
+    return orderCode.includes(term) || customer.includes(term) || productTitles.includes(term);
   });
 
-  // Pagination calculation
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
   const paginatedOrders = filteredOrders.slice(
     (currentPage - 1) * PAGE_SIZE,
@@ -144,14 +155,37 @@ export default function SupplierOrders() {
   const renderStatusBadge = (status) => {
     const s = String(status || "pending").toLowerCase();
     switch (s) {
-      case "confirmed":
-      case "approved":
-      case "paid":
+      case "in_printing":
+      case "printing":
+      case "processing":
+        return (
+          <Badge className="bg-amber-100 text-amber-800 border-amber-300 font-bold gap-1.5 px-2.5 py-0.5 text-xs animate-pulse">
+            <Printer className="w-3.5 h-3.5 text-amber-600" />
+            In Printing
+          </Badge>
+        );
+      case "shipped":
+        return (
+          <Badge className="bg-blue-100 text-blue-800 border-blue-300 font-bold gap-1.5 px-2.5 py-0.5 text-xs">
+            <Truck className="w-3.5 h-3.5 text-blue-600" />
+            Shipped
+          </Badge>
+        );
+      case "delivered":
       case "completed":
         return (
           <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 font-bold gap-1.5 px-2.5 py-0.5 text-xs">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-            Approved & Unlocked
+            Delivered
+          </Badge>
+        );
+      case "confirmed":
+      case "approved":
+      case "paid":
+        return (
+          <Badge className="bg-indigo-100 text-indigo-800 border-indigo-300 font-bold gap-1.5 px-2.5 py-0.5 text-xs">
+            <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600" />
+            Confirmed
           </Badge>
         );
       case "cancelled":
@@ -160,15 +194,16 @@ export default function SupplierOrders() {
         return (
           <Badge className="bg-rose-100 text-rose-800 border-rose-300 font-bold gap-1.5 px-2.5 py-0.5 text-xs">
             <XCircle className="w-3.5 h-3.5 text-rose-600" />
-            Order Declined
+            Cancelled
           </Badge>
         );
       case "pending":
+      case "placed":
       default:
         return (
-          <Badge className="bg-amber-100 text-amber-800 border-amber-300 font-bold gap-1.5 px-2.5 py-0.5 text-xs animate-pulse">
-            <Clock className="w-3.5 h-3.5 text-amber-600" />
-            Awaiting Approval
+          <Badge className="bg-slate-100 text-slate-700 border-slate-300 font-bold gap-1.5 px-2.5 py-0.5 text-xs">
+            <Clock className="w-3.5 h-3.5 text-slate-500" />
+            Pending
           </Badge>
         );
     }
@@ -176,152 +211,102 @@ export default function SupplierOrders() {
 
   return (
     <div className="w-full space-y-5 animate-in fade-in duration-300 pb-12">
-      {/* Top Enterprise Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-xs">
-            <ShoppingBag className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-indigo-600">
-              <span>Creator Studio Sourcing</span>
-              <span className="text-slate-300">•</span>
-              <span className="text-slate-500">Procurement Orders</span>
-            </div>
-            <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 leading-tight">
-              Garment Purchase & Production Orders
-            </h1>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2.5">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchOrders}
-            disabled={loading}
-            className="h-8 gap-1.5 border-slate-200 shadow-2xs hover:bg-slate-50 rounded-lg text-xs"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-indigo-600" : ""}`} />
-            Refresh
-          </Button>
-
-          <Button
-            onClick={() => setLocation("/supplier/dashboard")}
-            className="h-8 gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs"
-          >
-            <Package className="w-3.5 h-3.5" />
-            Browse Blank Catalog
-          </Button>
-        </div>
-      </div>
-
       {/* KPI Overview Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* KPI 1: Total Orders */}
+        {/* KPI 1: Net Earnings */}
+        <Card className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50/70 to-white shadow-xs">
+          <CardHeader className="p-4 pb-1.5 flex flex-row items-center justify-between space-y-0">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">
+              Net Designer Profit
+            </span>
+            <div className="p-1.5 rounded-lg bg-emerald-600 text-white shadow-2xs">
+              <TrendingUp className="w-3.5 h-3.5" />
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="text-2xl font-black text-slate-900 font-mono">
+              ₹{totalDesignerEarnings.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <p className="text-[11px] text-emerald-700 mt-0.5 font-medium">
+              Accumulated earnings from customer sales
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* KPI 2: Customer Sales Orders */}
         <Card
-          onClick={() => setActiveTab("all")}
+          onClick={() => setActiveTab("sales")}
           className={cn(
             "cursor-pointer rounded-xl border transition-all duration-200 hover:shadow-md",
-            activeTab === "all"
-              ? "border-indigo-500 bg-indigo-50/60 shadow-xs ring-2 ring-indigo-300/40"
+            activeTab === "sales"
+              ? "border-indigo-500 bg-indigo-50/70 shadow-xs ring-2 ring-indigo-300/40"
               : "border-slate-200 bg-white"
           )}
         >
           <CardHeader className="p-4 pb-1.5 flex flex-row items-center justify-between space-y-0">
             <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-700">
-              Total Orders Placed
+              Retail Store Orders
             </span>
             <div className="p-1.5 rounded-lg bg-indigo-100 text-indigo-700">
               <ShoppingBag className="w-3.5 h-3.5" />
             </div>
           </CardHeader>
           <CardContent className="p-4 pt-0">
-            <div className="text-2xl font-black text-slate-900">{orders.length}</div>
+            <div className="text-2xl font-black text-slate-900">{storeSalesOrders.length}</div>
             <p className="text-[11px] text-slate-500 mt-0.5 font-medium">
-              Sample runs & wholesale batches
+              Orders placed by customers on your store
             </p>
           </CardContent>
         </Card>
 
-        {/* KPI 2: Pending Approval */}
+        {/* KPI 3: In Production */}
         <Card
-          onClick={() => setActiveTab("pending")}
+          onClick={() => setActiveTab("in_production")}
           className={cn(
             "cursor-pointer rounded-xl border transition-all duration-200 hover:shadow-md",
-            activeTab === "pending"
+            activeTab === "in_production"
               ? "border-amber-400 bg-amber-50/70 shadow-xs ring-2 ring-amber-300/40"
-              : pendingOrders.length > 0
-              ? "border-amber-300 bg-gradient-to-br from-amber-50/60 to-white shadow-xs"
               : "border-slate-200 bg-white"
           )}
         >
           <CardHeader className="p-4 pb-1.5 flex flex-row items-center justify-between space-y-0">
             <span className="text-[11px] font-bold uppercase tracking-wider text-amber-700">
-              Awaiting Approval
+              In Production
             </span>
-            <div
-              className={`p-1.5 rounded-lg ${
-                pendingOrders.length > 0
-                  ? "bg-amber-500 text-white animate-pulse"
-                  : "bg-amber-100 text-amber-600"
-              }`}
-            >
-              <Clock className="w-3.5 h-3.5" />
+            <div className="p-1.5 rounded-lg bg-amber-100 text-amber-700">
+              <Printer className="w-3.5 h-3.5" />
             </div>
           </CardHeader>
           <CardContent className="p-4 pt-0">
-            <div className="text-2xl font-black text-slate-900">{pendingOrders.length}</div>
-            <p className="text-[11px] text-amber-700 mt-0.5 font-medium">
-              {pendingOrders.length > 0 ? "Under review by provider" : "No orders awaiting action"}
+            <div className="text-2xl font-black text-slate-900">{inProductionOrders.length}</div>
+            <p className="text-[11px] text-slate-500 mt-0.5 font-medium">
+              Being printed by fulfillment partner
             </p>
           </CardContent>
         </Card>
 
-        {/* KPI 3: Approved Orders */}
+        {/* KPI 4: Dispatched & Delivered */}
         <Card
-          onClick={() => setActiveTab("confirmed")}
+          onClick={() => setActiveTab("shipped")}
           className={cn(
-            "cursor-pointer transition-all duration-200 rounded-xl border hover:shadow-md",
-            activeTab === "confirmed"
-              ? "border-emerald-500 bg-emerald-50/70 shadow-xs ring-2 ring-emerald-300/40"
+            "cursor-pointer rounded-xl border transition-all duration-200 hover:shadow-md",
+            activeTab === "shipped"
+              ? "border-blue-400 bg-blue-50/70 shadow-xs ring-2 ring-blue-300/40"
               : "border-slate-200 bg-white"
           )}
         >
           <CardHeader className="p-4 pb-1.5 flex flex-row items-center justify-between space-y-0">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">
-              Approved & Unlocked
+            <span className="text-[11px] font-bold uppercase tracking-wider text-blue-700">
+              Shipped / Delivered
             </span>
-            <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-600">
-              <CheckCircle2 className="w-3.5 h-3.5" />
+            <div className="p-1.5 rounded-lg bg-blue-100 text-blue-700">
+              <Truck className="w-3.5 h-3.5" />
             </div>
           </CardHeader>
           <CardContent className="p-4 pt-0">
-            <div className="text-2xl font-black text-slate-900">{confirmedOrders.length}</div>
-            <p className="text-[11px] text-emerald-700 mt-0.5 font-medium">
-              Ready for design customization
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* KPI 4: Total Spend */}
-        <Card
-          className="rounded-xl border border-slate-200 bg-white shadow-xs"
-        >
-          <CardHeader className="p-4 pb-1.5 flex flex-row items-center justify-between space-y-0">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
-              Procurement Volume
-            </span>
-            <div className="p-1.5 rounded-lg bg-slate-100 text-slate-700 font-bold text-xs">
-              ₹
-            </div>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="text-2xl font-black text-slate-900">
-              ₹{totalSpendCents.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </div>
+            <div className="text-2xl font-black text-slate-900">{shippedOrders.length}</div>
             <p className="text-[11px] text-slate-500 mt-0.5 font-medium">
-              Committed garment procurement
+              Dispatched with courier tracking
             </p>
           </CardContent>
         </Card>
@@ -343,53 +328,70 @@ export default function SupplierOrders() {
                   : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
               )}
             >
-              All Orders ({orders.length})
+              All ({orders.length})
             </Button>
 
             <Button
               size="sm"
-              variant={activeTab === "pending" ? "default" : "outline"}
-              onClick={() => setActiveTab("pending")}
+              variant={activeTab === "sales" ? "default" : "outline"}
+              onClick={() => setActiveTab("sales")}
               className={cn(
                 "h-8 rounded-lg text-xs font-bold px-3 gap-1.5",
-                activeTab === "pending"
+                activeTab === "sales"
+                  ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
+                  : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+              )}
+            >
+              <Store className="w-3.5 h-3.5" />
+              Customer Sales ({storeSalesOrders.length})
+            </Button>
+
+            <Button
+              size="sm"
+              variant={activeTab === "in_production" ? "default" : "outline"}
+              onClick={() => setActiveTab("in_production")}
+              className={cn(
+                "h-8 rounded-lg text-xs font-bold px-3 gap-1.5",
+                activeTab === "in_production"
                   ? "bg-amber-600 hover:bg-amber-700 text-white shadow-xs"
                   : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
               )}
             >
-              <Clock className="w-3.5 h-3.5" />
-              Pending ({pendingOrders.length})
+              <Printer className="w-3.5 h-3.5" />
+              In Production ({inProductionOrders.length})
             </Button>
 
             <Button
               size="sm"
-              variant={activeTab === "confirmed" ? "default" : "outline"}
-              onClick={() => setActiveTab("confirmed")}
+              variant={activeTab === "shipped" ? "default" : "outline"}
+              onClick={() => setActiveTab("shipped")}
               className={cn(
                 "h-8 rounded-lg text-xs font-bold px-3 gap-1.5",
-                activeTab === "confirmed"
-                  ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                activeTab === "shipped"
+                  ? "bg-blue-600 hover:bg-blue-700 text-white shadow-xs"
                   : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
               )}
             >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              Approved ({confirmedOrders.length})
+              <Truck className="w-3.5 h-3.5" />
+              Shipped ({shippedOrders.length})
             </Button>
 
-            <Button
-              size="sm"
-              variant={activeTab === "cancelled" ? "default" : "outline"}
-              onClick={() => setActiveTab("cancelled")}
-              className={cn(
-                "h-8 rounded-lg text-xs font-bold px-3 gap-1.5",
-                activeTab === "cancelled"
-                  ? "bg-rose-600 hover:bg-rose-700 text-white shadow-xs"
-                  : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-              )}
-            >
-              <XCircle className="w-3.5 h-3.5" />
-              Declined ({cancelledOrders.length})
-            </Button>
+            {sampleOrders.length > 0 && (
+              <Button
+                size="sm"
+                variant={activeTab === "samples" ? "default" : "outline"}
+                onClick={() => setActiveTab("samples")}
+                className={cn(
+                  "h-8 rounded-lg text-xs font-bold px-3 gap-1.5",
+                  activeTab === "samples"
+                    ? "bg-purple-600 hover:bg-purple-700 text-white shadow-xs"
+                    : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                )}
+              >
+                <Package className="w-3.5 h-3.5" />
+                Sample Batches ({sampleOrders.length})
+              </Button>
+            )}
           </div>
 
           <div className="relative w-full sm:w-72">
@@ -397,7 +399,7 @@ export default function SupplierOrders() {
             <Input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search by order ref, garment..."
+              placeholder="Search by order #, customer, garment..."
               className="pl-9 h-8 rounded-lg border-slate-200 text-xs bg-white"
             />
           </div>
@@ -408,7 +410,7 @@ export default function SupplierOrders() {
           {loading ? (
             <div className="p-16 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
               <RefreshCw className="w-6 h-6 animate-spin text-indigo-500" />
-              <p className="text-xs font-medium">Loading your orders...</p>
+              <p className="text-xs font-medium">Loading your designer orders...</p>
             </div>
           ) : filteredOrders.length === 0 ? (
             <div className="p-16 text-center text-slate-500 flex flex-col items-center justify-center gap-2.5">
@@ -419,50 +421,46 @@ export default function SupplierOrders() {
                 No orders match your filter
               </p>
               <p className="text-xs text-slate-400 max-w-sm">
-                Browse our print provider catalog to order garment blanks for your merchandise.
+                Publish your custom garment designs to your public storefront to start receiving customer orders!
               </p>
-              <Button
-                onClick={() => setLocation("/supplier/dashboard")}
-                className="mt-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded-xl h-8 font-semibold"
-              >
-                Browse Blank Garments
-              </Button>
             </div>
           ) : (
             <Table>
               <TableHeader className="bg-slate-50/70 border-b border-slate-200">
                 <TableRow>
                   <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 pl-6">
-                    Order Reference & Date
+                    Order Ref & Date
                   </TableHead>
                   <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600">
-                    Blank Garment Item
+                    Order Type & Buyer
                   </TableHead>
                   <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600">
-                    Order Tier & Units
+                    Garment Creation
                   </TableHead>
                   <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600">
-                    Total Amount
+                    Selling Price
+                  </TableHead>
+                  <TableHead className="font-bold text-xs uppercase tracking-wider text-emerald-700">
+                    Designer Margin
                   </TableHead>
                   <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600">
-                    Approval Status
+                    Fulfillment Status
                   </TableHead>
                   <TableHead className="text-right font-bold text-xs uppercase tracking-wider text-slate-600 pr-6">
-                    Actions
+                    Details
                   </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {paginatedOrders.map((o, idx) => {
-                  const status = (o.status || "pending").toLowerCase();
-                  const isApproved = [
-                    "confirmed",
-                    "approved",
-                    "paid",
-                    "completed"
-                  ].includes(status);
+                  const isCustomerOrder = Boolean(o.is_customer_order || o.customer_email || o.order_number);
+                  const orderCode = o.order_number || getMaskedCode(o.id || idx + 1, "ORD");
+                  const clientName = o.customer_name || (isCustomerOrder ? "Customer" : "Designer Sample Run");
                   const firstItem = o.items?.[0] || {};
-                  const isBulk = Number(firstItem.quantity || 0) > 10;
+                  const garmentTitle = firstItem.product_title || firstItem.product || "Custom Printed Tee";
+                  const totalUnits = (o.items || []).reduce((acc, it) => acc + Number(it.quantity || 1), 0);
+                  const orderTotal = o.total_cents ? o.total_cents / 100 : Number(o.total || 0);
+                  const designerEarnings = o.designer_earnings_cents ? o.designer_earnings_cents / 100 : 0;
 
                   return (
                     <TableRow key={o.id || idx} className="hover:bg-slate-50/70 transition-colors">
@@ -470,92 +468,103 @@ export default function SupplierOrders() {
                       <TableCell className="py-3.5 pl-6">
                         <div className="space-y-0.5">
                           <span className="font-bold text-slate-900 text-xs font-mono">
-                            {getMaskedCode(o.id || idx + 1, "ORD")}
+                            {orderCode}
                           </span>
                           <div className="text-[11px] text-slate-400 flex items-center gap-1">
                             <Calendar className="w-3 h-3 text-slate-400" />
                             <span>
-                              {o.created_at
-                                ? new Date(o.created_at).toLocaleDateString("en-IN", {
-                                    day: "numeric",
-                                    month: "short",
-                                    year: "numeric"
-                                  })
-                                : "Recent"}
+                              {o.created_at ? formatDate(o.created_at) : "Recent"}
                             </span>
                           </div>
                         </div>
                       </TableCell>
 
-                      {/* Blank Garment Item */}
+                      {/* Order Type & Buyer */}
                       <TableCell>
-                        <div className="space-y-0.5">
-                          <div className="font-bold text-xs text-slate-900">
-                            {firstItem.product || "Garment Blank"}
-                          </div>
-                          <div className="text-[11px] text-slate-500">
-                            Unit Price: ₹{(firstItem.unit_price || 0).toFixed(2)}/pc
+                        <div className="space-y-1">
+                          <span
+                            className={cn(
+                              "text-[10px] font-bold px-1.5 py-0.2 rounded border inline-block",
+                              isCustomerOrder
+                                ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                                : "bg-slate-100 text-slate-700 border-slate-200"
+                            )}
+                          >
+                            {isCustomerOrder ? "Storefront Sale" : "Sample Batch"}
+                          </span>
+                          <div className="font-bold text-xs text-slate-900 leading-tight">
+                            {clientName}
                           </div>
                         </div>
                       </TableCell>
 
-                      {/* Tier & Units */}
+                      {/* Garment Creation */}
                       <TableCell>
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={cn(
-                              "text-[10px] font-bold px-2 py-0.5 rounded-full border",
-                              isBulk
-                                ? "bg-purple-50 text-purple-700 border-purple-200"
-                                : "bg-blue-50 text-blue-700 border-blue-200"
-                            )}
-                          >
-                            {isBulk ? "Bulk Wholesale" : "Unit Sample"}
-                          </span>
-                          <span className="font-bold text-xs text-slate-900">
-                            {firstItem.quantity || 1} pcs
-                          </span>
+                        <div className="flex items-center gap-2.5">
+                          {firstItem.preview_url ? (
+                            <img
+                              src={firstItem.preview_url}
+                              alt="Garment Preview"
+                              className="w-10 h-10 object-contain rounded-lg border border-slate-200 bg-slate-50 shrink-0"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-lg border border-slate-200 bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
+                              <ShoppingBag className="w-4 h-4" />
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <div className="font-bold text-xs text-slate-900 truncate max-w-[170px]">
+                              {garmentTitle}
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
+                              {firstItem.color_hex && (
+                                <span
+                                  className="w-2.5 h-2.5 rounded-full border border-slate-300 inline-block shrink-0"
+                                  style={{ backgroundColor: firstItem.color_hex }}
+                                />
+                              )}
+                              <span>{firstItem.color_name || firstItem.color || "Standard"}</span>
+                              <span>•</span>
+                              <span className="font-semibold">{firstItem.size_label || firstItem.size || "M"}</span>
+                              <span>•</span>
+                              <span className="font-bold text-slate-700">{totalUnits} pc{totalUnits > 1 ? "s" : ""}</span>
+                            </div>
+                          </div>
                         </div>
                       </TableCell>
 
                       {/* Total Amount */}
                       <TableCell>
-                        <span className="font-extrabold text-sm text-slate-900 font-mono">
-                          ₹
-                          {(o.total || 0).toLocaleString("en-IN", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2
-                          })}
+                        <span className="font-bold text-xs text-slate-900 font-mono">
+                          ₹{orderTotal.toFixed(2)}
                         </span>
                       </TableCell>
 
-                      {/* Approval Status Badge */}
+                      {/* Designer Profit Margin */}
+                      <TableCell>
+                        {isCustomerOrder ? (
+                          <div className="flex items-center gap-1 text-emerald-700 font-black font-mono text-xs bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-lg w-fit">
+                            <span>+₹{designerEarnings.toFixed(2)}</span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 text-xs font-mono">-</span>
+                        )}
+                      </TableCell>
+
+                      {/* Status */}
                       <TableCell>{renderStatusBadge(o.status)}</TableCell>
 
-                      {/* Action Buttons */}
+                      {/* Actions */}
                       <TableCell className="text-right pr-6">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => setViewingOrder(o)}
-                            className="h-8 w-8 text-slate-500 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors"
-                            title="View Order Details"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </Button>
-
-                          {isApproved && firstItem?.product_id && (
-                            <Button
-                              size="sm"
-                              onClick={() => setLocation(`/supplier/product/${firstItem.product_id}`)}
-                              className="h-8 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold gap-1.5 shadow-2xs transition-colors"
-                            >
-                              <Paintbrush className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline">Design Studio</span>
-                            </Button>
-                          )}
-                        </div>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setViewingOrder(o)}
+                          className="h-8 w-8 text-slate-500 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors"
+                          title="View Order Details"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   );
@@ -565,7 +574,7 @@ export default function SupplierOrders() {
           )}
         </CardContent>
 
-        {/* Data Table Pagination Controls (Max 10 records per page) */}
+        {/* Pagination Controls */}
         {filteredOrders.length > 0 && (
           <div className="p-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/50">
             <span className="text-xs text-slate-500 font-medium">
@@ -620,114 +629,198 @@ export default function SupplierOrders() {
         )}
       </Card>
 
-      {/* Order Details Dialog Modal */}
+      {/* Designer Order Inspection Modal */}
       <Dialog open={!!viewingOrder} onOpenChange={(open) => !open && setViewingOrder(null)}>
-        <DialogContent className="rounded-2xl max-w-xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="rounded-2xl max-w-2xl max-h-[90vh] overflow-y-auto">
           {viewingOrder && (
             <div className="space-y-5">
               <DialogHeader>
                 <div className="flex items-center justify-between pr-4">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono font-bold text-lg text-slate-900">
-                      {getMaskedCode(viewingOrder.id, "ORD")}
+                    <span className="font-mono font-black text-lg text-slate-900">
+                      {viewingOrder.order_number || getMaskedCode(viewingOrder.id, "ORD")}
                     </span>
                     {renderStatusBadge(viewingOrder.status)}
                   </div>
                   <span className="text-xs text-slate-400">
-                    Placed: {new Date(viewingOrder.created_at).toLocaleString()}
+                    Placed: {formatDate(viewingOrder.created_at)}
                   </span>
                 </div>
-                <DialogTitle className="text-base text-slate-700 font-semibold mt-1">
-                  Procurement Order Specifications
+                <DialogTitle className="text-sm text-slate-700 font-semibold mt-1">
+                  Creator Storefront Order Details & Profit Split
                 </DialogTitle>
                 <DialogDescription className="text-xs text-slate-500">
-                  Detailed breakdown of purchased garment blanks and line items.
+                  Inspect retail buyer delivery specs, manufacturing partner assignment, and your net earnings.
                 </DialogDescription>
               </DialogHeader>
 
-              {/* Order Total Card */}
-              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 flex items-center justify-between">
-                <div>
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                    Fulfillment Provider
+              {/* Financial Split Highlights Card */}
+              {viewingOrder.is_customer_order && (
+                <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/50 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                  <div className="p-2 bg-white rounded-lg border border-emerald-100 shadow-2xs">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                      Retail Price
+                    </span>
+                    <span className="font-mono font-black text-sm text-slate-900 mt-0.5 block">
+                      ₹{((viewingOrder.total_cents || 0) / 100).toFixed(2)}
+                    </span>
                   </div>
-                  <div className="font-bold text-sm text-slate-900 mt-0.5">
-                    {viewingOrder.supplier?.name || "Assigned Print Provider"}
+
+                  <div className="p-2 bg-white rounded-lg border border-emerald-100 shadow-2xs">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                      Print Base Cost
+                    </span>
+                    <span className="font-mono font-bold text-sm text-slate-700 mt-0.5 block">
+                      ₹{((viewingOrder.provider_earnings_cents || 0) / 100).toFixed(2)}
+                    </span>
+                  </div>
+
+                  <div className="p-2 bg-white rounded-lg border border-emerald-100 shadow-2xs">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                      Platform Fee
+                    </span>
+                    <span className="font-mono font-medium text-sm text-slate-500 mt-0.5 block">
+                      ₹{((viewingOrder.platform_fee_cents || 0) / 100).toFixed(2)}
+                    </span>
+                  </div>
+
+                  <div className="p-2 bg-emerald-600 rounded-lg text-white shadow-2xs">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-100 block">
+                      Your Margin
+                    </span>
+                    <span className="font-mono font-black text-sm text-white mt-0.5 block">
+                      +₹{((viewingOrder.designer_earnings_cents || 0) / 100).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Partner Fulfillment & Customer Destination */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                    <Store className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Print Provider Partner</span>
+                  </div>
+                  <div className="font-bold text-sm text-slate-900">
+                    {viewingOrder.provider_name || "Official Print Provider Hub"}
+                  </div>
+                  <div className="text-xs text-slate-600 font-mono">
+                    {viewingOrder.provider_email || "Direct Facility Fulfillment"}
                   </div>
                 </div>
 
-                <div className="text-right">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                    Total Invoiced
+                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Customer & Delivery Destination</span>
                   </div>
-                  <div className="text-xl font-black text-slate-900 font-mono">
-                    ₹{(viewingOrder.total || 0).toFixed(2)}
+                  <div className="font-bold text-sm text-slate-900">
+                    {viewingOrder.customer_name || "Retail Customer"}
                   </div>
+                  {viewingOrder.shipping_address ? (
+                    <div className="text-xs text-slate-600">
+                      {[
+                        viewingOrder.shipping_address.city,
+                        viewingOrder.shipping_address.state,
+                        viewingOrder.shipping_address.country || "India"
+                      ]
+                        .filter(Boolean)
+                        .join(", ")}
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
-              {/* Items List */}
-              <div className="space-y-3">
-                <div className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                  Itemized Blanks
+              {/* Courier Tracking Details */}
+              {viewingOrder.tracking_info && (
+                <div className="p-4 rounded-xl border border-blue-200 bg-blue-50/60 flex items-center justify-between">
+                  <div className="space-y-1">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-blue-800 flex items-center gap-1.5">
+                      <Truck className="w-4 h-4 text-blue-600" />
+                      <span>Shipped with {viewingOrder.tracking_info.courier}</span>
+                    </div>
+                    <div className="text-sm font-mono font-bold text-slate-900">
+                      Tracking / AWB: {viewingOrder.tracking_info.tracking_number}
+                    </div>
+                  </div>
+
+                  {viewingOrder.tracking_info.tracking_url && (
+                    <a
+                      href={viewingOrder.tracking_info.tracking_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-2xs"
+                    >
+                      <span>Track Package</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  )}
                 </div>
-                <div className="divide-y divide-slate-100 border rounded-xl overflow-hidden bg-white">
+              )}
+
+              {/* Garment Items List */}
+              <div className="space-y-2">
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                  Custom Creations in this Order ({viewingOrder.items?.length || 0})
+                </div>
+                <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-white">
                   {viewingOrder.items?.map((it, idx) => (
-                    <div key={idx} className="p-4 space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-sm text-slate-900">
-                          {it.product}
-                        </span>
-                        <span className="font-bold text-sm text-slate-900 font-mono">
-                          ₹{(it.line_total || 0).toFixed(2)}
-                        </span>
+                    <div key={idx} className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                      <div className="flex items-center gap-3.5">
+                        {it.preview_url ? (
+                          <img
+                            src={it.preview_url}
+                            alt="Garment Preview"
+                            className="w-16 h-16 object-contain rounded-xl border border-slate-200 bg-slate-50 p-1"
+                          />
+                        ) : (
+                          <div className="w-16 h-16 rounded-xl border border-slate-200 bg-slate-100 flex items-center justify-center text-slate-400">
+                            <ShoppingBag className="w-6 h-6" />
+                          </div>
+                        )}
+                        <div>
+                          <div className="font-bold text-sm text-slate-900">
+                            {it.product_title || it.product || "Custom Apparel"}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 mt-1">
+                            <span className="font-semibold text-slate-900">Qty: {it.quantity}</span>
+                            <span>•</span>
+                            <span className="font-semibold">Size: {it.size_label || it.size || "M"}</span>
+                            <span>•</span>
+                            <span className="inline-flex items-center gap-1">
+                              {it.color_hex && (
+                                <span
+                                  className="w-2.5 h-2.5 rounded-full border border-slate-300"
+                                  style={{ backgroundColor: it.color_hex }}
+                                />
+                              )}
+                              <span>Color: {it.color_name || it.color || "Standard"}</span>
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex flex-wrap items-center gap-4 text-xs text-slate-600">
-                        <div>
-                          Quantity: <strong>{it.quantity} pcs</strong>
+
+                      <div className="text-right sm:self-center">
+                        <div className="font-mono font-bold text-sm text-slate-900">
+                          ₹{(it.total_price_cents ? it.total_price_cents / 100 : (it.line_total || (it.unit_price || 0) * (it.quantity || 1))).toFixed(2)}
                         </div>
-                        <div>
-                          Rate: <strong>₹{(it.unit_price || 0).toFixed(2)}/pc</strong>
+                        <div className="text-[11px] text-slate-400">
+                          ₹{(it.unit_price_cents ? it.unit_price_cents / 100 : (it.unit_price || 0)).toFixed(2)} / pc
                         </div>
-                        {it.size && (
-                          <div>
-                            Size: <strong>{it.size}</strong>
-                          </div>
-                        )}
-                        {it.color && (
-                          <div>
-                            Color: <strong>{it.color?.name || it.color}</strong>
-                          </div>
-                        )}
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Actions Footer */}
-              <DialogFooter className="gap-2 sm:justify-between pt-2">
+              <DialogFooter className="pt-2">
                 <Button
-                  variant="outline"
                   onClick={() => setViewingOrder(null)}
-                  className="rounded-xl"
+                  className="rounded-xl text-xs bg-slate-900 hover:bg-slate-800 text-white w-full sm:w-auto"
                 >
                   Close
                 </Button>
-
-                {["confirmed", "approved", "paid", "completed"].includes(
-                  (viewingOrder.status || "").toLowerCase()
-                ) && viewingOrder.items?.[0]?.product_id && (
-                  <Button
-                    onClick={() =>
-                      setLocation(`/supplier/product/${viewingOrder.items[0].product_id}`)
-                    }
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs gap-1.5"
-                  >
-                    <Paintbrush className="w-4 h-4" />
-                    Open in Design Studio
-                  </Button>
-                )}
               </DialogFooter>
             </div>
           )}

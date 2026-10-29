@@ -732,11 +732,17 @@ export default function AdminClothes() {
     handleSave(false);
   }
 
-  // Calculate volume discount percentage if both prices are valid
-  const discountPercent =
-    Number(singlePrice) > 0 && Number(bulkPrice) > 0 && Number(bulkPrice) < Number(singlePrice)
-      ? Math.round(((Number(singlePrice) - Number(bulkPrice)) / Number(singlePrice)) * 100)
-      : null;
+  // Calculate volume discount percentage if both prices are valid (up to 2 decimal places, e.g. 2.23)
+  const discountPercent = (() => {
+    const s = Number(singlePrice);
+    const b = Number(bulkPrice);
+    if (s > 0 && b > 0 && b < s) {
+      const raw = ((s - b) / s) * 100;
+      const formatted = parseFloat(raw.toFixed(2));
+      return formatted > 0 ? formatted : null;
+    }
+    return null;
+  })();
 
   const tabList = [
     {

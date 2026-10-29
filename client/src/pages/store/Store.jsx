@@ -17,7 +17,8 @@ import {
   Twitter,
   Globe,
   Flame,
-  ArrowRight
+  ArrowRight,
+  Lock
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -96,12 +97,25 @@ function StoreCard({
 }) {
   const [, setLocation] = useLocation();
   const [activeSide, setActiveSide] = useState("front");
+  const [selectedColor, setSelectedColor] = useState(null);
+
   const pg = listing.preview_group;
-  const frontImg = pg?.front?.url || (listing.preview_asset_id ? `/api/assets/${listing.preview_asset_id}` : null) || listing.preview_url || "/templates/tshirt.png";
-  const backImg = pg?.back?.url || null;
+  const colorPreviews = listing?.preview_by_color || [];
+  const matchedColorPreview = selectedColor ? colorPreviews.find((cp) => {
+    if (selectedColor.id && cp.id && String(selectedColor.id) === String(cp.id)) return true;
+    if (selectedColor.hex && cp.hex && selectedColor.hex.toLowerCase() === cp.hex.toLowerCase()) return true;
+    if (selectedColor.name && cp.name && selectedColor.name.toLowerCase() === cp.name.toLowerCase()) return true;
+    return false;
+  }) : null;
+
+  const defaultFront = pg?.front?.url || (listing.preview_asset_id ? `/api/assets/${listing.preview_asset_id}` : null) || listing.preview_url || "/templates/tshirt.png";
+  const defaultBack = pg?.back?.url || null;
+
+  const frontImg = matchedColorPreview?.preview_front || matchedColorPreview?.front || defaultFront;
+  const backImg = matchedColorPreview?.preview_back || matchedColorPreview?.back || defaultBack;
   const currentImg = activeSide === "back" && backImg ? backImg : frontImg;
   const hasBothSides = Boolean(frontImg && backImg);
-  const productUrl = `/listing/id/${encodeId(listing.id)}${supplierId ? `?supplier=${encodeId(supplierId)}` : ""}`;
+  const productUrl = `/listing/id/${encodeId(listing.id)}${supplierId ? `?supplier=${encodeId(supplierId)}` : ""}${selectedColor?.hex ? `&color=${encodeURIComponent(selectedColor.hex)}` : ""}`;
   const handleCardClick = () => {
     setLocation(productUrl);
   };
@@ -190,6 +204,62 @@ function StoreCard({
             </p>}
         </div>
 
+        {/* Actual Available Colors & Sizes for this Design */}
+        {((listing.available_colors && listing.available_colors.length > 0) || (listing.available_sizes && listing.available_sizes.length > 0)) && (
+          <div className="space-y-2 pt-2 border-t border-slate-100">
+            {listing.available_colors && listing.available_colors.length > 0 && (
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-slate-400 font-bold uppercase text-[9px] tracking-wider">Colors:</span>
+                <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                  {listing.available_colors.slice(0, 6).map((c, i) => {
+                    const isSelected = selectedColor?.hex?.toLowerCase() === c.hex?.toLowerCase();
+                    return (
+                      <button
+                        key={c.id || i}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedColor(c);
+                        }}
+                        onMouseEnter={() => setSelectedColor(c)}
+                        className={`size-3.5 rounded-full border transition-all inline-block cursor-pointer ${
+                          isSelected ? "ring-2 ring-indigo-600 scale-125 border-white shadow-xs" : "border-slate-300 hover:scale-110"
+                        }`}
+                        style={{ backgroundColor: c.hex }}
+                        title={c.name}
+                      />
+                    );
+                  })}
+                  {listing.available_colors.length > 6 && (
+                    <span className="text-[10px] text-slate-400 font-semibold">
+                      +{listing.available_colors.length - 6}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {listing.available_sizes && listing.available_sizes.length > 0 && (
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-slate-400 font-bold uppercase text-[9px] tracking-wider">Sizes:</span>
+                <div className="flex items-center gap-1 flex-wrap justify-end">
+                  {listing.available_sizes.map((s, i) => {
+                    const label = typeof s === 'object' ? s.label : s;
+                    return (
+                      <span
+                        key={s.id || label || i}
+                        className="px-1.5 py-0.5 text-[9px] font-extrabold rounded bg-slate-100 text-slate-700 border border-slate-200"
+                      >
+                        {label}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2 mt-auto">
           <span className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl bg-slate-900 group-hover:bg-indigo-600 text-white text-xs font-extrabold transition-colors shadow-xs">
             <ShoppingBag className="size-3.5" />
@@ -238,16 +308,38 @@ export default function StorePage() {
       setToken(null);
     }
   }, []);
+
+  // Ensure store page always scrolls to the very top header upon opening or route changes
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    const topEl = document.getElementById("storefront-top");
+    if (topEl) {
+      topEl.scrollIntoView({ behavior: "instant", block: "start" });
+    }
+  }, [supplierId]);
+
+  const [isPrivate, setIsPrivate] = useState(false);
   useEffect(() => {
     (async () => {
       setLoading(true);
+      setIsPrivate(false);
       try {
-        const res = await fetch(`/api/store/${encodeURIComponent(supplierId)}`);
+        const storedToken = localStorage.getItem("token");
+        const res = await fetch(`/api/store/${encodeURIComponent(supplierId)}`, {
+          headers: storedToken ? { Authorization: `Bearer ${storedToken}` } : {}
+        });
+        const js = await res.json().catch(() => ({}));
+        if (res.status === 403 || js.is_private) {
+          setIsPrivate(true);
+          setStoreSettings(js.store_settings || {});
+          setDesigner(js.designer || null);
+          setListings([]);
+          return;
+        }
         if (!res.ok) {
           setListings([]);
           return;
         }
-        const js = await res.json();
         setListings(js.listings || []);
         setDesigner(js.designer || null);
         setStoreSettings(js.store_settings || {});
@@ -255,6 +347,8 @@ export default function StorePage() {
         setListings([]);
       } finally {
         setLoading(false);
+        // Force scroll to top header once products are loaded
+        window.scrollTo({ top: 0, left: 0, behavior: "instant" });
       }
     })();
   }, [supplierId]);
@@ -330,153 +424,121 @@ export default function StorePage() {
   const storeTagline = storeSettings?.tagline || "Exclusive custom apparel crafted with precision and printed on high quality blanks.";
   const announcementText = storeSettings?.announcement || "";
   const showAnnouncement = storeSettings?.show_announcement && announcementText;
-  return <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+
+  if (isPrivate && !isOwner) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-white text-center font-sans">
+        <div className="max-w-md w-full space-y-6 bg-slate-900 border border-slate-800 p-8 rounded-3xl shadow-2xl">
+          <div className="size-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
+            <Lock className="size-8" />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-xl font-bold tracking-tight">
+              {storeSettings?.store_name || "Private Storefront"}
+            </h1>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              This storefront is currently set to private or offline by the store owner. Please check back later or contact the creator.
+            </p>
+          </div>
+          <div className="pt-2">
+            <Button
+              onClick={() => setLocation(user?.role === "customer" ? "/customer/dashboard" : "/")}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold h-10 shadow-md shadow-indigo-600/20 cursor-pointer"
+            >
+              Browse Available Storefronts
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div id="storefront-top" className="min-h-screen bg-slate-50 flex flex-col font-sans">
+      {/* Private Store Preview Alert for Owner */}
+      {isOwner && storeSettings?.is_public === false && (
+        <div className="bg-amber-500/15 border-b border-amber-500/30 text-amber-900 px-4 py-2 text-xs font-semibold flex items-center justify-center gap-2">
+          <Lock className="size-3.5 text-amber-600 shrink-0" />
+          <span>Private Storefront Preview: This store is currently offline to customers and visitors. Only you can view this preview.</span>
+          <button
+            onClick={() => setLocation(user?.role === "admin" || user?.role === "print_provider" ? "/admin/customize-store" : "/supplier/customize-store")}
+            className="underline text-indigo-700 hover:text-indigo-900 font-bold ml-1 cursor-pointer"
+          >
+            Manage Privacy
+          </button>
+        </div>
+      )}
       {
     /* Redesigned Storefront Header & Brand Bar */
   }
       <Header
-    storeSettings={storeSettings}
-    storeTitle={storeTitle}
-    isOwner={isOwner}
-    onLogoUpdated={(newLogoUrl) => setStoreSettings((prev) => ({ ...prev, logo_url: newLogoUrl }))}
-    selectedCategory={selectedCategory}
-    onSelectCategory={setSelectedCategory}
-    searchQuery={searchQuery}
-    onSearchChange={setSearchQuery}
-  />
+        storeSettings={storeSettings}
+        storeTitle={storeTitle}
+        isOwner={isOwner}
+        onLogoUpdated={(newLogoUrl) => setStoreSettings((prev) => ({ ...prev, logo_url: newLogoUrl }))}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+      />
 
-      {
-    /* Top Announcement Bar if enabled by designer */
-  }
-      {showAnnouncement && <div className={`${themeStyle.announcementBg} py-2.5 px-4 text-center text-xs font-bold tracking-wide flex items-center justify-center gap-2 shadow-xs`}>
+      {/* Top Announcement Bar if enabled by designer */}
+      {showAnnouncement && (
+        <div className={`${themeStyle.announcementBg} py-2.5 px-4 text-center text-xs font-bold tracking-wide flex items-center justify-center gap-2 shadow-xs`}>
           <Flame className="size-4 animate-pulse" />
           <span>{announcementText}</span>
-        </div>}
-
-      {
-    /* Hero Storefront Banner */
-  }
-      <div className={`${themeStyle.heroBg} ${themeStyle.heroText} py-14 px-6 border-b ${themeStyle.heroBorder} relative overflow-hidden transition-all duration-300`}>
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-8 relative z-10">
-          
-          <div className="space-y-3 max-w-2xl">
-            <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-bold uppercase tracking-wider ${themeStyle.heroBadge}`}>
-              <Sparkles className="size-3.5" />
-              {designer?.is_provider ? 'Official Production Facility Store' : 'Verified Designer Collection'}
-            </div>
-            
-            <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight leading-tight">
-              {storeTitle}
-            </h1>
-            
-            <p className="text-slate-300 text-sm md:text-base leading-relaxed">
-              {storeTagline}
-            </p>
-
-            {
-    /* Social Links if configured */
-  }
-            {(storeSettings?.social_instagram || storeSettings?.social_twitter || storeSettings?.social_website) && <div className="flex items-center gap-3 pt-2">
-                {storeSettings.social_instagram && <a
-    href={storeSettings.social_instagram.startsWith("http") ? storeSettings.social_instagram : `https://instagram.com/${storeSettings.social_instagram.replace("@", "")}`}
-    target="_blank"
-    rel="noreferrer"
-    className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/10"
-    title="Instagram"
-  >
-                    <Instagram className="size-4" />
-                  </a>}
-                {storeSettings.social_twitter && <a
-    href={storeSettings.social_twitter.startsWith("http") ? storeSettings.social_twitter : `https://twitter.com/${storeSettings.social_twitter.replace("@", "")}`}
-    target="_blank"
-    rel="noreferrer"
-    className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/10"
-    title="Twitter / X"
-  >
-                    <Twitter className="size-4" />
-                  </a>}
-                {storeSettings.social_website && <a
-    href={storeSettings.social_website.startsWith("http") ? storeSettings.social_website : `https://${storeSettings.social_website}`}
-    target="_blank"
-    rel="noreferrer"
-    className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/10"
-    title="Portfolio / Website"
-  >
-                    <Globe className="size-4" />
-                  </a>}
-              </div>}
-          </div>
-
-          {
-    /* Right Action Console (Owner Controls) */
-  }
-          {isOwner && <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2.5">
-              <Button
-    onClick={() => setLocation(user?.role === "admin" || user?.role === "print_provider" ? "/admin/customize-store" : "/supplier/customize-store")}
-    className="px-4 py-2.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs backdrop-blur-md border border-white/20 shadow-md transition-all flex items-center justify-center gap-2"
-  >
-                <Paintbrush className="size-4" />
-                Redesign My Store
-              </Button>
-
-              <Button
-    onClick={() => setLocation(user?.role === "admin" || user?.role === "print_provider" ? "/admin/listings/create" : "/supplier/listings/create")}
-    className={`px-4 py-2.5 rounded-xl font-bold text-xs shadow-lg transition-all flex items-center justify-center gap-1.5 ${themeStyle.accentBtn}`}
-  >
-                <StoreIcon className="size-4" />
-                + Add New Listing
-              </Button>
-            </div>}
-
         </div>
-      </div>
+      )}
 
-      {
-    /* Filter and Search Bar */
-  }
+      {/* Filter and Search Bar */}
       <div className="border-b border-slate-200 bg-white shadow-xs">
         <div className="max-w-7xl mx-auto px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          
-          {
-    /* Categories */
-  }
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
-            {["all", "t-shirt", "hoodie", "sweatshirt"].map((cat) => <button
-    key={cat}
-    type="button"
-    onClick={() => setSelectedCategory(cat)}
-    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold capitalize transition-all whitespace-nowrap ${selectedCategory === cat ? "bg-indigo-600 text-white shadow-xs" : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900"}`}
-  >
-                {cat === "all" ? "All Pieces" : cat}
-              </button>)}
+          {/* Left: Product count or Owner Actions */}
+          <div className="flex items-center gap-3">
+            {isOwner && (
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => setLocation(user?.role === "admin" || user?.role === "print_provider" ? "/admin/customize-store" : "/supplier/customize-store")}
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition-all flex items-center gap-1.5 border border-slate-200"
+                >
+                  <Paintbrush className="size-3.5 text-indigo-600" />
+                  <span>Redesign Store</span>
+                </Button>
+                <Button
+                  onClick={() => setLocation(user?.role === "admin" || user?.role === "print_provider" ? "/admin/listings/create" : "/supplier/listings/create")}
+                  className="px-3.5 py-1.5 rounded-xl font-bold text-xs text-white shadow-xs bg-indigo-600 hover:bg-indigo-700 transition-all flex items-center gap-1.5"
+                >
+                  <StoreIcon className="size-3.5" />
+                  <span>+ Add New Listing</span>
+                </Button>
+              </div>
+            )}
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              {filteredListings.length} {filteredListings.length === 1 ? "Product" : "Products"}
+            </span>
           </div>
 
-          {
-    /* Search & Sort Controls */
-  }
+          {/* Search & Sort Controls */}
           <div className="flex items-center gap-3">
             <div className="relative flex-1 sm:w-64">
               <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
-    type="text"
-    placeholder="Search storefront..."
-    value={searchQuery}
-    onChange={(e) => setSearchQuery(e.target.value)}
-    className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-transparent bg-slate-50/50"
-  />
+                type="text"
+                placeholder="Search storefront..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-transparent bg-slate-50/50"
+              />
             </div>
 
             <select
-    value={sortBy}
-    onChange={(e) => setSortBy(e.target.value)}
-    className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
-  >
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
+            >
               <option value="newest">Newest First</option>
               <option value="price-asc">Price: Low to High</option>
               <option value="price-desc">Price: High to Low</option>
             </select>
           </div>
-
         </div>
       </div>
 
@@ -562,5 +624,6 @@ export default function StorePage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>;
+    </div>
+  );
 }

@@ -31,10 +31,16 @@ import SupplierRoute from '@/routes/SupplierRoute.jsx';
 
 import StorePage from '@/pages/Store/Store.jsx';
 import StoreProduct from '@/pages/Store/Product.jsx';
+import Checkout from '@/pages/Store/Checkout.jsx';
 
 import PortalAdminDashboard from '@/pages/Portal/Dashboard.jsx';
 import PortalAdminRequests from '@/pages/Portal/Requests.jsx';
+import PortalAdminFinancials from '@/pages/Portal/FinancialSettings.jsx';
 import PortalAdminRoute from '@/routes/PortalAdminRoute.jsx';
+
+import CustomerDashboard from '@/pages/Customer/Dashboard.jsx';
+import CustomerOrders from '@/pages/Customer/Orders.jsx';
+import CustomerRoute from '@/routes/CustomerRoute.jsx';
 
 export function AppRoutes() {
   return (
@@ -61,6 +67,9 @@ export function AppRoutes() {
       <Route path="/orders">
         {() => {
           const { user } = useAuth();
+          if (user?.role === 'customer') {
+            return <Redirect to="/customer/orders" />;
+          }
           if (user?.role === 'print_provider' || user?.role === 'admin') {
             return <Redirect to="/admin/orders" />;
           }
@@ -70,6 +79,9 @@ export function AppRoutes() {
       <Route path="/order">
         {() => {
           const { user } = useAuth();
+          if (user?.role === 'customer') {
+            return <Redirect to="/customer/orders" />;
+          }
           if (user?.role === 'print_provider' || user?.role === 'admin') {
             return <Redirect to="/admin/orders" />;
           }
@@ -97,10 +109,17 @@ export function AppRoutes() {
       <Route path="/store/:supplierId" component={StorePage} />
       <Route path="/listing/:slug" component={StoreProduct} />
       <Route path="/listing/id/:id" component={StoreProduct} />
+      <Route path="/checkout" component={Checkout} />
+
+      {/* Customer Protected Routes */}
+      <CustomerRoute path="/customer/dashboard" component={CustomerDashboard} />
+      <CustomerRoute path="/customer" component={CustomerDashboard} />
+      <CustomerRoute path="/customer/orders" component={CustomerOrders} />
 
       {/* Portal Admin Protected Routes */}
       <PortalAdminRoute path="/portal/dashboard" component={PortalAdminDashboard} />
       <PortalAdminRoute path="/portal/requests" component={PortalAdminRequests} />
+      <PortalAdminRoute path="/portal/financials" component={PortalAdminFinancials} />
 
       {/* 404 Catch-All */}
       <Route component={NotFound} />

@@ -1,6 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { DesignCanvas } from "@/components/common/DesignCanvas";
 import { Button } from "@/components/ui/button";
+import { formatDate } from "@/utils/dateFormatter";
 export default function SavedDesignCard({ sd, onView, onUse }) {
   const payload = sd?.version?.payload || sd?.version || {};
   const getPreview = () => {
@@ -75,7 +76,7 @@ export default function SavedDesignCard({ sd, onView, onUse }) {
           {getPreview()}
         </div>
         <div className="mb-2"><div className="font-semibold text-lg">Design #{sd?.design?.id}</div>
-        <div className="text-sm text-muted-foreground">Created: {new Date(sd?.version?.created_at || sd?.design?.createdAt || Date.now()).toLocaleString()}</div></div>
+        <div className="text-sm text-muted-foreground">Created: {formatDate(sd?.version?.created_at || sd?.design?.createdAt || Date.now())}</div></div>
         <div className="text-sm mb-3">Price: <strong>{formatPrice(sd?.version?.price_cents)}</strong></div>
         <div className="mt-4 flex gap-2">
           <Button onClick={() => onUse?.(sd)} className="px-3 py-1 text-sm">Use / Edit</Button>

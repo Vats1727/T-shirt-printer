@@ -10,16 +10,6 @@
     "createdAt": "2026-03-10T15:52:01.605Z"
   },
   {
-    "id": 7,
-    "name": "Print Provider One",
-    "email": "printproviderone@gmail.com",
-    "role": "print_provider",
-    "password": "$2b$10$Und93lboiEq3PcOMI.bJZuNclCNUh9RoyyWPpA8bRmrsqxtgv57de",
-    "status": "active",
-    "associated_provider_id": null,
-    "createdAt": "2026-03-10T16:11:39.048Z"
-  },
-  {
     "id": 8,
     "name": "Designerone",
     "email": "designerone@gmail.com",

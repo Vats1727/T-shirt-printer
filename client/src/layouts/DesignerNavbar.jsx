@@ -284,9 +284,9 @@ export function DesignerNavbar({ onRefresh, isRefreshing, onChangeProvider }) {
 
       {/* Sub-Navigation Strip (Modern Segmented Tab Control - Full Width Expanded) */}
       <div className="bg-white border-t border-slate-200/80 px-4 sm:px-6">
-        <div className="mx-auto max-w-7xl flex items-center justify-between overflow-x-auto no-scrollbar py-2 gap-3">
+        <div className="mx-auto max-w-7xl flex items-center justify-between overflow-x-auto custom-scrollbar pt-2 pb-2.5 px-0.5 gap-3">
           {/* Segmented Navigation Tabs Expanded */}
-          <nav className="w-full flex-1 flex items-center p-1.5 bg-slate-100/90 rounded-xl border border-slate-200/80 shadow-2xs gap-1.5 min-w-[750px]">
+          <nav className="w-full min-w-max flex-1 flex items-center p-1.5 bg-slate-100/90 rounded-xl border border-slate-200/80 shadow-2xs gap-1.5">
             {navLinks.map((link) => {
               const Icon = link.icon;
 
@@ -296,7 +296,7 @@ export function DesignerNavbar({ onRefresh, isRefreshing, onChangeProvider }) {
                   key={link.url}
                   href={link.url}
                   className={cn(
-                    'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer group text-center',
+                    'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer group text-center shrink-0',
                     link.active
                       ? 'bg-white text-indigo-600 font-bold shadow-xs border border-slate-200/80'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
