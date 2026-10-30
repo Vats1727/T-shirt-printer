@@ -108,6 +108,12 @@ export function DesignerNavbar({ onRefresh, isRefreshing, onChangeProvider }) {
       icon: ShoppingBag
     },
     {
+      title: 'Store Product Listings',
+      url: '/supplier/listings',
+      active: location === '/supplier/listings',
+      icon: Store
+    },
+    {
       title: 'Customize Storefront',
       url: '/supplier/customize-store',
       active: location.includes('customize-store') || location.includes('store-settings'),
@@ -116,7 +122,7 @@ export function DesignerNavbar({ onRefresh, isRefreshing, onChangeProvider }) {
     {
       title: 'Add New Listing',
       url: '/supplier/listings/create',
-      active: location.includes('/supplier/listings'),
+      active: location.includes('/supplier/listings/create'),
       icon: PlusCircle
     }
   ];
@@ -245,6 +251,14 @@ export function DesignerNavbar({ onRefresh, isRefreshing, onChangeProvider }) {
                 >
                   <ShoppingBag className="w-3.5 h-3.5 mr-2 text-violet-600" />
                   My Orders ({pendingOrdersCount})
+                </DropdownMenuItem>
+
+                <DropdownMenuItem
+                  onClick={() => setLocation('/supplier/listings')}
+                  className="cursor-pointer text-xs font-medium py-2 rounded-lg hover:bg-slate-100 text-slate-700"
+                >
+                  <Store className="w-3.5 h-3.5 mr-2 text-violet-600" />
+                  Store Product Listings
                 </DropdownMenuItem>
 
                 <DropdownMenuItem

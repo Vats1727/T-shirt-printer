@@ -10,4 +10,4 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS associated_provider_id INTEGER;
 -- 2. Update the role check constraint
 -- First drop the old one (naming convention is usually table_column_check or explicitly named in 0004)
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
-ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'supplier', 'portal_admin', 'print_provider', 'designer'));
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'supplier', 'portal_admin', 'print_provider', 'designer', 'customer'));

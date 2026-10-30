@@ -521,7 +521,7 @@ export default function DesignerDesigns() {
                     <Button
                       size="sm"
                       variant="outline"
-                      className="flex-1 h-7 text-[11px] font-semibold text-indigo-700 bg-indigo-50/60 hover:bg-indigo-100/80 border-indigo-200/60 rounded-lg shadow-2xs"
+                      className="flex-1 h-7 text-[11px] font-semibold text-indigo-700 bg-indigo-50/60 hover:bg-indigo-100/80 border-indigo-200/60 rounded-lg shadow-2xs cursor-pointer"
                       onClick={() => openPreview(d)}
                     >
                       <Eye className="w-3 h-3 mr-1 text-indigo-600" /> Preview
@@ -529,25 +529,11 @@ export default function DesignerDesigns() {
 
                     <Button
                       size="sm"
-                      className="flex-1 h-7 text-[11px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-2xs gap-1"
+                      className="flex-1 h-7 text-[11px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-2xs gap-1 cursor-pointer"
                       onClick={() => setLocation(`/admin/listings/create?designId=${d.id}`)}
                       title="Sell this designer creation in your store"
                     >
                       <Store className="w-3 h-3" /> Sell in Store
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-7 w-7 rounded-lg border-slate-200 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 shrink-0 shadow-2xs"
-                      onClick={() => copyDesignData(d)}
-                      title="Copy design specifications JSON"
-                    >
-                      {copiedId === d.id ? (
-                        <Check className="h-3 w-3 text-emerald-600" />
-                      ) : (
-                        <Copy className="h-3 w-3" />
-                      )}
                     </Button>
                   </div>
                 </div>

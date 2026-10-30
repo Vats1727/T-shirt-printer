@@ -36,6 +36,7 @@ router.patch('/profile', userController.updateProfile);
 // Listings
 router.get('/listings', supplierController.listListings);
 router.post('/listings', supplierController.createListing);
+router.patch('/listings/:id/status', supplierController.updateListingStatus);
 router.delete('/listings/:id', supplierController.deleteListing);
 
 // Store Settings

@@ -16,11 +16,13 @@ import {
   ArrowRight,
   TrendingUp,
   Eye,
+  EyeOff,
   RefreshCw,
   Building2,
   Users,
   Copy,
-  Check
+  Check,
+  Globe
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -45,6 +47,8 @@ export default function AdminListings() {
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'published' | 'unlisted'
+  const [togglingId, setTogglingId] = useState(null);
   const [activeSide, setActiveSide] = useState({}); // { [listingId]: 'front' | 'back' }
   const [listingToDelete, setListingToDelete] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
@@ -79,6 +83,56 @@ export default function AdminListings() {
     fetchListings();
   }, [token]);
 
+  const toggleListingStatus = async (listing) => {
+    const isCurrentlyPublished = listing.published !== false && listing.visibility !== 'unlisted';
+    const nextPublished = !isCurrentlyPublished;
+    const nextVisibility = nextPublished ? 'public' : 'unlisted';
+    setTogglingId(listing.id);
+
+    try {
+      const res = await fetch(`/api/admin/listings/${encodeURIComponent(listing.id)}/status`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: token ? `Bearer ${token}` : '',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          published: nextPublished,
+          visibility: nextVisibility
+        })
+      });
+
+      if (!res.ok) {
+        const txt = await res.text().catch(() => res.statusText || '');
+        throw new Error(txt || 'Failed to update product visibility');
+      }
+
+      const updated = await res.json();
+      setListings((prev) =>
+        prev.map((l) =>
+          Number(l.id) === Number(listing.id)
+            ? { ...l, ...updated, published: nextPublished, visibility: nextVisibility }
+            : l
+        )
+      );
+
+      toast({
+        title: nextPublished ? 'Product Published!' : 'Product Unlisted',
+        description: nextPublished
+          ? 'Product is now live on your official storefront for customers to order.'
+          : 'Product has been unlisted from your storefront and hidden from customer catalog.'
+      });
+    } catch (err) {
+      toast({
+        variant: 'destructive',
+        title: 'Status Update Failed',
+        description: err?.message || 'Could not update listing status.'
+      });
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
   const executeDeleteListing = async (id) => {
     try {
       const res = await fetch(`/api/admin/listings/${encodeURIComponent(id)}`, {
@@ -92,11 +146,20 @@ export default function AdminListings() {
         const txt = await res.text().catch(() => res.statusText || '');
         throw new Error(txt || 'Failed to remove listing from store');
       }
+      const data = await res.json().catch(() => ({}));
       setListings((prev) => prev.filter((x) => Number(x.id) !== Number(id)));
-      toast({
-        title: 'Listing Removed',
-        description: 'Product listing has been removed from your store.'
-      });
+
+      if (data?.archived) {
+        toast({
+          title: 'Listing Archived & Unlisted',
+          description: 'This product had existing past orders, so it has been safely unlisted and archived to preserve customer records.'
+        });
+      } else {
+        toast({
+          title: 'Listing Removed',
+          description: 'Product listing has been removed from your store.'
+        });
+      }
     } catch (err) {
       toast({
         title: 'Delete Failed',
@@ -119,8 +182,15 @@ export default function AdminListings() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  // Filter listings by query
+  // Filter listings by query and status
+  const publishedCount = listings.filter((l) => l.published !== false && l.visibility !== 'unlisted').length;
+  const unlistedCount = listings.filter((l) => l.published === false || l.visibility === 'unlisted').length;
+
   const filteredListings = listings.filter((l) => {
+    const isPub = l.published !== false && l.visibility !== 'unlisted';
+    if (statusFilter === 'published' && !isPub) return false;
+    if (statusFilter === 'unlisted' && isPub) return false;
+
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -234,18 +304,59 @@ export default function AdminListings() {
       </div>
 
       {/* Search & Refresh Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-2xs">
-        <div className="relative w-full sm:w-80">
-          <Search className="size-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <Input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by title, garment, designer..."
-            className="pl-9 h-9 text-xs rounded-xl bg-slate-50 border-slate-200 focus:bg-white"
-          />
+      <div className="flex flex-col lg:flex-row items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-2xs">
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
+          <div className="relative w-full sm:w-72">
+            <Search className="size-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by title, garment, designer..."
+              className="pl-9 h-9 text-xs rounded-xl bg-slate-50 border-slate-200 focus:bg-white"
+            />
+          </div>
+
+          {/* Status Filter Tabs */}
+          <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+            <button
+              type="button"
+              onClick={() => setStatusFilter('all')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap ${
+                statusFilter === 'all'
+                  ? 'bg-slate-900 text-white shadow-2xs'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              All ({listings.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('published')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                statusFilter === 'published'
+                  ? 'bg-emerald-600 text-white shadow-2xs'
+                  : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200/60'
+              }`}
+            >
+              <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Live in Store ({publishedCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('unlisted')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                statusFilter === 'unlisted'
+                  ? 'bg-amber-600 text-white shadow-2xs'
+                  : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200/60'
+              }`}
+            >
+              <EyeOff className="size-3" />
+              Unlisted ({unlistedCount})
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+        <div className="flex items-center gap-2 w-full lg:w-auto justify-end">
           <Badge variant="secondary" className="text-xs bg-slate-100 text-slate-700 font-semibold px-2.5 py-1">
             Showing {filteredListings.length} of {listings.length}
           </Badge>
@@ -312,6 +423,7 @@ export default function AdminListings() {
             const backImg = pg?.back?.url || null;
             const currentImg = side === 'back' && backImg ? backImg : frontImg;
             const hasBothSides = Boolean(frontImg && backImg);
+            const isLive = listing.published !== false && listing.visibility !== 'unlisted';
             const productStoreUrl = `/listing/id/${encodeId(listing.id)}?supplier=${encodeId(providerId)}`;
 
             return (
@@ -368,11 +480,19 @@ export default function AdminListings() {
                     </Badge>
                   </div>
 
-                  {/* Visibility Tag */}
-                  <div className="absolute bottom-3 left-3 z-10">
-                    <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-900/80 backdrop-blur-md text-white px-2 py-0.5 rounded-md">
-                      {listing.visibility || 'public'}
-                    </span>
+                  {/* Visibility & Status Badge */}
+                  <div className={`absolute z-10 ${hasBothSides ? 'bottom-3 left-3' : 'top-3 left-3'}`}>
+                    {isLive ? (
+                      <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold bg-emerald-600/90 text-white px-2.5 py-1 rounded-lg backdrop-blur-md shadow-xs">
+                        <span className="size-1.5 rounded-full bg-white animate-pulse" />
+                        Live in Store
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold bg-amber-500/95 text-white px-2.5 py-1 rounded-lg backdrop-blur-md shadow-xs">
+                        <EyeOff className="size-3" />
+                        Unlisted (Hidden)
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -405,21 +525,50 @@ export default function AdminListings() {
                   </div>
 
                   {/* Actions Bar */}
-                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2 mt-auto">
+                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-1.5 mt-auto">
                     <Button
                       size="sm"
                       onClick={() => window.open(productStoreUrl, '_blank')}
-                      className="flex-1 h-8 rounded-xl bg-slate-900 hover:bg-indigo-600 text-white text-xs font-bold transition-colors shadow-2xs gap-1.5"
+                      className="flex-1 h-8 px-2 rounded-xl bg-slate-900 hover:bg-indigo-600 text-white text-xs font-bold transition-colors shadow-2xs gap-1.5 truncate"
+                      title="Open Product in Storefront"
                     >
-                      <Eye className="size-3.5" />
-                      <span>View in Store</span>
+                      <ExternalLink className="size-3.5 shrink-0" />
+                      <span className="truncate">Store</span>
+                    </Button>
+
+                    {/* Toggle Unlist / Publish Button */}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => toggleListingStatus(listing)}
+                      disabled={togglingId === listing.id}
+                      className={`h-8 px-2.5 rounded-xl font-bold text-xs gap-1 transition-all ${
+                        isLive
+                          ? 'border-amber-200 text-amber-700 bg-amber-50/50 hover:bg-amber-100 hover:text-amber-800'
+                          : 'border-emerald-300 text-emerald-700 bg-emerald-50/70 hover:bg-emerald-100 hover:text-emerald-800'
+                      }`}
+                      title={isLive ? 'Unlist product from public store' : 'Publish product live to store'}
+                    >
+                      {togglingId === listing.id ? (
+                        <RefreshCw className="size-3.5 animate-spin" />
+                      ) : isLive ? (
+                        <>
+                          <EyeOff className="size-3.5 shrink-0" />
+                          <span>Unlist</span>
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="size-3.5 shrink-0" />
+                          <span>Publish</span>
+                        </>
+                      )}
                     </Button>
 
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => copyProductLink(listing)}
-                      className="h-8 px-2.5 rounded-xl border-slate-200 text-slate-600 hover:text-indigo-600"
+                      className="h-8 px-2 rounded-xl border-slate-200 text-slate-600 hover:text-indigo-600"
                       title="Copy Public Product Link"
                     >
                       {copiedId === listing.id ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
@@ -429,7 +578,7 @@ export default function AdminListings() {
                       size="sm"
                       variant="outline"
                       onClick={() => setListingToDelete(listing)}
-                      className="h-8 px-2.5 rounded-xl border-rose-200 text-rose-500 hover:bg-rose-50 hover:text-rose-700"
+                      className="h-8 px-2 rounded-xl border-rose-200 text-rose-500 hover:bg-rose-50 hover:text-rose-700"
                       title="Remove Listing from Store"
                     >
                       <Trash2 className="size-3.5" />

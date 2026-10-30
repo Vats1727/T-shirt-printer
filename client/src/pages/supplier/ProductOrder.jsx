@@ -12,7 +12,14 @@ import { toast } from "@/hooks/use-toast";
 import { decodeId } from "@/utils/idEncoder";
 export default function SupplierProductOrder() {
   const [match, params] = useRoute("/supplier/product/:id");
-  const id = params?.id ? decodeId(params.id) : null;
+  const rawParamId = params?.id;
+  const decodedParamId = rawParamId ? decodeId(rawParamId) : null;
+  const id = decodedParamId && decodedParamId !== 0 ? decodedParamId : rawParamId;
+
+  const searchParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+  const designQueryParam = searchParams.get("designId") || searchParams.get("edit");
+  const editDesignId = designQueryParam ? decodeId(designQueryParam) || designQueryParam : null;
+
   const [, setLocation] = useLocation();
   const { token, user } = useAuth();
   const [catalog, setCatalog] = useState(null);
@@ -103,15 +110,43 @@ export default function SupplierProductOrder() {
       }
       const data = await res.json();
       setCatalog(data);
-      let prod = data.products?.find((p) => Number(p.id) === Number(id));
-      if (!prod || !prod.colors || !prod.colors.length || !prod.sizes || !prod.sizes.length) {
+
+      let savedD = null;
+      if (editDesignId) {
         try {
-          const pRes = await fetch(`/api/supplier/products/${id}`, { headers: { Authorization: token ? `Bearer ${token}` : "" } });
-          if (pRes.ok) {
-            const singleProd = await pRes.json();
-            prod = { ...prod, ...singleProd };
+          const dRes = await fetch(`/api/designs/${editDesignId}`, {
+            headers: { Authorization: token ? `Bearer ${token}` : "" }
+          });
+          if (dRes.ok) {
+            savedD = await dRes.json();
+            console.debug("SupplierProductOrder: preloading saved design", savedD);
+            setSavedDesignId(Number(savedD.id));
           }
-        } catch (e) {}
+        } catch (dErr) {
+          console.error("Failed to load design for editing", dErr);
+        }
+      }
+
+      let prod = data.products?.find((p) =>
+        Number(p.id) === Number(id) ||
+        p.slug === String(id) ||
+        p.slug === String(rawParamId) ||
+        String(p.id) === String(id) ||
+        (savedD?.product_id && Number(p.id) === Number(savedD.product_id)) ||
+        (savedD?.product && p.slug === savedD.product)
+      );
+
+      if (!prod || !prod.colors || !prod.colors.length || !prod.sizes || !prod.sizes.length) {
+        const prodLookupId = id || savedD?.product_id;
+        if (prodLookupId) {
+          try {
+            const pRes = await fetch(`/api/supplier/products/${prodLookupId}`, { headers: { Authorization: token ? `Bearer ${token}` : "" } });
+            if (pRes.ok) {
+              const singleProd = await pRes.json();
+              prod = { ...prod, ...singleProd };
+            }
+          } catch (e) {}
+        }
       }
       console.debug("SupplierProductOrder: loaded product", prod);
       setProduct(prod || null);
@@ -137,27 +172,27 @@ export default function SupplierProductOrder() {
       let frontDesign = null;
       let backDesign = null;
 
-      if (Array.isArray(prod.designs)) {
+      if (Array.isArray(prod?.designs)) {
         frontDesign = prod.designs.find((d) => d && (d.side || "").toLowerCase() === "front") || prod.designs[0] || null;
         backDesign = prod.designs.find((d) => d && (d.side || "").toLowerCase() === "back") || (prod.designs.length > 1 ? prod.designs[1] : null);
-      } else if (prod.designs && typeof prod.designs === "object") {
+      } else if (prod?.designs && typeof prod.designs === "object") {
         frontDesign = prod.designs.front || null;
         backDesign = prod.designs.back || null;
       }
 
-      if (!frontDesign && (prod.front_image || prod.image)) {
-        frontDesign = { image: prod.front_image || prod.image, side: "front" };
+      if (!frontDesign && (prod?.front_image || prod?.image)) {
+        frontDesign = { image: prod?.front_image || prod?.image, side: "front" };
       }
-      if (!backDesign && prod.back_image) {
-        backDesign = { image: prod.back_image, side: "back" };
+      if (!backDesign && prod?.back_image) {
+        backDesign = { image: prod?.back_image, side: "back" };
       }
-      if (!frontDesign && prod.designs_list && prod.designs_list[0]) {
+      if (!frontDesign && prod?.designs_list && prod.designs_list[0]) {
         frontDesign = prod.designs_list[0];
       }
-      if (!backDesign && prod.designs_list && prod.designs_list[1]) {
+      if (!backDesign && prod?.designs_list && prod.designs_list[1]) {
         backDesign = prod.designs_list[1];
       }
-      const firstColorHex = prod.colors && prod.colors.length && data && data.colors ? data.colors.find((c) => Number(c.id) === Number(prod.colors[0]))?.hex : void 0;
+      const firstColorHex = prod?.colors && prod.colors.length && data && data.colors ? data.colors.find((c) => Number(c.id) === Number(prod.colors[0]))?.hex : void 0;
       const pickDesignImage = (design) => {
         if (!design) return null;
         const candidates = [design?.image, design?.image_url, design?.image_src, design?.file_name, design?.filename, design?.image_data, design?.back_image];
@@ -167,28 +202,15 @@ export default function SupplierProductOrder() {
         }
         return null;
       };
-      const resolvedTemplate = frontDesign && (frontDesign.template || frontDesign.template_name) || backDesign && (backDesign.template || backDesign.template_name) || prod.template || void 0;
+      const resolvedTemplate = frontDesign && (frontDesign.template || frontDesign.template_name) || backDesign && (backDesign.template || backDesign.template_name) || prod?.template || void 0;
       const resolvedFrontImage = pickDesignImage(frontDesign);
       const resolvedBackImage = pickDesignImage(backDesign);
-      try {
-        console.debug("SupplierProductOrder: resolved images/templates (design-only)", { resolvedTemplate, resolvedFrontImage, resolvedBackImage, prodTemplate: prod.template, prodDesigns: prod.designs });
-      } catch (e) {
-      }
-      try {
-        const frontRaw = frontDesign;
-        const backRaw = backDesign;
-        const frontTemplateCandidate = frontDesign ? frontDesign.template || frontDesign.image || frontDesign.image_src || frontDesign.image_url || frontDesign.file_name || frontDesign.filename : void 0;
-        const backTemplateCandidate = backDesign ? backDesign.template || backDesign.image || backDesign.image_src || backDesign.image_url || backDesign.file_name || backDesign.filename : void 0;
-        console.debug("SupplierProductOrder: raw designs", { frontRaw, backRaw, frontTemplateCandidate, backTemplateCandidate, normalizedFront: normalizeImage(frontTemplateCandidate), normalizedBack: normalizeImage(backTemplateCandidate) });
-      } catch (e) {
-      }
+
       if (frontDesign) {
-        let img = pickDesignImage(frontDesign);
         setFrontState((prev) => ({
           ...prev,
           slogan: frontDesign.slogan || prev.slogan,
           image: null,
-          // prefer actual image data/url fields first, use 'template' name only as a fallback
           templateImage: normalizeImage(frontDesign.image || frontDesign.image_data || frontDesign.image_src || frontDesign.image_url || frontDesign.file_name || frontDesign.filename || frontDesign.template) || null,
           imageScale: frontDesign.image_scale ? Number(frontDesign.image_scale) : prev.imageScale,
           imageRotation: frontDesign.image_rotation ? Number(frontDesign.image_rotation) : prev.imageRotation,
@@ -196,26 +218,19 @@ export default function SupplierProductOrder() {
           textSize: frontDesign.text_size ? Number(frontDesign.text_size) : prev.textSize,
           textRotation: frontDesign.text_rotation ? Number(frontDesign.text_rotation) : prev.textRotation,
           textPosition: frontDesign.text_position || prev.textPosition,
-          template: resolvedTemplate || prod.template || prev.template,
-          // Do NOT apply admin default color to template/text here. Use admin default only for image tinting.
+          template: resolvedTemplate || prod?.template || prev.template,
           templateColor: frontDesign.template_color || frontDesign.templateColor || prev.templateColor,
           color: frontDesign.color || prev.color,
           imageTintColor: frontDesign.color || firstColorHex || prev.imageTintColor
         }));
-        try {
-          console.debug("SupplierProductOrder: front side resolved", { resolvedTemplate, frontDesign, templateImage: normalizeImage(frontDesign.template || frontDesign.image || frontDesign.image_src || frontDesign.image_url) || null });
-        } catch (e) {
-        }
       } else {
-        setFrontState((prev) => ({ ...prev, image: null }));
+        setFrontState((prev) => ({ ...prev, image: null, template: prod?.template || prev.template, templateColor: firstColorHex || prev.templateColor, imageTintColor: firstColorHex || prev.imageTintColor }));
       }
       if (backDesign) {
-        let img = pickDesignImage(backDesign);
         setBackState((prev) => ({
           ...prev,
           slogan: backDesign.slogan || prev.slogan,
           image: null,
-          // prefer actual image data/url fields first, use 'template' name only as a fallback
           templateImage: normalizeImage(backDesign.image || backDesign.image_data || backDesign.image_src || backDesign.image_url || backDesign.file_name || backDesign.filename || backDesign.template) || null,
           imageScale: backDesign.image_scale ? Number(backDesign.image_scale) : prev.imageScale,
           imageRotation: backDesign.image_rotation ? Number(backDesign.image_rotation) : prev.imageRotation,
@@ -223,34 +238,92 @@ export default function SupplierProductOrder() {
           textSize: backDesign.text_size ? Number(backDesign.text_size) : prev.textSize,
           textRotation: backDesign.text_rotation ? Number(backDesign.text_rotation) : prev.textRotation,
           textPosition: backDesign.text_position || prev.textPosition,
-          template: resolvedTemplate || prod.template || prev.template,
-          // Use admin default as a fallback for template and color on back side as well (so back preview matches front)
+          template: resolvedTemplate || prod?.template || prev.template,
           templateColor: backDesign.template_color || backDesign.templateColor || firstColorHex || prev.templateColor,
           color: backDesign.color || firstColorHex || prev.color,
           imageTintColor: backDesign.color || firstColorHex || prev.imageTintColor
         }));
-        try {
-          console.debug("SupplierProductOrder: back side resolved", { resolvedTemplate, backDesign, templateImage: normalizeImage(backDesign.template || backDesign.image || backDesign.image_src || backDesign.image_url) || null });
-        } catch (e) {
-        }
       } else {
-        setBackState((prev) => ({ ...prev, image: null }));
+        setBackState((prev) => ({ ...prev, image: null, template: prod?.template || prev.template, templateColor: firstColorHex || prev.templateColor, imageTintColor: firstColorHex || prev.imageTintColor }));
       }
-      if (!frontDesign && !backDesign) {
-        setFrontState((prev) => ({ ...prev, template: prod.template || prev.template, templateColor: firstColorHex || prev.templateColor, imageTintColor: firstColorHex || prev.imageTintColor, image: null, templateImage: null }));
-        setBackState((prev) => ({ ...prev, template: prod.template || prev.template, templateColor: firstColorHex || prev.templateColor, imageTintColor: firstColorHex || prev.imageTintColor, image: null, templateImage: null }));
-      }
-      setFrontState((prev) => ({ ...prev, template: prod.template || prev.template }));
-      setBackState((prev) => ({ ...prev, template: prod.template || prev.template }));
-      if (!frontDesign) {
-        setFrontState((prev) => ({ ...prev, image: null }));
-      }
-      if (!backDesign) {
-        setBackState((prev) => ({ ...prev, image: null }));
+
+      setFrontState((prev) => ({ ...prev, template: prod?.template || prev.template }));
+      setBackState((prev) => ({ ...prev, template: prod?.template || prev.template }));
+
+      // If preloading existing design, restore all custom artwork, slogan, colors, sizes and price
+      if (savedD) {
+        const version = savedD.version || (savedD.versions && savedD.versions[0]) || {};
+        const sides = Array.isArray(version.sides) ? version.sides : [];
+        const frontSide = sides.find((s) => (s.name || "").toLowerCase() === "front");
+        const backSide = sides.find((s) => (s.name || "").toLowerCase() === "back");
+        const meta = version.metadata || {};
+
+        const fText = frontSide?.layers?.find((l) => l.type === "text");
+        const fImg = frontSide?.layers?.find((l) => l.type === "image");
+        const bText = backSide?.layers?.find((l) => l.type === "text");
+        const bImg = backSide?.layers?.find((l) => l.type === "image");
+
+        const fGarmentColor = meta.featured_color?.hex || savedD.template_color || firstColorHex || "#ffffff";
+
+        const parseScale = (scaleVal, fallback = 25) => {
+          if (scaleVal === undefined || scaleVal === null) return fallback;
+          const num = Number(scaleVal);
+          if (isNaN(num)) return fallback;
+          return num <= 1 && num > 0 ? Math.round(num * 100) : Math.round(num);
+        };
+
+        const fArtwork = fImg?.asset?.dataUrl || fImg?.asset?.url || fImg?.url || (savedD.image ? normalizeImage(savedD.image) : null);
+        const bArtwork = bImg?.asset?.dataUrl || bImg?.asset?.url || bImg?.url || (savedD.back_image ? normalizeImage(savedD.back_image) : null);
+
+        setFrontState((prev) => ({
+          ...prev,
+          slogan: fText?.text !== undefined ? fText.text : (savedD.slogan || ""),
+          color: fText?.color || savedD.color || prev.color,
+          textSize: fText?.size ? Number(fText.size) : (savedD.text_size ? Number(savedD.text_size) : prev.textSize),
+          textRotation: fText?.rotation !== undefined ? Number(fText.rotation) : (savedD.text_rotation !== undefined ? Number(savedD.text_rotation) : prev.textRotation),
+          textPosition: fText?.position || savedD.text_position || prev.textPosition,
+          image: fArtwork,
+          imageScale: parseScale(fImg?.scale ?? savedD.image_scale, prev.imageScale),
+          imageRotation: fImg?.rotation !== undefined ? Number(fImg.rotation) : (savedD.image_rotation !== undefined ? Number(savedD.image_rotation) : prev.imageRotation),
+          imagePosition: fImg?.position || savedD.image_position || prev.imagePosition,
+          template: savedD.template || prod?.template || prev.template,
+          templateColor: fGarmentColor
+        }));
+
+        setBackState((prev) => ({
+          ...prev,
+          slogan: bText?.text !== undefined ? bText.text : (savedD.back_slogan || ""),
+          color: bText?.color || savedD.color || prev.color,
+          textSize: bText?.size ? Number(bText.size) : (savedD.back_text_size ? Number(savedD.back_text_size) : prev.textSize),
+          textRotation: bText?.rotation !== undefined ? Number(bText.rotation) : (savedD.back_text_rotation !== undefined ? Number(savedD.back_text_rotation) : prev.textRotation),
+          textPosition: bText?.position || savedD.back_text_position || prev.textPosition,
+          image: bArtwork,
+          imageScale: parseScale(bImg?.scale ?? savedD.back_image_scale, prev.imageScale),
+          imageRotation: bImg?.rotation !== undefined ? Number(bImg.rotation) : (savedD.back_image_rotation !== undefined ? Number(savedD.back_image_rotation) : prev.imageRotation),
+          imagePosition: bImg?.position || savedD.back_image_position || prev.imagePosition,
+          template: savedD.template || prod?.template || prev.template,
+          templateColor: fGarmentColor
+        }));
+
+        if (meta.selected_colors && Array.isArray(meta.selected_colors) && meta.selected_colors.length > 0) {
+          const cIds = meta.selected_colors.map((c) => Number(c.id || c)).filter(Boolean);
+          if (cIds.length > 0) setSelectedColors(cIds);
+        }
+        if (meta.featured_color) {
+          const featId = Number(meta.featured_color.id || meta.featured_color);
+          if (featId) setFeaturedColor(featId);
+        }
+        if (meta.selected_sizes && Array.isArray(meta.selected_sizes) && meta.selected_sizes.length > 0) {
+          const sIds = meta.selected_sizes.map((s) => Number(s.id || s)).filter(Boolean);
+          if (sIds.length > 0) setSelectedSizes(sIds);
+        }
+        if (savedD.price_cents) {
+          setPriceInput(Number(savedD.price_cents) / 100);
+        }
       }
     };
     load();
-  }, [id, token]);
+  }, [id, editDesignId, token]);
 
   const fetchPurchaseStatus = async (currentProd) => {
     const prodId = currentProd?.id || id;
@@ -320,7 +393,7 @@ export default function SupplierProductOrder() {
       name,
       layers: [
         ...state.slogan ? [{ type: "text", text: state.slogan, size: state.textSize, rotation: state.textRotation, position: state.textPosition, color: state.color }] : [],
-        ...state.image ? [{ type: "image", asset: { dataUrl: state.image }, scale: state.imageScale / 100, rotation: state.imageRotation, position: state.imagePosition }] : []
+        ...state.image ? [{ type: "image", url: state.image, asset: { url: state.image, dataUrl: state.image }, scale: state.imageScale / 100, rotation: state.imageRotation, position: state.imagePosition }] : []
       ]
     });
     const frontPreview = frontExportRef.current?.toDataURL?.("image/png") || null;
@@ -331,6 +404,10 @@ export default function SupplierProductOrder() {
       provider_id: (product?.owner_id ? Number(product.owner_id) : null) || (user?.associated_provider_id ? Number(user.associated_provider_id) : null),
       template: frontState.template || product?.template || "tshirt",
       templateColor: frontState.templateColor || "#ffffff",
+      image: frontState.image || null,
+      back_image: backState.image || null,
+      slogan: frontState.slogan || null,
+      back_slogan: backState.slogan || null,
       // convert rupees to paise
       price_cents: Math.round(Number(priceInput || 0) * 100),
       currency: "INR",
@@ -376,9 +453,12 @@ export default function SupplierProductOrder() {
         const b = backExportRef.current?.toDataURL?.("image/png") || null;
         return { front: f, back: b };
       };
-      const postDesign = async (payloadToSend) => {
-        const res2 = await fetch("/api/designs", {
-          method: "POST",
+      const postOrPutDesign = async (payloadToSend) => {
+        const isUpdate = Boolean(savedDesignId);
+        const url = isUpdate ? `/api/designs/${savedDesignId}` : "/api/designs";
+        const method = isUpdate ? "PUT" : "POST";
+        const res2 = await fetch(url, {
+          method,
           headers: {
             "Content-Type": "application/json",
             "Authorization": token ? `Bearer ${token}` : ""
@@ -387,7 +467,7 @@ export default function SupplierProductOrder() {
         });
         if (!res2.ok) {
           const txt = await res2.text().catch(() => "");
-          throw new Error("Failed to save design: " + (txt || res2.status));
+          throw new Error(`Failed to ${isUpdate ? "update" : "save"} design: ` + (txt || res2.status));
         }
         return await res2.json();
       };
@@ -420,8 +500,8 @@ export default function SupplierProductOrder() {
             }
           }
         };
-        const js2 = await postDesign(multiPayload);
-        const did2 = Number(js2.id || js2.designId || js2.design?.id || null) || null;
+        const js2 = await postOrPutDesign(multiPayload);
+        const did2 = Number(js2.id || js2.designId || js2.design?.id || savedDesignId || null) || null;
         if (did2) createdIds.push(did2);
         setFrontState((prev) => ({ ...prev, templateColor: originalFrontColor }));
         setBackState((prev) => ({ ...prev, templateColor: originalBackColor }));
@@ -429,38 +509,37 @@ export default function SupplierProductOrder() {
           localStorage.setItem(`supplier:product:${product?.id}:price`, String(priceInput || 0));
         } catch (e) {
         }
-        setMessage("Design saved successfully for " + createdIds.length + " colors!");
+        const successMsg = savedDesignId
+          ? "Design updated successfully for " + (selectedColors.length) + " colors!"
+          : "Design saved successfully for " + createdIds.length + " colors!";
+        setMessage(successMsg);
+        toast({
+          title: savedDesignId ? "Design Updated" : "Design Saved",
+          description: successMsg
+        });
         if (createdIds.length) setSavedDesignId(createdIds[0]);
-        setTimeout(() => setLocation("/supplier/dashboard"), 1500);
+        setTimeout(() => setLocation("/supplier/saved-designs"), 1200);
         return;
       }
-      const res = await fetch("/api/designs", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": token ? `Bearer ${token}` : ""
-        },
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        setError("Failed to save design: " + (txt || res.status));
-        return;
-      }
-      const js = await res.json();
+      const js = await postOrPutDesign(payload);
       try {
         localStorage.setItem(`supplier:product:${product?.id}:price`, String(priceInput || 0));
       } catch (e) {
       }
-      const did = Number(js.id || js.designId || js.design?.id || null) || null;
+      const did = Number(js.id || js.designId || js.design?.id || savedDesignId || null) || null;
       setSavedDesignId(did);
       if (js.versions && Array.isArray(js.versions)) {
         setVersions(js.versions);
       } else if (js.design && js.design.version) {
         setVersions([js.design.version]);
       }
-      setMessage("Design saved successfully! Redirecting...");
-      setTimeout(() => setLocation("/supplier/dashboard"), 1500);
+      const successMsg = savedDesignId ? "Design updated successfully! Redirecting..." : "Design saved successfully! Redirecting...";
+      setMessage(successMsg);
+      toast({
+        title: savedDesignId ? "Design Updated" : "Design Saved",
+        description: savedDesignId ? "Your custom garment changes have been saved." : "New design added to your library."
+      });
+      setTimeout(() => setLocation("/supplier/saved-designs"), 1200);
     } catch (e) {
       setError(e?.message || "Failed to save design");
     } finally {
@@ -493,14 +572,27 @@ export default function SupplierProductOrder() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setLocation("/supplier/dashboard")}
-            className="rounded-full hover:bg-primary/5 hover:text-primary transition-colors"
+            onClick={() => setLocation("/supplier/saved-designs")}
+            className="rounded-full hover:bg-primary/5 hover:text-primary transition-colors cursor-pointer"
           >
             <ChevronLeft className="size-6" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">{product?.name || "Product"}</h1>
-            <p className="text-sm text-muted-foreground">Customize and save your design for {product?.slug || ""}</p>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold tracking-tight">
+                {savedDesignId ? "Edit Custom Design" : (product?.name || "Product")}
+              </h1>
+              {savedDesignId && (
+                <Badge variant="secondary" className="bg-indigo-100 text-indigo-700 font-mono text-xs">
+                  #DSG-{savedDesignId}
+                </Badge>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {savedDesignId 
+                ? `Update custom artwork, slogan, colors and specs for ${product?.name || product?.slug || "garment"}`
+                : `Customize and save your design for ${product?.slug || ""}`}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -508,7 +600,7 @@ export default function SupplierProductOrder() {
             <Button
               onClick={() => setLocation(`/supplier/product/${params?.id || id}/order`)}
               variant="outline"
-              className="border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-xs gap-1.5 shadow-xs rounded-xl h-10 font-semibold"
+              className="border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-xs gap-1.5 shadow-xs rounded-xl h-10 font-semibold cursor-pointer"
             >
               <ShoppingCart className="size-4" />
               Order Blank Garments
@@ -517,14 +609,14 @@ export default function SupplierProductOrder() {
           <Button
             onClick={saveDesign}
             disabled={saving || selectedColors.length === 0}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-100 gap-2 min-w-[140px] shadow-sm rounded-xl h-10 font-semibold transition-all"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-100 gap-2 min-w-[140px] shadow-sm rounded-xl h-10 font-semibold transition-all cursor-pointer"
           >
             {saving ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
               <Save className="size-4" />
             )}
-            {saving ? "Saving..." : "Save Design"}
+            {saving ? (savedDesignId ? "Updating..." : "Saving...") : (savedDesignId ? "Update Design" : "Save Design")}
           </Button>
         </div>
       </div>

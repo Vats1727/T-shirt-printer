@@ -14,7 +14,9 @@ import {
   Check,
   Search,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  Copy,
+  Globe
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,11 +46,13 @@ export default function AdminCreateListing() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [retailPrice, setRetailPrice] = useState(699);
+  const [visibility, setVisibility] = useState('public');
   const [saving, setSaving] = useState(false);
 
   // Success dialog
   const [createdListing, setCreatedListing] = useState(null);
   const [successDialogOpen, setSuccessDialogOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const providerId = user?.id || user?.sub;
 
@@ -163,7 +167,7 @@ export default function AdminCreateListing() {
         title: title.trim(),
         description: description.trim(),
         design_key: selectedDesign.key,
-        visibility: 'public',
+        visibility: visibility || 'public',
         price: Number(retailPrice) || 29.99
       };
 
@@ -595,45 +599,134 @@ export default function AdminCreateListing() {
 
       {/* Success Modal */}
       <Dialog open={successDialogOpen} onOpenChange={setSuccessDialogOpen}>
-        <DialogContent className="max-w-md bg-white rounded-2xl p-6 text-center">
-          <div className="size-16 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-3 shadow-xs border border-emerald-100">
-            <CheckCircle2 className="size-9 stroke-[2.2]" />
-          </div>
+        <DialogContent className="sm:max-w-md p-0 overflow-hidden rounded-3xl border border-slate-200/90 shadow-2xl bg-white">
+          {/* Header Banner with celebration gradient */}
+          <div className="relative bg-gradient-to-br from-indigo-50/80 via-emerald-50/40 to-white px-6 pt-7 pb-5 text-center border-b border-slate-100">
+            <div className="mx-auto size-14 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-white flex items-center justify-center shadow-lg shadow-emerald-500/25 mb-3 ring-4 ring-emerald-50/80">
+              <CheckCircle2 className="size-8 stroke-[2.5]" />
+            </div>
 
-          <DialogHeader>
-            <DialogTitle className="text-xl font-extrabold text-slate-900">
-              Product Published Successfully!
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100/90 text-emerald-800 border border-emerald-200/90 mb-2">
+              <Sparkles className="size-3 text-emerald-600" />
+              <span>Published to Provider Store</span>
+            </div>
+
+            <DialogTitle className="text-2xl font-black text-slate-900 tracking-tight">
+              Product Published!
             </DialogTitle>
-            <DialogDescription className="text-xs text-slate-500 pt-1">
-              Your custom apparel is now live on your official Print Provider store and ready for customer purchases.
+            <DialogDescription className="text-slate-500 text-xs sm:text-sm max-w-xs mx-auto pt-1">
+              Your apparel product is now live in your official provider storefront and ready for customer purchases.
             </DialogDescription>
-          </DialogHeader>
-
-          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 my-3 text-left space-y-1">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Product Name</div>
-            <div className="text-sm font-extrabold text-slate-900 truncate">{title}</div>
-            <div className="text-xs text-emerald-700 font-bold">₹{Number(retailPrice).toFixed(2)} retail</div>
           </div>
 
-          <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setSuccessDialogOpen(false);
-                setLocation('/admin/listings');
-              }}
-              className="flex-1 h-10 rounded-xl text-xs font-bold"
-            >
-              Go to Store Listings
-            </Button>
-            <Button
-              onClick={() => window.open(singleProductUrl, '_blank')}
-              className="flex-1 h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold gap-1.5 shadow-sm shadow-indigo-600/20"
-            >
-              <Eye className="size-3.5" />
-              <span>View in Store</span>
-            </Button>
-          </DialogFooter>
+          <div className="p-6 space-y-4">
+            {/* Product Summary Card with Mockup Thumbnail */}
+            <div className="flex items-center gap-3.5 p-3 rounded-2xl bg-slate-50/90 border border-slate-200/80 hover:border-indigo-200 transition-all">
+              <div className="size-16 rounded-xl bg-white border border-slate-200/80 flex items-center justify-center overflow-hidden shrink-0 shadow-xs p-1">
+                <img
+                  src={selectedDesign?.front?.url || selectedDesign?.any?.url || '/templates/tshirt.png'}
+                  alt={title || "Product"}
+                  className="size-full object-contain"
+                />
+              </div>
+
+              <div className="flex-1 min-w-0 space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-sm font-bold text-slate-900 truncate">
+                    {title || "Untitled Product"}
+                  </h4>
+                  <span className="text-base font-black text-emerald-600 shrink-0">
+                    ₹{Number(retailPrice).toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <span className="px-2 py-0.5 rounded-md bg-slate-200/70 font-mono font-medium text-[11px] text-slate-700">
+                    {selectedDesign?.key || "design-custom"}
+                  </span>
+                  <span className="text-slate-300">•</span>
+                  <span className="font-semibold text-indigo-600">
+                    {(createdListing?.visibility || visibility) === 'public' ? 'Public Store' : 'Direct Link'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Direct Shareable Link */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-600 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Globe className="size-3.5 text-indigo-500" />
+                  Direct Product URL
+                </span>
+                <span className="text-[11px] text-slate-400 font-normal">Share with customers</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 min-w-0 bg-slate-50/90 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono text-slate-600 truncate select-all">
+                  {singleProductUrl}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    navigator.clipboard.writeText(singleProductUrl);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                    toast({ title: "Copied!", description: "Direct product link copied to clipboard." });
+                  }}
+                  className="shrink-0 h-9 px-3 gap-1.5 text-xs font-semibold rounded-xl border-slate-200 hover:bg-slate-100"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="size-3.5 text-emerald-600" />
+                      <span className="text-emerald-700">Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="size-3.5 text-slate-600" />
+                      <span>Copy</span>
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            {/* Structured Action Buttons */}
+            <div className="pt-2 space-y-2.5">
+              <Button
+                onClick={() => window.open(singleProductUrl, '_blank')}
+                className="w-full h-11 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/20 gap-2 text-sm transition-all hover:scale-[1.01] active:scale-[0.99]"
+              >
+                <Eye className="size-4" />
+                <span>View Live Product in Store</span>
+                <ExternalLink className="size-3.5 opacity-80" />
+              </Button>
+
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSuccessDialogOpen(false);
+                    setLocation('/admin/listings');
+                  }}
+                  className="h-10 rounded-xl text-xs font-bold text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-indigo-600 transition-colors"
+                >
+                  Go to Store Listings
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSuccessDialogOpen(false);
+                    setLocation('/admin/dashboard');
+                  }}
+                  className="h-10 rounded-xl text-xs font-bold text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-indigo-600 transition-colors"
+                >
+                  Admin Dashboard
+                </Button>
+              </div>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -52,6 +52,7 @@ export default function SupplierDashboard() {
   // Stats
   const [designsCount, setDesignsCount] = useState(0);
   const [ordersCount, setOrdersCount] = useState(0);
+  const [listingsCount, setListingsCount] = useState(0);
 
   useEffect(() => {
     fetch("/api/public/providers")
@@ -110,6 +111,16 @@ export default function SupplierDashboard() {
         const oData = await oRes.json();
         const oList = Array.isArray(oData) ? oData : oData?.orders || [];
         setOrdersCount(oList.length);
+      }
+
+      // Store Listings count
+      const lRes = await fetch("/api/supplier/listings", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (lRes.ok) {
+        const lData = await lRes.json();
+        const lList = Array.isArray(lData) ? lData : lData?.listings || [];
+        setListingsCount(lList.length);
       }
     } catch (e) {
       console.error("Failed to load designer stats", e);
@@ -272,26 +283,26 @@ export default function SupplierDashboard() {
           </CardContent>
         </Card>
 
-        {/* KPI 4: Public Merchandising Storefront */}
+        {/* KPI 4: Store Listings & Merchandising */}
         <Card
-          onClick={openStore}
+          onClick={() => setLocation("/supplier/listings")}
           className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50/70 to-white hover:border-emerald-400 hover:shadow-md transition-all duration-200 cursor-pointer group"
         >
           <CardHeader className="p-4 pb-1.5 flex flex-row items-center justify-between space-y-0">
             <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">
-              Storefront
+              Store Listings
             </span>
             <div className="p-2 rounded-lg bg-emerald-600 text-white shadow-xs group-hover:scale-105 transition-transform">
-              <ExternalLink className="w-4 h-4" />
+              <Store className="w-4 h-4" />
             </div>
           </CardHeader>
           <CardContent className="p-4 pt-0">
-            <div className="text-sm font-bold text-emerald-900 mt-1 flex items-center gap-1 group-hover:text-emerald-700">
-              Live & Open to Public
-              <ExternalLink className="w-3.5 h-3.5" />
+            <div className="text-2xl font-black text-slate-900 truncate">
+              {listingsCount}
             </div>
-            <p className="text-[11px] text-emerald-600/90 mt-1 font-medium">
-              Click to launch storefront preview
+            <p className="text-[11px] text-emerald-600 mt-0.5 font-medium flex items-center gap-1">
+              <span>Manage & unlist products</span>
+              <ChevronRight className="w-3.5 h-3.5" />
             </p>
           </CardContent>
         </Card>

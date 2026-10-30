@@ -86,6 +86,10 @@ export async function createB2BOrder({
       const lineCents = unitCents * q;
 
       let mockupUrl = it.custom_mockup_url || null;
+      let printFileUrl = it.print_file_url || null;
+      let printDimensions = it.print_dimensions || null;
+      const printMethod = it.print_method || 'DTF';
+
       if ((!mockupUrl || mockupUrl === '/templates/tshirt.png') && it.product_id) {
         try {
           const pfRes = await client.query('SELECT designs FROM products_full WHERE id = $1', [Number(it.product_id)]);
@@ -102,13 +106,36 @@ export async function createB2BOrder({
         }
       }
 
+      if (!printFileUrl) {
+        printFileUrl = mockupUrl || '/templates/tshirt.png';
+      }
+
+      if (!printDimensions) {
+        const isWhite = !it.color_name || ['white', 'pure white', 'standard'].includes(String(it.color_name).toLowerCase().trim());
+        printDimensions = {
+          width_in: 11.0,
+          height_in: 13.5,
+          width_cm: 27.9,
+          height_cm: 34.3,
+          top_offset_in: 2.5,
+          top_offset_cm: 6.35,
+          location: "Center Front Chest",
+          platen_type: "Adult Standard (14x16 in)",
+          resolution_dpi: 300,
+          underbase_required: !isWhite,
+          curing_temp_c: 160,
+          curing_time_sec: 15
+        };
+      }
+
       const itemRes = await client.query(
         `INSERT INTO b2b_designer_order_items (
           b2b_order_id, product_id, product_name, product_sku,
           color_name, color_hex, garment_size,
           custom_design_id, custom_mockup_url,
+          print_file_url, print_dimensions, print_method,
           quantity, unit_price_cents, line_total_cents, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW())
         RETURNING *`,
         [
           order.id,
@@ -120,6 +147,9 @@ export async function createB2BOrder({
           it.garment_size || 'L',
           it.custom_design_id ? Number(it.custom_design_id) : null,
           mockupUrl || it.custom_mockup_url || '/templates/tshirt.png',
+          printFileUrl,
+          JSON.stringify(printDimensions),
+          printMethod,
           q,
           unitCents,
           lineCents
@@ -187,7 +217,14 @@ export async function getB2BOrderById(orderId) {
               pf.designs->1->>'image',
               i.custom_mockup_url,
               '/templates/tshirt.png'
-            ) AS custom_mockup_url
+            ) AS custom_mockup_url,
+            COALESCE(
+              i.print_file_url,
+              NULLIF(i.custom_mockup_url, '/templates/tshirt.png'),
+              pf.designs->0->>'image',
+              '/templates/tshirt.png'
+            ) AS print_file_url,
+            COALESCE(i.print_method, 'DTF') AS print_method
      FROM b2b_designer_order_items i
      LEFT JOIN products_full pf ON pf.id = i.product_id
      WHERE i.b2b_order_id = $1
@@ -220,7 +257,15 @@ export async function listOrdersForDesigner(designerId) {
                    pf.designs->1->>'image',
                    i.custom_mockup_url,
                    '/templates/tshirt.png'
-                 )
+                 ),
+                 'print_file_url', COALESCE(
+                   i.print_file_url,
+                   NULLIF(i.custom_mockup_url, '/templates/tshirt.png'),
+                   pf.designs->0->>'image',
+                   '/templates/tshirt.png'
+                 ),
+                 'print_dimensions', i.print_dimensions,
+                 'print_method', COALESCE(i.print_method, 'DTF')
                ) ORDER BY i.id ASC
              ) FILTER (WHERE i.id IS NOT NULL), '[]'
            ) as items
@@ -259,7 +304,15 @@ export async function listOrdersForProvider(providerId) {
                    pf.designs->1->>'image',
                    i.custom_mockup_url,
                    '/templates/tshirt.png'
-                 )
+                 ),
+                 'print_file_url', COALESCE(
+                   i.print_file_url,
+                   NULLIF(i.custom_mockup_url, '/templates/tshirt.png'),
+                   pf.designs->0->>'image',
+                   '/templates/tshirt.png'
+                 ),
+                 'print_dimensions', i.print_dimensions,
+                 'print_method', COALESCE(i.print_method, 'DTF')
                ) ORDER BY i.id ASC
              ) FILTER (WHERE i.id IS NOT NULL), '[]'
            ) as items

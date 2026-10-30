@@ -76,36 +76,63 @@ export async function createDesign(input) {
       // Store any embedded assets
       for (const side of payload.sides || []) {
         for (const layer of side.layers || []) {
-          if (layer.type === 'image' && layer.asset?.dataUrl && typeof layer.asset.dataUrl === 'string') {
-            try {
-              const stored = await storageService.storeDataUrl(layer.asset.dataUrl, undefined, ownerId);
-              layer.asset = {
-                id: stored.id,
-                url: stored.url,
-                mime: stored.mime,
-                size: stored.size,
-                filename: stored.filename
-              };
-            } catch (e) {
-              console.error('design.model: asset store error:', e.message);
+          if (layer.type === 'image') {
+            const dataUrlOrUrl = layer.asset?.dataUrl || layer.url || layer.image;
+            if (typeof dataUrlOrUrl === 'string') {
+              if (dataUrlOrUrl.startsWith('data:')) {
+                try {
+                  const stored = await storageService.storeDataUrl(dataUrlOrUrl, undefined, ownerId);
+                  layer.asset = {
+                    id: stored.id,
+                    url: stored.url,
+                    mime: stored.mime,
+                    size: stored.size,
+                    filename: stored.filename
+                  };
+                  layer.url = stored.url;
+                } catch (e) {
+                  console.error('design.model: asset store error:', e.message);
+                }
+              } else {
+                // Already a normalized URL (e.g. /api/assets/... or /uploads/...)
+                layer.asset = {
+                  ...(layer.asset || {}),
+                  url: dataUrlOrUrl
+                };
+                layer.url = dataUrlOrUrl;
+              }
             }
           }
         }
       }
 
-      // Auto-store preview files if present in metadata
+      // Preserve isolated pure artwork in designs.image and designs.back_image
+      const frontLayerImg = (payload.sides?.find(s => s.name === 'front' || s.side === 'front')?.layers || []).find(l => l.type === 'image');
+      const backLayerImg = (payload.sides?.find(s => s.name === 'back' || s.side === 'back')?.layers || []).find(l => l.type === 'image');
+      const frontArtwork = input.image || frontLayerImg?.asset?.url || frontLayerImg?.url || null;
+      const backArtwork = input.back_image || backLayerImg?.asset?.url || backLayerImg?.url || null;
+      if (frontArtwork && frontArtwork !== design.image) {
+        await pool.query('UPDATE designs SET image = $1 WHERE id = $2', [frontArtwork, design.id]);
+        design.image = frontArtwork;
+      }
+      if (backArtwork && backArtwork !== design.back_image) {
+        await pool.query('UPDATE designs SET back_image = $1 WHERE id = $2', [backArtwork, design.id]);
+        design.back_image = backArtwork;
+      }
+
+      // Auto-store preview files into preview_front/preview_back (DO NOT OVERWRITE raw artwork in image/back_image)
       const meta = payload.metadata || {};
       if (meta.preview_front || meta.preview_back) {
         try {
           const previews = await storageService.storePreviewFiles(meta.preview_front, meta.preview_back, design.id, ownerId);
           if (previews.front) {
-            await pool.query('UPDATE designs SET image = $1 WHERE id = $2', [previews.front, design.id]);
-            design.image = previews.front;
+            await pool.query('UPDATE designs SET preview_front = $1 WHERE id = $2', [previews.front, design.id]);
+            design.preview_front = previews.front;
             meta.preview_front = previews.front;
           }
           if (previews.back) {
-            await pool.query('UPDATE designs SET back_image = $1 WHERE id = $2', [previews.back, design.id]);
-            design.back_image = previews.back;
+            await pool.query('UPDATE designs SET preview_back = $1 WHERE id = $2', [previews.back, design.id]);
+            design.preview_back = previews.back;
             meta.preview_back = previews.back;
           }
         } catch (e) {
@@ -235,29 +262,88 @@ export async function listDesignVersions(designId) {
 }
 
 export async function updateDesign(id, changes, userId) {
+  const designId = Number(id);
+  if (!designId) return null;
+
   if (pool) {
+    const validColumns = new Set([
+      'slogan', 'color', 'text_size', 'text_rotation', 'text_position',
+      'image', 'image_scale', 'image_rotation', 'image_position',
+      'product', 'template_color', 'template', 'back_slogan',
+      'back_image', 'back_image_scale', 'back_image_rotation', 'back_image_position',
+      'back_text_size', 'back_text_rotation', 'back_text_position',
+      'image_mask', 'back_image_mask', 'preview_front', 'preview_back',
+      'product_id', 'owner_id', 'provider_id', 'group_id', 'design_code'
+    ]);
+
+    // Handle version payload if present
+    const versionPayload = changes.version || changes.payload || null;
+    const meta = versionPayload?.metadata || changes.metadata || {};
+
+    // Auto-store preview files if present
+    if (meta.preview_front || meta.preview_back) {
+      try {
+        const previews = await storageService.storePreviewFiles(meta.preview_front, meta.preview_back, designId, userId);
+        if (previews.front) {
+          changes.preview_front = previews.front;
+          meta.preview_front = previews.front;
+        }
+        if (previews.back) {
+          changes.preview_back = previews.back;
+          meta.preview_back = previews.back;
+        }
+      } catch (e) {
+        // ignore preview error
+      }
+    }
+
     const fields = [];
     const values = [];
     let i = 1;
 
     for (const [key, val] of Object.entries(changes)) {
-      if (key === 'id' || key === 'created_at' || key === 'createdAt') continue;
+      if (key === 'id' || key === 'created_at' || key === 'createdAt' || key === 'version' || key === 'payload' || key === 'metadata') continue;
       const col = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+      if (!validColumns.has(col)) continue;
       fields.push(`${col} = $${i++}`);
       values.push(typeof val === 'object' && val !== null ? JSON.stringify(val) : val);
     }
 
-    if (fields.length === 0) return getDesign(id, userId);
-
-    values.push(Number(id));
+    values.push(designId);
     let whereClause = `WHERE id = $${i++}`;
     if (userId) {
       values.push(Number(userId));
       whereClause += ` AND (owner_id = $${i++} OR owner_id IS NULL)`;
     }
 
-    const res = await pool.query(`UPDATE designs SET ${fields.join(', ')} ${whereClause} RETURNING *`, values);
-    return res.rows[0] || null;
+    let updatedRow = null;
+    if (fields.length > 0) {
+      const res = await pool.query(`UPDATE designs SET ${fields.join(', ')} ${whereClause} RETURNING *`, values);
+      updatedRow = res.rows[0] || null;
+    } else {
+      updatedRow = await getDesign(designId, userId);
+    }
+
+    // Save/update design_versions record
+    if (versionPayload) {
+      try {
+        await pool.query(
+          `INSERT INTO design_versions (design_id, version_name, payload, price_cents, currency, processing_state, created_at)
+           VALUES ($1, $2, $3, $4, $5, 'pending', NOW())`,
+          [
+            designId,
+            versionPayload.versionName || 'supplier-edit',
+            JSON.stringify(versionPayload),
+            changes.price_cents || 0,
+            changes.currency || 'INR'
+          ]
+        );
+      } catch (vErr) {
+        console.warn('updateDesign: failed to record version:', vErr.message);
+      }
+    }
+
+    return updatedRow ? await getDesign(designId, userId) : null;
   }
 
   const designs = await readDesigns();
@@ -349,7 +435,25 @@ export async function deleteDesign(id, userId) {
     // 7. Delete design versions
     await pool.query('DELETE FROM design_versions WHERE design_id = $1', [designId]);
 
-    // 8. Delete the design record
+    // 8. Safely unbind/remove any listings created from this design
+    try {
+      await pool.query(
+        `UPDATE order_items SET listing_id = NULL WHERE listing_id IN (SELECT id FROM listings WHERE design_key = $1 OR design_key = $2)`,
+        [`design-${designId}`, String(designId)]
+      );
+      await pool.query(
+        `DELETE FROM listing_versions WHERE listing_id IN (SELECT id FROM listings WHERE design_key = $1 OR design_key = $2)`,
+        [`design-${designId}`, String(designId)]
+      );
+      await pool.query(
+        `DELETE FROM listings WHERE design_key = $1 OR design_key = $2`,
+        [`design-${designId}`, String(designId)]
+      );
+    } catch (lErr) {
+      console.warn('deleteDesign: note cleaning listings:', lErr.message);
+    }
+
+    // 9. Delete the design record
     const res = await pool.query('DELETE FROM designs WHERE id = $1', [designId]);
     return (res.rowCount || 0) > 0;
   }

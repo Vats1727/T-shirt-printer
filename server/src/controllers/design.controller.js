@@ -74,7 +74,8 @@ export async function updateDesign(req, res, next) {
     if (isNaN(id)) return res.status(400).json({ message: 'Invalid id' });
 
     const userId = req.user?.sub || req.user?.id || null;
-    const updated = await designModel.updateDesign(id, req.body, userId);
+    const isAdmin = req.user?.role === 'admin' || req.user?.role === 'provider';
+    const updated = await designModel.updateDesign(id, req.body, isAdmin ? null : userId);
     if (!updated) return res.status(404).json({ message: 'Design not found or update failed' });
 
     return res.json(updated);
@@ -89,7 +90,8 @@ export async function deleteDesign(req, res, next) {
     if (isNaN(id)) return res.status(400).json({ message: 'Invalid id' });
 
     const userId = req.user?.sub || req.user?.id || null;
-    const success = await designModel.deleteDesign(id, userId);
+    const isAdmin = req.user?.role === 'admin' || req.user?.role === 'provider';
+    const success = await designModel.deleteDesign(id, isAdmin ? null : userId);
     if (!success) return res.status(404).json({ message: 'Design not found or delete failed' });
 
     return res.json({ success: true });

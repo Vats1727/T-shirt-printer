@@ -636,7 +636,7 @@ export default function AdminDashboard() {
                       </div>
 
                       {/* Streamlined Actions Toolbar */}
-                      <div className="p-2 pt-1 flex items-center gap-1 border-t border-slate-100 bg-white">
+                      <div className="p-2 pt-1 flex items-center gap-1.5 border-t border-slate-100 bg-white">
                         <Button
                           size="sm"
                           disabled={blocked}
@@ -645,20 +645,6 @@ export default function AdminDashboard() {
                         >
                           <Edit3 className="w-3 h-3" />
                           Edit Blank
-                        </Button>
-
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          onClick={() => copyProductLink(p)}
-                          className="h-7 w-7 rounded-md border-slate-200 text-slate-600 hover:bg-slate-50 cursor-pointer"
-                          title="Copy Catalog Link"
-                        >
-                          {copiedId === p.id ? (
-                            <Check className="w-3 h-3 text-emerald-600" />
-                          ) : (
-                            <Copy className="w-3 h-3" />
-                          )}
                         </Button>
 
                         <Button

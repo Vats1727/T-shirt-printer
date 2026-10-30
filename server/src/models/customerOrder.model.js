@@ -37,9 +37,63 @@ export async function createOrder({
       const totalPriceCents = unitPriceCents * quantity;
       subtotalCents += totalPriceCents;
 
+      let resolvedDesignId = item.design_id ? Number(item.design_id) : null;
+      let printFileUrl = item.print_file_url || null;
+      let backPrintFileUrl = item.back_print_file_url || null;
+      let backPreviewUrl = item.back_preview_url || item.preview_back_url || null;
+
+      if ((!printFileUrl || !backPrintFileUrl) && (resolvedDesignId || item.listing_id)) {
+        try {
+          const dQuery = resolvedDesignId
+            ? `SELECT d.id, d.image, d.back_image FROM designs d WHERE d.id = $1`
+            : `SELECT d.id, d.image, d.back_image FROM listings l
+               JOIN designs d ON (d.id = substring(l.design_key from 'design-([0-9]+)')::int)
+               WHERE l.id = $1`;
+          const dParam = resolvedDesignId || Number(item.listing_id);
+          const dRow = await client.query(dQuery, [dParam]);
+          if (dRow.rows.length) {
+            resolvedDesignId = resolvedDesignId || dRow.rows[0].id;
+            if (!printFileUrl && dRow.rows[0].image) printFileUrl = dRow.rows[0].image;
+            if (!backPrintFileUrl && dRow.rows[0].back_image) backPrintFileUrl = dRow.rows[0].back_image;
+          }
+        } catch (e) {
+          // ignore lookup error
+        }
+      }
+
+      const standardFrontDimensions = item.print_dimensions || {
+        width_in: 11.0,
+        height_in: 13.5,
+        width_cm: 27.9,
+        height_cm: 34.3,
+        top_offset_in: 2.5,
+        top_offset_cm: 6.35,
+        location: "Center Front Chest",
+        platen_type: "Adult Standard (14x16 in)",
+        resolution_dpi: 300,
+        underbase_required: true,
+        curing_temp_c: 160,
+        curing_time_sec: 15
+      };
+
+      const standardBackDimensions = item.back_print_dimensions || {
+        width_in: 11.0,
+        height_in: 13.5,
+        width_cm: 27.9,
+        height_cm: 34.3,
+        top_offset_in: 3.0,
+        top_offset_cm: 7.62,
+        location: "Center Upper Back",
+        platen_type: "Adult Standard (14x16 in)",
+        resolution_dpi: 300,
+        underbase_required: true,
+        curing_temp_c: 160,
+        curing_time_sec: 15
+      };
+
       validatedItems.push({
         listingId: item.listing_id ? Number(item.listing_id) : null,
-        designId: item.design_id ? Number(item.design_id) : null,
+        designId: resolvedDesignId,
         productId: item.product_id ? Number(item.product_id) : null,
         title: item.title || item.product_title || 'Custom Apparel',
         colorId: item.color_id ? String(item.color_id) : null,
@@ -49,7 +103,13 @@ export async function createOrder({
         quantity,
         unitPriceCents,
         totalPriceCents,
-        previewUrl: item.preview_url || null
+        previewUrl: item.preview_url || null,
+        backPreviewUrl,
+        printFileUrl,
+        backPrintFileUrl,
+        printDimensions: standardFrontDimensions,
+        backPrintDimensions: standardBackDimensions,
+        printMethod: item.print_method || 'DTF'
       });
     }
 
@@ -101,6 +161,25 @@ export async function createOrder({
     const randSuffix = Math.floor(1000 + Math.random() * 9000);
     const orderNumber = `ORD-${dateStr}-${randSuffix}`;
 
+    // Initialize tracking timeline audit trail
+    const initialTimeline = [
+      {
+        status: 'placed',
+        title: 'Order Placed',
+        description: paymentStatus === 'paid' ? `Payment received via ${paymentMethod === 'cod' ? 'Cash on Delivery' : 'Razorpay'}` : 'Order placed, awaiting payment confirmation',
+        timestamp: new Date().toISOString()
+      }
+    ];
+    if (status === 'confirmed') {
+      initialTimeline.push({
+        status: 'confirmed',
+        title: 'Order Approved for Production',
+        description: 'Print provider accepted and queued the order for printing',
+        timestamp: new Date().toISOString()
+      });
+    }
+    const initialTrackingInfo = { timeline: initialTimeline };
+
     const orderRes = await client.query(
       `INSERT INTO orders (
         order_number, customer_id, customer_name, customer_email, customer_phone,
@@ -108,8 +187,8 @@ export async function createOrder({
         razorpay_order_id, razorpay_payment_id, razorpay_signature,
         currency, subtotal_cents, shipping_cost_cents, tax_cents, total_cents,
         designer_earnings_cents, provider_earnings_cents, platform_fee_cents,
-        shipping_address, notes, created_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,NOW(),NOW())
+        shipping_address, tracking_info, notes, created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,NOW(),NOW())
       RETURNING *`,
       [
         orderNumber,
@@ -134,6 +213,7 @@ export async function createOrder({
         providerEarningsCents,
         platformFeeCents,
         JSON.stringify(shippingAddress),
+        JSON.stringify(initialTrackingInfo),
         notes || null
       ]
     );
@@ -146,8 +226,10 @@ export async function createOrder({
         `INSERT INTO order_items (
           order_id, listing_id, design_id, product_id, product_title,
           color_id, color_name, color_hex, size_label, quantity,
-          unit_price_cents, total_price_cents, preview_url, created_at
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())`,
+          unit_price_cents, total_price_cents, preview_url,
+          print_file_url, print_dimensions, print_method,
+          back_print_file_url, back_preview_url, back_print_dimensions, created_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,NOW())`,
         [
           createdOrder.id,
           item.listingId,
@@ -161,7 +243,13 @@ export async function createOrder({
           item.quantity,
           item.unitPriceCents,
           item.totalPriceCents,
-          item.previewUrl
+          item.previewUrl,
+          item.printFileUrl,
+          JSON.stringify(item.printDimensions),
+          item.printMethod,
+          item.backPrintFileUrl,
+          item.backPreviewUrl,
+          JSON.stringify(item.backPrintDimensions)
         ]
       );
 
@@ -210,6 +298,52 @@ export async function createOrder({
   }
 }
 
+const ORDER_ITEMS_SELECT_QUERY = `
+  SELECT oi.*,
+         COALESCE(
+           oi.print_file_url,
+           d.image
+         ) AS print_file_url,
+         COALESCE(
+           oi.back_print_file_url,
+           d.back_image
+         ) AS back_print_file_url,
+         COALESCE(
+           oi.back_preview_url,
+           dv.payload->'metadata'->>'preview_back',
+           d.back_image
+         ) AS back_preview_url,
+         dv.payload AS design_version_payload,
+         d.slogan AS design_slogan,
+         d.color AS design_color,
+         d.text_size AS design_text_size,
+         d.text_rotation AS design_text_rotation,
+         d.text_position AS design_text_position,
+         d.image AS design_raw_image,
+         d.image_scale AS design_image_scale,
+         d.image_rotation AS design_image_rotation,
+         d.image_position AS design_image_position,
+         d.back_slogan AS design_back_slogan,
+         d.back_text_size AS design_back_text_size,
+         d.back_text_rotation AS design_back_text_rotation,
+         d.back_text_position AS design_back_text_position,
+         d.back_image AS design_raw_back_image,
+         d.back_image_scale AS design_back_image_scale,
+         d.back_image_rotation AS design_back_image_rotation,
+         d.back_image_position AS design_back_image_position
+  FROM order_items oi
+  LEFT JOIN listings l ON l.id = oi.listing_id
+  LEFT JOIN designs d ON (
+    d.id = oi.design_id
+    OR (l.design_key ~ '^design-[0-9]+$' AND d.id = substring(l.design_key from 'design-([0-9]+)')::int)
+  )
+  LEFT JOIN LATERAL (
+    SELECT payload FROM design_versions WHERE design_id = d.id ORDER BY id DESC LIMIT 1
+  ) dv ON true
+  WHERE oi.order_id = $1
+  ORDER BY oi.id ASC
+`;
+
 export async function getOrderById(orderId) {
   if (!pool) return null;
   const res = await pool.query(
@@ -227,7 +361,7 @@ export async function getOrderById(orderId) {
   if (!res.rows.length) return null;
   const order = res.rows[0];
 
-  const itemsRes = await pool.query('SELECT * FROM order_items WHERE order_id = $1 ORDER BY id ASC', [order.id]);
+  const itemsRes = await pool.query(ORDER_ITEMS_SELECT_QUERY, [order.id]);
   order.items = itemsRes.rows.map(formatOrderItem);
 
   const paymentsRes = await pool.query('SELECT * FROM payments WHERE order_id = $1 ORDER BY id DESC', [order.id]);
@@ -259,7 +393,7 @@ export async function listOrdersByCustomer(customerId) {
 
   const orders = [];
   for (const row of res.rows) {
-    const itemsRes = await pool.query('SELECT * FROM order_items WHERE order_id = $1 ORDER BY id ASC', [row.id]);
+    const itemsRes = await pool.query(ORDER_ITEMS_SELECT_QUERY, [row.id]);
     row.items = itemsRes.rows.map(formatOrderItem);
     orders.push(formatOrder(row));
   }
@@ -281,7 +415,7 @@ export async function listOrdersByDesigner(designerId) {
 
   const orders = [];
   for (const row of res.rows) {
-    const itemsRes = await pool.query('SELECT * FROM order_items WHERE order_id = $1 ORDER BY id ASC', [row.id]);
+    const itemsRes = await pool.query(ORDER_ITEMS_SELECT_QUERY, [row.id]);
     row.items = itemsRes.rows.map(formatOrderItem);
     orders.push(formatOrder(row));
   }
@@ -303,7 +437,7 @@ export async function listOrdersByProvider(providerId) {
 
   const orders = [];
   for (const row of res.rows) {
-    const itemsRes = await pool.query('SELECT * FROM order_items WHERE order_id = $1 ORDER BY id ASC', [row.id]);
+    const itemsRes = await pool.query(ORDER_ITEMS_SELECT_QUERY, [row.id]);
     row.items = itemsRes.rows.map(formatOrderItem);
     orders.push(formatOrder(row));
   }
@@ -324,7 +458,7 @@ export async function listAllOrdersForAdmin() {
 
   const orders = [];
   for (const row of res.rows) {
-    const itemsRes = await pool.query('SELECT * FROM order_items WHERE order_id = $1 ORDER BY id ASC', [row.id]);
+    const itemsRes = await pool.query(ORDER_ITEMS_SELECT_QUERY, [row.id]);
     row.items = itemsRes.rows.map(formatOrderItem);
     orders.push(formatOrder(row));
   }
@@ -333,17 +467,100 @@ export async function listAllOrdersForAdmin() {
 
 export async function updateOrderStatus(orderId, status, trackingInfo = null) {
   if (!pool) return null;
-  const updates = ['status = $2', 'updated_at = NOW()'];
-  const values = [orderId, status];
 
-  if (trackingInfo) {
-    updates.push(`tracking_info = $${values.length + 1}`);
-    values.push(JSON.stringify(trackingInfo));
+  // Retrieve existing tracking_info and order metadata
+  const existingRes = await pool.query(
+    'SELECT tracking_info, created_at, updated_at, payment_status, payment_method FROM orders WHERE id = $1',
+    [orderId]
+  );
+  if (!existingRes.rows.length) return null;
+  const existingRow = existingRes.rows[0];
+
+  let currentTracking = {};
+  try {
+    if (typeof existingRow.tracking_info === 'string') {
+      currentTracking = JSON.parse(existingRow.tracking_info || '{}');
+    } else if (existingRow.tracking_info && typeof existingRow.tracking_info === 'object') {
+      currentTracking = { ...existingRow.tracking_info };
+    }
+  } catch (e) {
+    currentTracking = {};
   }
 
+  // Ensure timeline array exists
+  let timeline = Array.isArray(currentTracking.timeline) ? [...currentTracking.timeline] : [];
+
+  // Seed with initial placed event if missing
+  if (timeline.length === 0) {
+    timeline.push({
+      status: 'placed',
+      title: 'Order Placed',
+      description: existingRow.payment_status === 'paid' ? `Payment received via ${existingRow.payment_method === 'cod' ? 'Cash on Delivery' : 'Razorpay'}` : 'Order placed, awaiting payment',
+      timestamp: existingRow.created_at ? new Date(existingRow.created_at).toISOString() : new Date().toISOString()
+    });
+  }
+
+  // Generate event details for the transition
+  const statusLabels = {
+    confirmed: {
+      title: 'Order Approved for Production',
+      description: 'Print provider accepted and queued the order for printing'
+    },
+    in_printing: {
+      title: 'Garment Printing Started',
+      description: 'Garment is on the production platen being printed and heat-cured'
+    },
+    processing: {
+      title: 'Garment Printing Started',
+      description: 'Garment is on the production platen being printed and heat-cured'
+    },
+    printing: {
+      title: 'Garment Printing Started',
+      description: 'Garment is on the production platen being printed and heat-cured'
+    },
+    shipped: {
+      title: trackingInfo?.courier ? `Dispatched via ${trackingInfo.courier}` : 'Dispatched via Courier',
+      description: trackingInfo?.tracking_number
+        ? `Tracking number: ${trackingInfo.tracking_number}`
+        : 'Garment packed and handed over to courier'
+    },
+    delivered: {
+      title: 'Order Delivered',
+      description: 'Garment package has been safely delivered to customer'
+    },
+    completed: {
+      title: 'Order Delivered',
+      description: 'Garment package has been safely delivered to customer'
+    },
+    cancelled: {
+      title: 'Order Cancelled',
+      description: 'Order was declined or cancelled'
+    }
+  };
+
+  const currentEventDef = statusLabels[status];
+  if (currentEventDef) {
+    const lastEvent = timeline[timeline.length - 1];
+    if (!lastEvent || lastEvent.status !== status) {
+      timeline.push({
+        status,
+        title: currentEventDef.title,
+        description: currentEventDef.description,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  // Merge any new courier fields provided in trackingInfo
+  const updatedTracking = {
+    ...currentTracking,
+    ...(trackingInfo && typeof trackingInfo === 'object' ? trackingInfo : {}),
+    timeline
+  };
+
   const res = await pool.query(
-    `UPDATE orders SET ${updates.join(', ')} WHERE id = $1 RETURNING *`,
-    values
+    `UPDATE orders SET status = $2, tracking_info = $3, updated_at = NOW() WHERE id = $1 RETURNING *`,
+    [orderId, status, JSON.stringify(updatedTracking)]
   );
   if (!res.rows.length) return null;
   return await getOrderById(orderId);
@@ -358,10 +575,10 @@ export async function updatePaymentStatus(orderId, {
   if (!pool) return null;
   const res = await pool.query(
     `UPDATE orders 
-     SET payment_status = $2,
+     SET payment_status = $2::varchar,
          razorpay_payment_id = COALESCE($3, razorpay_payment_id),
          razorpay_signature = COALESCE($4, razorpay_signature),
-         status = CASE WHEN $2 = 'paid' AND status = 'pending' THEN 'confirmed' ELSE status END,
+         status = CASE WHEN $2::varchar = 'paid' AND status = 'pending' THEN 'confirmed' ELSE status END,
          updated_at = NOW()
      WHERE id = $1
      RETURNING *`,
@@ -386,6 +603,84 @@ export async function updatePaymentStatus(orderId, {
 }
 
 function formatOrderItem(item) {
+  const standardFrontDimensions = {
+    width_in: 11.0,
+    height_in: 13.5,
+    width_cm: 27.9,
+    height_cm: 34.3,
+    top_offset_in: 2.5,
+    top_offset_cm: 6.35,
+    location: "Center Front Chest",
+    platen_type: "Adult Standard (14x16 in)",
+    resolution_dpi: 300,
+    underbase_required: true,
+    curing_temp_c: 160,
+    curing_time_sec: 15
+  };
+
+  const standardBackDimensions = {
+    width_in: 11.0,
+    height_in: 13.5,
+    width_cm: 27.9,
+    height_cm: 34.3,
+    top_offset_in: 3.0,
+    top_offset_cm: 7.62,
+    location: "Center Upper Back",
+    platen_type: "Adult Standard (14x16 in)",
+    resolution_dpi: 300,
+    underbase_required: true,
+    curing_temp_c: 160,
+    curing_time_sec: 15
+  };
+
+  let parsedFrontDims = standardFrontDimensions;
+  if (item.print_dimensions) {
+    parsedFrontDims = typeof item.print_dimensions === 'string'
+      ? JSON.parse(item.print_dimensions)
+      : item.print_dimensions;
+  }
+
+  let parsedBackDims = null;
+  if (item.back_print_dimensions) {
+    parsedBackDims = typeof item.back_print_dimensions === 'string'
+      ? JSON.parse(item.back_print_dimensions)
+      : item.back_print_dimensions;
+  } else if (item.back_print_file_url || item.back_preview_url) {
+    parsedBackDims = standardBackDimensions;
+  }
+
+  let designVersion = null;
+  if (item.design_version_payload) {
+    try {
+      designVersion = typeof item.design_version_payload === 'string'
+        ? JSON.parse(item.design_version_payload)
+        : item.design_version_payload;
+    } catch (e) {}
+  }
+
+  const frontLayers = designVersion?.sides?.find(s => s.name === 'front')?.layers || [];
+  const backLayers = designVersion?.sides?.find(s => s.name === 'back')?.layers || [];
+
+  let hasBackArtwork = false;
+  if (designVersion) {
+    hasBackArtwork = (backLayers.length > 0) || Boolean(item.design_back_slogan);
+  } else {
+    hasBackArtwork = Boolean(
+      item.design_back_slogan ||
+      (item.design_raw_back_image && !item.design_raw_back_image.includes('/templates/'))
+    );
+  }
+
+  let hasFrontArtwork = false;
+  if (designVersion) {
+    hasFrontArtwork = (frontLayers.length > 0) || Boolean(item.design_slogan);
+  } else {
+    hasFrontArtwork = Boolean(
+      item.design_slogan ||
+      (item.design_raw_image && !item.design_raw_image.includes('/templates/'))
+    );
+  }
+
   return {
     id: item.id,
     order_id: item.order_id,
@@ -393,14 +688,49 @@ function formatOrderItem(item) {
     design_id: item.design_id,
     product_id: item.product_id,
     title: item.product_title,
+    product_title: item.product_title,
     color_id: item.color_id,
     color_name: item.color_name,
     color_hex: item.color_hex,
     size: item.size_label,
+    size_label: item.size_label,
     quantity: item.quantity,
     unit_price: (item.unit_price_cents || 0) / 100,
     total_price: (item.total_price_cents || 0) / 100,
-    preview_url: item.preview_url
+    unit_price_cents: item.unit_price_cents,
+    total_price_cents: item.total_price_cents,
+    preview_url: item.preview_url,
+    mockup_url: item.preview_url,
+    print_file_url: item.print_file_url || null,
+    print_dimensions: parsedFrontDims,
+    print_method: item.print_method || 'DTF',
+    back_preview_url: item.back_preview_url || null,
+    back_mockup_url: item.back_preview_url || null,
+    back_print_file_url: item.back_print_file_url || null,
+    back_print_dimensions: parsedBackDims,
+    front_layers: frontLayers,
+    back_layers: backLayers,
+    has_front_artwork: hasFrontArtwork,
+    has_back_artwork: hasBackArtwork,
+    design_details: {
+      slogan: item.design_slogan,
+      color: item.design_color,
+      textSize: item.design_text_size,
+      textRotation: item.design_text_rotation,
+      textPosition: item.design_text_position,
+      image: item.design_raw_image,
+      imageScale: item.design_image_scale,
+      imageRotation: item.design_image_rotation,
+      imagePosition: item.design_image_position,
+      backSlogan: item.design_back_slogan,
+      backTextSize: item.design_back_text_size,
+      backTextRotation: item.design_back_text_rotation,
+      backTextPosition: item.design_back_text_position,
+      backImage: item.design_raw_back_image,
+      backImageScale: item.design_back_image_scale,
+      backImageRotation: item.design_back_image_rotation,
+      backImagePosition: item.design_back_image_position
+    }
   };
 }
 

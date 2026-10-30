@@ -24,6 +24,7 @@ import SupplierOrder from '@/pages/Supplier/Order.jsx';
 import SupplierProductOrder from '@/pages/Supplier/ProductOrder.jsx';
 import SupplierProductPurchase from '@/pages/Supplier/ProductPurchase.jsx';
 import SupplierSavedDesigns from '@/pages/Supplier/SavedDesigns.jsx';
+import SupplierListings from '@/pages/Supplier/Listings.jsx';
 import SupplierCreateListing from '@/pages/Supplier/CreateListing.jsx';
 import SupplierStoreCustomizer from '@/pages/Supplier/StoreCustomizer.jsx';
 import SupplierProfile from '@/pages/Supplier/Profile.jsx';
@@ -97,6 +98,7 @@ export function AppRoutes() {
       <SupplierRoute path="/supplier/dashboard" component={SupplierDashboard} />
       <SupplierRoute path="/supplier/saved-designs/:designerId?" component={SupplierSavedDesigns} />
       <SupplierRoute path="/supplier/listings/create" component={SupplierCreateListing} />
+      <SupplierRoute path="/supplier/listings" component={SupplierListings} />
       <SupplierRoute path="/supplier/customize-store" component={SupplierStoreCustomizer} />
       <SupplierRoute path="/supplier/store-settings" component={SupplierStoreCustomizer} />
       <SupplierRoute path="/supplier/orders" component={SupplierOrders} />

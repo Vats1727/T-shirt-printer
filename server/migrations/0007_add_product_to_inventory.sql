@@ -4,8 +4,8 @@ BEGIN;
 -- Add product column to cloth_inventory so inventory is per product (tshirt/hoodie/women_tshirt)
 ALTER TABLE cloth_inventory ADD COLUMN IF NOT EXISTS product TEXT NOT NULL DEFAULT 'tshirt';
 
--- Add product column to order_items so we record product ordered
-ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product TEXT NOT NULL DEFAULT 'tshirt';
+-- Add product column to order_items so we record product ordered (if order_items exists)
+ALTER TABLE IF EXISTS order_items ADD COLUMN IF NOT EXISTS product TEXT NOT NULL DEFAULT 'tshirt';
 
 -- Replace unique index to include product, color_id, size_id
 DROP INDEX IF EXISTS cloth_inventory_unique_color_size;

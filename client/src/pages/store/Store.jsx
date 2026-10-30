@@ -18,6 +18,7 @@ import {
   Globe,
   Flame,
   ArrowRight,
+  EyeOff,
   Lock
 } from "lucide-react";
 import { useLocation } from "wouter";
@@ -168,10 +169,16 @@ function StoreCard({
         {
     /* Price Badge */
   }
-        <div className="absolute top-3.5 right-3.5 z-10">
+        <div className="absolute top-3.5 right-3.5 z-10 flex flex-col items-end gap-1.5">
           <Badge className="bg-white/95 backdrop-blur-md text-slate-900 border border-slate-200 font-extrabold shadow-sm px-2.5 py-1 text-sm">
             ₹{Number(listing.price || 29.99).toFixed(2)}
           </Badge>
+          {isOwner && (listing.published === false || listing.visibility === 'unlisted') && (
+            <Badge className="bg-amber-500 text-white font-extrabold shadow-xs px-2 py-0.5 text-[10px] flex items-center gap-1 border-0">
+              <EyeOff className="size-3" />
+              <span>Unlisted (Owner Preview)</span>
+            </Badge>
+          )}
         </div>
 
         {
@@ -378,11 +385,19 @@ export default function StorePage() {
         });
         return;
       }
+      const data = await res.json().catch(() => ({}));
       setListings((prev) => prev.filter((x) => Number(x.id) !== Number(id)));
-      toast({
-        title: "Listing Removed",
-        description: "Product listing removed from storefront."
-      });
+      if (data?.archived) {
+        toast({
+          title: "Listing Archived & Unlisted",
+          description: "This product had past orders, so it was safely unlisted and archived to preserve customer records."
+        });
+      } else {
+        toast({
+          title: "Listing Removed",
+          description: "Product listing removed from storefront."
+        });
+      }
     } catch (err) {
       toast({
         title: "Error",

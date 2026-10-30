@@ -145,16 +145,16 @@ export default function Header({
   }
         <div className="flex items-center gap-3">
           <div className="relative group">
-            {logoUrl ? <div className="flex items-center gap-3">
+            {logoUrl ? (
+              <div className="flex items-center">
                 <img
-    src={logoUrl}
-    alt={storeTitle}
-    className="h-9 sm:h-11 w-auto max-w-[160px] sm:max-w-[200px] object-contain rounded-lg border border-slate-700/60 shadow-xs bg-slate-950/40 p-1"
-  />
-                <span className="font-extrabold text-base sm:text-lg tracking-tight text-white hidden md:inline-block">
-                  {storeTitle}
-                </span>
-              </div> : <div className="flex items-center gap-2.5">
+                  src={logoUrl}
+                  alt={storeTitle}
+                  className="h-9 sm:h-11 w-auto max-w-[160px] sm:max-w-[200px] object-contain rounded-lg border border-slate-700/60 shadow-xs bg-slate-950/40 p-1"
+                />
+              </div>
+            ) : (
+              <div className="flex items-center gap-2.5">
                 <div className="size-9 sm:size-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/20">
                   <StoreIcon className="size-5" />
                 </div>
@@ -166,7 +166,8 @@ export default function Header({
                     Official Storefront
                   </span>
                 </div>
-              </div>}
+              </div>
+            )}
 
             {
     /* If Owner: Upload/Change Logo Trigger Overlay */

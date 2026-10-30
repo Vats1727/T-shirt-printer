@@ -286,7 +286,7 @@ export default function SupplierProductPurchase() {
       : Math.round(singlePrice * 0.9)
   );
 
-  // Garment mockup images
+  // Garment mockup images & industrial print assets
   const garmentImages = useMemo(() => getGarmentImages(product), [product]);
   const productCustomMockup = useMemo(() => {
     return (
@@ -297,6 +297,23 @@ export default function SupplierProductPurchase() {
       "/templates/tshirt.png"
     );
   }, [garmentImages, product]);
+
+  const standardPrintDimensions = useMemo(() => {
+    return {
+      width_in: 11.0,
+      height_in: 13.5,
+      width_cm: 27.9,
+      height_cm: 34.3,
+      top_offset_in: 2.5,
+      top_offset_cm: 6.35,
+      location: "Center Front Chest",
+      platen_type: "Adult Standard (14x16 in)",
+      resolution_dpi: 300,
+      underbase_required: false,
+      curing_temp_c: 160,
+      curing_time_sec: 15
+    };
+  }, []);
 
   // Aggregate selected items based on active mode (Size-only)
   const selectedOrderItems = useMemo(() => {
@@ -312,7 +329,10 @@ export default function SupplierProductPurchase() {
           garment_size: singleSize || availableSizes[0] || "M",
           quantity: 1, // Single sample mode is strictly 1 piece
           unit_price_cents: Math.round(singlePrice * 100),
-          custom_mockup_url: productCustomMockup
+          custom_mockup_url: productCustomMockup,
+          print_file_url: productCustomMockup,
+          print_dimensions: standardPrintDimensions,
+          print_method: "DTF"
         }
       ];
     } else {
@@ -329,13 +349,16 @@ export default function SupplierProductPurchase() {
             garment_size: sz,
             quantity: q,
             unit_price_cents: Math.round(bulkPrice * 100),
-            custom_mockup_url: productCustomMockup
+            custom_mockup_url: productCustomMockup,
+            print_file_url: productCustomMockup,
+            print_dimensions: standardPrintDimensions,
+            print_method: "DTF"
           });
         }
       });
       return items;
     }
-  }, [pricingTier, singleSize, sizeQuantities, product, singlePrice, bulkPrice, availableSizes, productCustomMockup]);
+  }, [pricingTier, singleSize, sizeQuantities, product, singlePrice, bulkPrice, availableSizes, productCustomMockup, standardPrintDimensions]);
 
   // Total Units
   const totalUnits = useMemo(() => {
@@ -486,7 +509,7 @@ export default function SupplierProductPurchase() {
           currency: rzpOrder.currency || "INR",
           name: "Print Portal B2B Wholesale",
           description: `Order ${b2bOrder.order_number} (${totalUnits} pcs)`,
-          image: "/templates/tshirt.png",
+          ...(typeof window !== 'undefined' && window.location.protocol === 'https:' ? { image: `${window.location.origin}/templates/tshirt.png` } : {}),
           order_id: rzpOrder.id,
           prefill: {
             name: shippingAddress.name,

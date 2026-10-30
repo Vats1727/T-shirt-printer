@@ -1,5 +1,6 @@
 -- 0004_create_catalog.sql
--- Creates users, colors, sizes, size_chart, cloth_inventory, orders, order_items.
+-- Creates users, colors, sizes, size_chart, cloth_inventory.
+-- (Production orders and order_items tables are created in 0022_create_orders_and_payments.sql)
 -- Written for Postgres; should work with minor edits for SQLite (see notes).
 
 BEGIN;
@@ -45,22 +46,6 @@ CREATE TABLE IF NOT EXISTS cloth_inventory (
   price NUMERIC(10,2) NOT NULL DEFAULT 0
 );
 CREATE UNIQUE INDEX IF NOT EXISTS cloth_inventory_unique_color_size ON cloth_inventory(color_id, size_id);
-
--- Orders and items
-CREATE TABLE IF NOT EXISTS orders (
-  id BIGSERIAL PRIMARY KEY,
-  supplier_id BIGINT NOT NULL REFERENCES users(id) ON DELETE SET NULL,
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS order_items (
-  id BIGSERIAL PRIMARY KEY,
-  order_id BIGINT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-  color_id BIGINT NOT NULL REFERENCES colors(id) ON DELETE SET NULL,
-  size_id BIGINT NOT NULL REFERENCES sizes(id) ON DELETE SET NULL,
-  quantity INTEGER NOT NULL,
-  price NUMERIC(10,2) NOT NULL
-);
 
 -- Seed default sizes
 INSERT INTO sizes (label) VALUES

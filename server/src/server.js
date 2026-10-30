@@ -3,6 +3,7 @@ import app from './app.js';
 import env from './config/env.js';
 import { pool } from './config/database.js';
 import { log } from './utils/logger.js';
+import { syncModelsToDb } from './config/syncModels.js';
 
 const httpServer = http.createServer(app);
 const connections = new Set();
@@ -21,6 +22,14 @@ if (process.platform !== 'win32') {
 httpServer.listen(listenOptions, async () => {
   log(`Tshirt-printer Server running on http://localhost:${port}`);
   log(`Storage driver: ${pool ? 'PostgreSQL database' : 'JSON file fallback'}`);
+
+  if (pool) {
+    try {
+      await syncModelsToDb();
+    } catch (err) {
+      console.error('[DB Startup Error] Failed to synchronize models with database:', err);
+    }
+  }
 });
 
 let isShuttingDown = false;

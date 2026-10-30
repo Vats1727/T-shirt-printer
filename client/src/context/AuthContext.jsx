@@ -39,7 +39,7 @@ export function AuthProvider({ children }) {
   };
 
   React.useEffect(() => {
-    if (!token) return;
+    if (!token || !user || !['designer', 'supplier'].includes(user.role)) return;
     (async () => {
       try {
         const res = await fetch('/api/supplier/profile', {
@@ -59,7 +59,7 @@ export function AuthProvider({ children }) {
         // ignore background refresh errors
       }
     })();
-  }, [token]);
+  }, [token, user?.role]);
 
   return (
     <AuthContext.Provider value={{ user, token, loginWithCredentials, logout, updateUser }}>

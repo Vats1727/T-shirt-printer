@@ -118,13 +118,39 @@ export async function listListings(req, res, next) {
   }
 }
 
+export async function updateListingStatus(req, res, next) {
+  try {
+    const user = req.user;
+    const userId = user?.sub || user?.id;
+    const isAdmin = user?.role === 'admin' || user?.role === 'print_provider' || user?.role === 'portal_admin';
+    const id = parseInt(req.params.id, 10);
+    const { published, visibility } = req.body;
+
+    const updated = await listingModel.updateListingStatus(
+      id,
+      isAdmin ? null : userId,
+      { published, visibility }
+    );
+
+    if (!updated) {
+      return res.status(404).json({ message: 'Listing not found or access denied' });
+    }
+
+    const enhanced = await resolveListingPreview(updated);
+    return res.json(enhanced);
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function deleteListing(req, res, next) {
   try {
     const user = req.user;
     const userId = user?.sub || user?.id;
+    const isAdmin = user?.role === 'admin' || user?.role === 'print_provider' || user?.role === 'portal_admin';
     const id = parseInt(req.params.id, 10);
-    const ok = await listingModel.deleteListing(id, userId);
-    return res.json({ ok });
+    const result = await listingModel.deleteListing(id, isAdmin ? null : userId);
+    return res.json(result);
   } catch (err) {
     next(err);
   }
@@ -142,6 +168,7 @@ async function resolveListingPreview(l) {
   let available_colors = [];
   let available_sizes = [];
   let vPayload = null;
+  let meta = {};
   let d = null;
   const designKey = String(l.design_key || '');
 
@@ -196,47 +223,8 @@ async function resolveListingPreview(l) {
           } catch (e) {}
         }
 
-        // Fetch colors from colors table
-        if (Array.isArray(pfColors) && pfColors.length > 0) {
-          const cIds = pfColors.map(Number).filter(n => !isNaN(n));
-          if (cIds.length > 0) {
-            try {
-              const cRes = await pool.query('SELECT id, name, hex FROM colors WHERE id = ANY($1)', [cIds]);
-              available_colors = cRes.rows || [];
-            } catch (e) {}
-          }
-        }
-
-        // If design itself has a color, ensure it's in available_colors
-        if (design_color) {
-          const match = available_colors.find(c => c.hex && c.hex.toLowerCase() === design_color.toLowerCase());
-          if (!match) {
-            try {
-              const hexRes = await pool.query('SELECT id, name, hex FROM colors WHERE lower(hex) = lower($1) LIMIT 1', [design_color]);
-              if (hexRes?.rows?.length) {
-                available_colors.unshift(hexRes.rows[0]);
-              } else {
-                available_colors.unshift({ id: 'custom', name: 'Design Color', hex: design_color });
-              }
-            } catch (e) {
-              available_colors.unshift({ id: 'custom', name: 'Design Color', hex: design_color });
-            }
-          }
-        }
-
-        // Fetch sizes from sizes table
-        if (Array.isArray(pfSizes) && pfSizes.length > 0) {
-          const sIds = pfSizes.map(Number).filter(n => !isNaN(n));
-          if (sIds.length > 0) {
-            try {
-              const sRes = await pool.query('SELECT id, label FROM sizes WHERE id = ANY($1) ORDER BY id', [sIds]);
-              available_sizes = sRes.rows || [];
-            } catch (e) {}
-          }
-        }
-
         const vRes = await pool.query('SELECT payload FROM design_versions WHERE design_id = $1 ORDER BY id DESC LIMIT 1', [numericId]);
-        let meta = {};
+        meta = {};
         if (vRes?.rows?.length) {
           let p = vRes.rows[0].payload;
           if (typeof p === 'string') {
@@ -244,6 +232,136 @@ async function resolveListingPreview(l) {
           }
           vPayload = p;
           meta = p?.metadata || {};
+        }
+
+        // 1. Determine available_colors (strictly prioritize designer's selected colors)
+        if (Array.isArray(meta.selected_colors) && meta.selected_colors.length > 0) {
+          const selectedMap = new Map();
+          const idsToFetch = [];
+
+          for (const sc of meta.selected_colors) {
+            if (!sc) continue;
+            if (typeof sc === 'object') {
+              const cid = sc.id;
+              const hex = sc.hex;
+              const name = sc.name;
+              if (hex && name) {
+                selectedMap.set(String(cid || hex).toLowerCase(), { id: cid || hex, hex, name });
+              } else if (cid && !isNaN(Number(cid))) {
+                idsToFetch.push(Number(cid));
+              }
+            } else if (!isNaN(Number(sc))) {
+              idsToFetch.push(Number(sc));
+            }
+          }
+
+          if (idsToFetch.length > 0) {
+            try {
+              const cRes = await pool.query('SELECT id, name, hex FROM colors WHERE id = ANY($1)', [idsToFetch]);
+              for (const row of cRes.rows) {
+                selectedMap.set(String(row.id).toLowerCase(), row);
+              }
+            } catch (e) {}
+          }
+
+          if (selectedMap.size > 0) {
+            available_colors = Array.from(selectedMap.values());
+          }
+        } else if (Array.isArray(meta.preview_by_color) && meta.preview_by_color.length > 0) {
+          available_colors = meta.preview_by_color.map(c => ({
+            id: c.id,
+            name: c.name || 'Color',
+            hex: c.hex
+          }));
+        } else {
+          // Fallback to all product colors from products_full
+          if (Array.isArray(pfColors) && pfColors.length > 0) {
+            const cIds = pfColors.map(Number).filter(n => !isNaN(n));
+            if (cIds.length > 0) {
+              try {
+                const cRes = await pool.query('SELECT id, name, hex FROM colors WHERE id = ANY($1)', [cIds]);
+                available_colors = cRes.rows || [];
+              } catch (e) {}
+            }
+          }
+
+          const baseColor = d.template_color || null;
+          if (baseColor) {
+            const match = available_colors.find(c => c.hex && c.hex.toLowerCase() === baseColor.toLowerCase());
+            if (!match) {
+              try {
+                const hexRes = await pool.query('SELECT id, name, hex FROM colors WHERE lower(hex) = lower($1) LIMIT 1', [baseColor]);
+                if (hexRes?.rows?.length) {
+                  available_colors.unshift(hexRes.rows[0]);
+                } else {
+                  available_colors.unshift({ id: 'custom', name: 'Design Color', hex: baseColor });
+                }
+              } catch (e) {
+                available_colors.unshift({ id: 'custom', name: 'Design Color', hex: baseColor });
+              }
+            }
+          }
+        }
+
+        // Put designer's featured color first if present
+        if (meta.featured_color && available_colors.length > 1) {
+          const featHex = meta.featured_color.hex?.toLowerCase();
+          const featId = meta.featured_color.id;
+          const featIdx = available_colors.findIndex(c =>
+            (featHex && c.hex && c.hex.toLowerCase() === featHex) ||
+            (featId && String(c.id) === String(featId))
+          );
+          if (featIdx > 0) {
+            const [featColor] = available_colors.splice(featIdx, 1);
+            available_colors.unshift(featColor);
+          }
+        }
+
+        // 2. Determine available_sizes (strictly prioritize designer's selected sizes)
+        if (Array.isArray(meta.selected_sizes) && meta.selected_sizes.length > 0) {
+          const sizeMap = new Map();
+          const sIdsToFetch = [];
+
+          for (const ss of meta.selected_sizes) {
+            if (!ss) continue;
+            if (typeof ss === 'object') {
+              const sid = ss.id;
+              const label = ss.label || ss.size || ss.name || ss.value;
+              if (label) {
+                sizeMap.set(String(sid || label).toLowerCase(), { id: sid || label, label });
+              } else if (sid && !isNaN(Number(sid))) {
+                sIdsToFetch.push(Number(sid));
+              }
+            } else if (!isNaN(Number(ss))) {
+              sIdsToFetch.push(Number(ss));
+            } else if (typeof ss === 'string') {
+              sizeMap.set(ss.toLowerCase(), { id: ss, label: ss });
+            }
+          }
+
+          if (sIdsToFetch.length > 0) {
+            try {
+              const sRes = await pool.query('SELECT id, label FROM sizes WHERE id = ANY($1) ORDER BY id', [sIdsToFetch]);
+              for (const row of sRes.rows) {
+                sizeMap.set(String(row.id).toLowerCase(), row);
+              }
+            } catch (e) {}
+          }
+
+          if (sizeMap.size > 0) {
+            available_sizes = Array.from(sizeMap.values());
+          }
+        } else {
+          // Fallback to all sizes from products_full
+          if (Array.isArray(pfSizes) && pfSizes.length > 0) {
+            const sIds = pfSizes.map(Number).filter(n => !isNaN(n));
+            if (sIds.length > 0) {
+              try {
+                const sRes = await pool.query('SELECT id, label FROM sizes WHERE id = ANY($1) ORDER BY id', [sIds]);
+                available_sizes = sRes.rows || [];
+              } catch (e) {}
+            }
+          }
         }
 
         const front = normalize(meta.preview_front || d.image);
@@ -265,6 +383,20 @@ async function resolveListingPreview(l) {
             preview_front: normalize(c.preview_front || c.front),
             preview_back: normalize(c.preview_back || c.back)
           }));
+        }
+
+        // If preview_by_color is empty but we have front/back rendered mockup, synthesize base color entry
+        if (preview_by_color.length === 0 && (front || back)) {
+          const baseHex = design_color || meta.featured_color?.hex || available_colors[0]?.hex || null;
+          if (baseHex) {
+            preview_by_color.push({
+              id: meta.featured_color?.id || available_colors[0]?.id || 'base',
+              hex: baseHex,
+              name: meta.featured_color?.name || available_colors[0]?.name || 'Featured Color',
+              preview_front: front,
+              preview_back: back
+            });
+          }
         }
       } else {
         // Direct product listing (e.g. for print providers)
@@ -383,6 +515,9 @@ async function resolveListingPreview(l) {
     preview_asset_id,
     preview_group,
     preview_by_color,
+    artwork_url: normalize(d ? d.image : null),
+    back_artwork_url: normalize(d ? d.back_image : null),
+    back_preview_url: preview_group?.back?.url || null,
     design_version: vPayload ? {
       template: vPayload.template || (d ? d.product : null) || 'tshirt',
       sides: vPayload.sides || [],
@@ -395,7 +530,7 @@ async function resolveListingPreview(l) {
     designer_name,
     designer_email,
     product_name,
-    design_color,
+    design_color: meta?.featured_color?.hex || d?.template_color || available_colors[0]?.hex || design_color || null,
     available_colors,
     available_sizes
   };
@@ -405,7 +540,6 @@ export async function getStoreFront(req, res, next) {
   try {
     const rawParam = req.params.supplierId;
     const supplierId = decodeId(rawParam) || rawParam;
-    const listings = await listingModel.listListingsBySupplier(supplierId);
 
     let designerInfo = null;
     try {
@@ -430,7 +564,7 @@ export async function getStoreFront(req, res, next) {
 
     // Check if requester is owner or admin
     let isOwner = false;
-    const authHeader = req.headers.authorization;
+    const authHeader = req.headers?.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       try {
         const token = authHeader.split(' ')[1];
@@ -456,6 +590,8 @@ export async function getStoreFront(req, res, next) {
       });
     }
 
+    // Public customers only see published items; store owner sees all active items with their published status
+    const listings = await listingModel.listListingsBySupplier(supplierId, { onlyPublished: !isOwner });
     const enhanced = await Promise.all((listings || []).map(resolveListingPreview));
 
     return res.json({
@@ -477,6 +613,25 @@ export async function getListingBySlugJson(req, res, next) {
     const slug = req.params.slug;
     const listing = await listingModel.getListingBySlug(slug);
     if (!listing) return res.status(404).json({ message: 'Listing not found' });
+
+    // Check if unlisted
+    if (!listing.published || listing.visibility === 'unlisted' || listing.visibility === 'archived') {
+      let isOwner = false;
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+          const token = authHeader.split(' ')[1];
+          const decoded = jwt.verify(token, env.JWT_SECRET);
+          if (decoded && (Number(decoded.sub) === Number(listing.supplier_id) || decoded.role === 'admin' || decoded.role === 'portal_admin')) {
+            isOwner = true;
+          }
+        } catch {}
+      }
+      if (!isOwner) {
+        return res.status(404).json({ message: 'This product has been unlisted by the store owner.' });
+      }
+    }
+
     const enhanced = await resolveListingPreview(listing);
     return res.json(enhanced);
   } catch (err) {
@@ -489,6 +644,25 @@ export async function getListingByIdJson(req, res, next) {
     const id = parseInt(req.params.id, 10);
     const listing = await listingModel.getListingById(id);
     if (!listing) return res.status(404).json({ message: 'Listing not found' });
+
+    // Check if unlisted
+    if (!listing.published || listing.visibility === 'unlisted' || listing.visibility === 'archived') {
+      let isOwner = false;
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+          const token = authHeader.split(' ')[1];
+          const decoded = jwt.verify(token, env.JWT_SECRET);
+          if (decoded && (Number(decoded.sub) === Number(listing.supplier_id) || decoded.role === 'admin' || decoded.role === 'portal_admin')) {
+            isOwner = true;
+          }
+        } catch {}
+      }
+      if (!isOwner) {
+        return res.status(404).json({ message: 'This product has been unlisted by the store owner.' });
+      }
+    }
+
     const enhanced = await resolveListingPreview(listing);
     return res.json(enhanced);
   } catch (err) {
@@ -502,6 +676,7 @@ export default {
   listSavedDesigns,
   createListing,
   listListings,
+  updateListingStatus,
   deleteListing,
   getStoreFront,
   getListingBySlugJson,

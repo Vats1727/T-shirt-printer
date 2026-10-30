@@ -171,25 +171,33 @@ export default function Footer({
   }
           <div className="md:col-span-5 space-y-4">
             <div className="flex items-center gap-3">
-              {logoUrl ? <div className="relative group">
+              {logoUrl ? (
+                <div className="relative group">
                   <img
-    src={logoUrl}
-    alt={storeTitle}
-    className="h-10 w-auto max-w-[200px] object-contain rounded-lg border border-slate-800 bg-slate-900 p-1"
-  />
-                  {isOwner && <button
-    type="button"
-    onClick={() => fileInputRef.current?.click()}
-    disabled={uploading}
-    className="absolute -bottom-1 -right-1 opacity-0 group-hover:opacity-100 transition-opacity bg-indigo-600 hover:bg-indigo-500 text-white rounded-full p-1 shadow-md border border-slate-900"
-    title="Update logo"
-  >
+                    src={logoUrl}
+                    alt={storeTitle}
+                    className="h-10 w-auto max-w-[200px] object-contain rounded-lg border border-slate-800 bg-slate-900 p-1"
+                  />
+                  {isOwner && (
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      className="absolute -bottom-1 -right-1 opacity-0 group-hover:opacity-100 transition-opacity bg-indigo-600 hover:bg-indigo-500 text-white rounded-full p-1 shadow-md border border-slate-900"
+                      title="Update logo"
+                    >
                       <Camera className="size-3" />
-                    </button>}
-                </div> : <div className="size-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white shadow-md">
-                  <StoreIcon className="size-5" />
-                </div>}
-              <span className="font-black text-xl text-white tracking-tight">{storeTitle}</span>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <div className="size-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white shadow-md">
+                    <StoreIcon className="size-5" />
+                  </div>
+                  <span className="font-black text-xl text-white tracking-tight">{storeTitle}</span>
+                </div>
+              )}
             </div>
 
             <p className="text-sm text-slate-400 max-w-sm leading-relaxed">

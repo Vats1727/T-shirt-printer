@@ -6,6 +6,7 @@ import { encodeId } from '@/utils/idEncoder';
 import {
   Home,
   ShoppingBag,
+  Store,
   User,
   LogOut,
   ChevronLeft,
@@ -134,17 +135,38 @@ export function AppSidebar() {
       hidden: !isAdmin
     },
     {
+      title: 'Store Listings',
+      icon: Store,
+      url: '/admin/listings',
+      active: location.includes('/admin/listings'),
+      hidden: !isAdmin
+    },
+    {
       title: 'Customize Store',
       icon: Paintbrush,
-      url: '/supplier/customize-store',
-      active: location.includes('customize-store') || location.includes('store-settings'),
-      hidden: !isDesigner
+      url: '/admin/customize-store',
+      active: location.includes('/admin/customize-store') || location.includes('/admin/store-settings'),
+      hidden: !isAdmin
     },
     {
       title: 'Saved Designs',
       icon: LayoutTemplate,
       url: `/supplier/saved-designs/${encodeId(user?.id || user?.sub)}`,
       active: location.includes('saved-designs'),
+      hidden: !isDesigner
+    },
+    {
+      title: 'Store Listings',
+      icon: Store,
+      url: '/supplier/listings',
+      active: location.includes('/supplier/listings'),
+      hidden: !isDesigner
+    },
+    {
+      title: 'Customize Store',
+      icon: Paintbrush,
+      url: '/supplier/customize-store',
+      active: location.includes('customize-store') || location.includes('store-settings'),
       hidden: !isDesigner
     },
     {

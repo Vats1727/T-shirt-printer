@@ -5,7 +5,11 @@
   "license": "MIT",
   "scripts": {
     "dev": "node --watch --watch-path=src src/server.js",
-    "start": "node --watch --watch-path=src src/server.js"
+    "start": "node --watch --watch-path=src src/server.js",
+    "db:sync": "node src/config/syncModels.js",
+    "db:migrate": "node src/config/syncModels.js",
+    "db:seed": "node src/config/seedAdmin.js",
+    "db:reset": "node src/config/resetDb.js"
   },
   "dependencies": {
     "bcrypt": "^5.1.0",

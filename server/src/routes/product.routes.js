@@ -51,6 +51,7 @@ router.patch('/orders/:id/status', orderController.updateOrderStatus);
 // Store Listings & Customizer
 router.get('/listings', supplierController.listListings);
 router.post('/listings', supplierController.createListing);
+router.patch('/listings/:id/status', supplierController.updateListingStatus);
 router.delete('/listings/:id', supplierController.deleteListing);
 router.get('/store-settings', userController.getStoreSettings);
 router.patch('/store-settings', userController.updateStoreSettings);

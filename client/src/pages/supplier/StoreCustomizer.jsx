@@ -609,10 +609,16 @@ export default function StoreCustomizer() {
   }
             <div className="bg-slate-950 px-4 py-2.5 flex items-center justify-between text-white border-b border-slate-800">
               <div className="flex items-center gap-2">
-                {logoUrl ? <img src={logoUrl} alt="Store Logo" className="h-6 w-auto max-w-[120px] object-contain rounded" /> : <div className="size-6 rounded-md bg-indigo-600 flex items-center justify-center text-white">
-                    <Store className="size-3.5" />
-                  </div>}
-                <span className="font-bold text-xs tracking-tight text-white">{storeName || "Signature Threads"}</span>
+                {logoUrl ? (
+                  <img src={logoUrl} alt="Store Logo" className="h-6 w-auto max-w-[120px] object-contain rounded" />
+                ) : (
+                  <>
+                    <div className="size-6 rounded-md bg-indigo-600 flex items-center justify-center text-white">
+                      <Store className="size-3.5" />
+                    </div>
+                    <span className="font-bold text-xs tracking-tight text-white">{storeName || "Signature Threads"}</span>
+                  </>
+                )}
               </div>
               <div className="flex items-center gap-2 text-[10px] text-slate-400">
                 <span>All Garments</span>

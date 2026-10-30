@@ -39,6 +39,7 @@ import {
   TrendingUp,
   Truck,
   Printer,
+  Download,
   ExternalLink,
   Store,
   DollarSign,
@@ -48,6 +49,8 @@ import {
 import { getMaskedCode } from "@/utils/idEncoder";
 import { cn } from "@/utils/cn";
 import { formatDate } from "@/utils/dateFormatter";
+import { exportTransparentPrintAsset } from "@/utils/printAssetExporter";
+import { viewMockupPreview } from "@/utils/mockupViewer";
 
 const PAGE_SIZE = 10;
 
@@ -778,61 +781,280 @@ export default function SupplierOrders() {
 
               {/* Garment Items List */}
               <div className="space-y-2">
-                <div className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                  Custom Creations in this Order ({viewingOrder.items?.length || 0})
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                    <Printer className="size-3.5 text-indigo-600" />
+                    <span>Custom Creations & Print Techpack ({viewingOrder.items?.length || 0})</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-medium">Factory Direct Specs</span>
                 </div>
+
                 <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-white">
-                  {viewingOrder.items?.map((it, idx) => (
-                    <div key={idx} className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                      <div className="flex items-center gap-3.5">
-                        {(it.preview_url || it.custom_mockup_url) ? (
-                          <img
-                            src={it.preview_url || it.custom_mockup_url}
-                            alt="Garment Preview"
-                            className="w-16 h-16 object-contain rounded-xl border border-slate-200 bg-slate-50 p-1"
-                            onError={(e) => {
-                              if (!e.target.src.includes('/templates/tshirt.png')) {
-                                e.target.src = '/templates/tshirt.png';
-                              }
-                            }}
-                          />
+                  {viewingOrder.items?.map((it, idx) => {
+                    const printDims = it.print_dimensions || {
+                      width_in: 11.0,
+                      height_in: 13.5,
+                      top_offset_in: 2.5,
+                      location: "Center Front Chest",
+                      underbase_required: it.color_name && !["white", "pure white", "standard"].includes(String(it.color_name).toLowerCase().trim())
+                    };
+
+                    const backPrintDims = it.back_print_dimensions || {
+                      width_in: 11.0,
+                      height_in: 13.5,
+                      top_offset_in: 3.0,
+                      location: "Center Upper Back",
+                      underbase_required: it.color_name && !["white", "pure white", "standard"].includes(String(it.color_name).toLowerCase().trim())
+                    };
+
+                    const hasBackPrint = Boolean(it.has_back_artwork);
+
+                    return (
+                      <div key={idx} className="p-4 space-y-3 bg-white">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                          <div className="flex items-center gap-3.5">
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {(it.preview_url || it.custom_mockup_url) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => viewMockupPreview(it.preview_url || it.custom_mockup_url, `${it.title || 'Product'} - Front Proof Mockup`)}
+                                  className="group relative block shrink-0 cursor-pointer border-0 p-0 bg-transparent"
+                                  title="Inspect Front QA mockup"
+                                >
+                                  <img
+                                    src={it.preview_url || it.custom_mockup_url}
+                                    alt="Front QA Preview"
+                                    className="w-16 h-16 object-contain rounded-xl border border-slate-200 bg-slate-50 p-1 group-hover:scale-105 transition-transform"
+                                    onError={(e) => {
+                                      if (!e.target.src.includes('/templates/tshirt.png')) {
+                                        e.target.src = '/templates/tshirt.png';
+                                      }
+                                    }}
+                                  />
+                                  <span className="absolute bottom-1 right-1 px-1 py-0.2 text-[8px] font-bold bg-slate-900/80 text-white rounded shadow-2xs">
+                                    Front
+                                  </span>
+                                </button>
+                              ) : null}
+
+                              {hasBackPrint && (
+                                <button
+                                  type="button"
+                                  onClick={() => viewMockupPreview(it.back_preview_url || it.back_print_file_url, `${it.title || 'Product'} - Back Proof Mockup`)}
+                                  className="group relative block shrink-0 cursor-pointer border-0 p-0 bg-transparent"
+                                  title="Inspect Back QA mockup"
+                                >
+                                  <img
+                                    src={it.back_preview_url || it.back_print_file_url}
+                                    alt="Back QA Preview"
+                                    className="w-16 h-16 object-contain rounded-xl border border-indigo-200 bg-indigo-50/40 p-1 group-hover:scale-105 transition-transform"
+                                    onError={(e) => {
+                                      if (!e.target.src.includes('/templates/tshirt.png')) {
+                                        e.target.src = '/templates/tshirt.png';
+                                      }
+                                    }}
+                                  />
+                                  <span className="absolute bottom-1 right-1 px-1 py-0.2 text-[8px] font-bold bg-indigo-900/80 text-white rounded shadow-2xs">
+                                    Back
+                                  </span>
+                                </button>
+                              )}
+
+                              {!it.preview_url && !it.custom_mockup_url && !hasBackPrint && (
+                                <div className="w-16 h-16 rounded-xl border border-slate-200 bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
+                                  <ShoppingBag className="w-6 h-6" />
+                                </div>
+                              )}
+                            </div>
+
+                            <div>
+                              <div className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                                <span>{it.product_title || it.product || "Custom Apparel"}</span>
+                                <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-bold">
+                                  {it.print_method || "DTF Printing"}
+                                </Badge>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 mt-1">
+                                <span className="font-semibold text-slate-900">Qty: {it.quantity} pcs</span>
+                                <span>•</span>
+                                <span className="font-semibold">Size: {it.size_label || it.size || it.garment_size || "M"}</span>
+                                <span>•</span>
+                                <span className="inline-flex items-center gap-1">
+                                  {it.color_hex && (
+                                    <span
+                                      className="w-2.5 h-2.5 rounded-full border border-slate-300"
+                                      style={{ backgroundColor: it.color_hex }}
+                                    />
+                                  )}
+                                  <span>Color: {it.color_name || it.color || "Standard"}</span>
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="text-right sm:self-center shrink-0">
+                            <div className="font-mono font-bold text-sm text-slate-900">
+                              ₹{(it.line_total_cents ? it.line_total_cents / 100 : (it.total_price_cents ? it.total_price_cents / 100 : (it.line_total || (it.unit_price || 0) * (it.quantity || 1)))).toFixed(2)}
+                            </div>
+                            <div className="text-[11px] text-slate-400">
+                              ₹{(it.unit_price_cents ? it.unit_price_cents / 100 : (it.unit_price || 0)).toFixed(2)} / pc
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Front Machine Operator Print Techpack Strip */}
+                        <div className="p-3 bg-slate-50/90 rounded-xl border border-slate-200/90 text-xs space-y-2">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <span className="font-bold text-[11px] uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                              <Printer className="w-3.5 h-3.5 text-indigo-600" />
+                              <span>Front Print Techpack (Production Ready)</span>
+                            </span>
+                            <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    await exportTransparentPrintAsset(it, 'front', viewingOrder.order_number);
+                                    toast({ title: "Print Asset Ready", description: "Exported 100% transparent PNG at 300 DPI for RIP software." });
+                                  } catch (err) {
+                                    toast({ variant: "destructive", title: "Export Error", description: err.message || "Failed to export print asset" });
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold shadow-2xs transition cursor-pointer"
+                                title="Download 100% Transparent PNG Artwork (No T-shirt outline) for RIP Machine"
+                              >
+                                <Download className="w-3 h-3" />
+                                <span>Download Transparent Artwork (300 DPI)</span>
+                              </button>
+                              {(it.preview_url || it.custom_mockup_url) && (
+                                <button
+                                  type="button"
+                                  onClick={() => viewMockupPreview(it.preview_url || it.custom_mockup_url, `${it.title || 'Product'} - Front Proof Mockup`)}
+                                  className="inline-flex items-center gap-1 px-2 py-1 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-lg text-[11px] font-semibold transition cursor-pointer"
+                                  title="View Visual Mockup Proof on Garment"
+                                >
+                                  <Eye className="w-3 h-3 text-slate-400" />
+                                  <span>Proof Mockup</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                            <div className="bg-white p-2 rounded-lg border border-slate-200/80">
+                              <span className="text-slate-400 block text-[10px] font-semibold uppercase">Print Area</span>
+                              <span className="font-bold text-slate-800">
+                                {printDims.width_in ? `${printDims.width_in}" × ${printDims.height_in}"` : '11.0" × 13.5"'}
+                              </span>
+                            </div>
+
+                            <div className="bg-white p-2 rounded-lg border border-slate-200/80">
+                              <span className="text-slate-400 block text-[10px] font-semibold uppercase">Collar Offset</span>
+                              <span className="font-bold text-slate-800">
+                                {printDims.top_offset_in ? `${printDims.top_offset_in}" below seam` : '2.5" below seam'}
+                              </span>
+                            </div>
+
+                            <div className="bg-white p-2 rounded-lg border border-slate-200/80">
+                              <span className="text-slate-400 block text-[10px] font-semibold uppercase">Placement Zone</span>
+                              <span className="font-bold text-slate-800">
+                                {printDims.location || "Center Front Chest"}
+                              </span>
+                            </div>
+
+                            <div className="bg-white p-2 rounded-lg border border-slate-200/80">
+                              <span className="text-slate-400 block text-[10px] font-semibold uppercase">Ink / Underbase</span>
+                              <span className="font-bold text-slate-800">
+                                {printDims.underbase_required ? "White Underbase Required" : "Standard Direct Ink"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Back Techpack: Print Spec OR Clean Blank Banner */}
+                        {hasBackPrint ? (
+                          <div className="p-3 bg-indigo-50/40 rounded-xl border border-indigo-200/80 text-xs space-y-2">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <span className="font-bold text-[11px] uppercase tracking-wider text-indigo-900 flex items-center gap-1.5">
+                                <Printer className="w-3.5 h-3.5 text-indigo-700" />
+                                <span>Back Print Techpack (Production Ready)</span>
+                              </span>
+                              <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    try {
+                                      await exportTransparentPrintAsset(it, 'back', viewingOrder.order_number);
+                                      toast({ title: "Back Print Ready", description: "Exported 100% transparent PNG at 300 DPI for RIP software." });
+                                    } catch (err) {
+                                      toast({ variant: "destructive", title: "Export Error", description: err.message || "Failed to export back print asset" });
+                                    }
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-700 hover:bg-indigo-800 text-white rounded-lg text-[11px] font-bold shadow-2xs transition cursor-pointer"
+                                  title="Download 100% Transparent PNG Back Artwork (No T-shirt outline) for RIP Machine"
+                                >
+                                  <Download className="w-3 h-3" />
+                                  <span>Download Transparent Artwork (300 DPI)</span>
+                                </button>
+                                {(it.back_preview_url || it.back_print_file_url) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => viewMockupPreview(it.back_preview_url || it.back_print_file_url, `${it.title || 'Product'} - Back Proof Mockup`)}
+                                    className="inline-flex items-center gap-1 px-2 py-1 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-lg text-[11px] font-semibold transition cursor-pointer"
+                                    title="View Visual Mockup Proof on Garment"
+                                  >
+                                    <Eye className="w-3 h-3 text-slate-400" />
+                                    <span>Proof Mockup</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                              <div className="bg-white p-2 rounded-lg border border-indigo-100">
+                                <span className="text-indigo-400 block text-[10px] font-semibold uppercase">Print Area</span>
+                                <span className="font-bold text-slate-800">
+                                  {backPrintDims.width_in ? `${backPrintDims.width_in}" × ${backPrintDims.height_in}"` : '11.0" × 13.5"'}
+                                </span>
+                              </div>
+
+                              <div className="bg-white p-2 rounded-lg border border-indigo-100">
+                                <span className="text-indigo-400 block text-[10px] font-semibold uppercase">Collar Offset</span>
+                                <span className="font-bold text-slate-800">
+                                  {backPrintDims.top_offset_in ? `${backPrintDims.top_offset_in}" below seam` : '3.0" below seam'}
+                                </span>
+                              </div>
+
+                              <div className="bg-white p-2 rounded-lg border border-indigo-100">
+                                <span className="text-indigo-400 block text-[10px] font-semibold uppercase">Placement Zone</span>
+                                <span className="font-bold text-slate-800">
+                                  {backPrintDims.location || "Center Upper Back"}
+                                </span>
+                              </div>
+
+                              <div className="bg-white p-2 rounded-lg border border-indigo-100">
+                                <span className="text-indigo-400 block text-[10px] font-semibold uppercase">Ink / Underbase</span>
+                                <span className="font-bold text-slate-800">
+                                  {backPrintDims.underbase_required ? "White Underbase Required" : "Standard Direct Ink"}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
                         ) : (
-                          <div className="w-16 h-16 rounded-xl border border-slate-200 bg-slate-100 flex items-center justify-center text-slate-400">
-                            <ShoppingBag className="w-6 h-6" />
+                          <div className="p-3 bg-slate-50/80 rounded-xl border border-dashed border-slate-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-slate-500">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-slate-300 shrink-0" />
+                              <span className="font-semibold text-slate-700">Garment Back: Blank / Unprinted</span>
+                              <span className="text-[11px] text-slate-400">• Single-sided garment (No back print file required)</span>
+                            </div>
+                            <Badge variant="outline" className="text-[10px] bg-white border-slate-200 text-slate-500 font-semibold uppercase tracking-wider self-start sm:self-auto">
+                              Front Only
+                            </Badge>
                           </div>
                         )}
-                        <div>
-                          <div className="font-bold text-sm text-slate-900">
-                            {it.product_title || it.product || "Custom Apparel"}
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 mt-1">
-                            <span className="font-semibold text-slate-900">Qty: {it.quantity}</span>
-                            <span>•</span>
-                            <span className="font-semibold">Size: {it.size_label || it.size || it.garment_size || "M"}</span>
-                            <span>•</span>
-                            <span className="inline-flex items-center gap-1">
-                              {it.color_hex && (
-                                <span
-                                  className="w-2.5 h-2.5 rounded-full border border-slate-300"
-                                  style={{ backgroundColor: it.color_hex }}
-                                />
-                              )}
-                              <span>Color: {it.color_name || it.color || "Standard"}</span>
-                            </span>
-                          </div>
-                        </div>
                       </div>
-
-                      <div className="text-right sm:self-center">
-                        <div className="font-mono font-bold text-sm text-slate-900">
-                          ₹{(it.line_total_cents ? it.line_total_cents / 100 : (it.total_price_cents ? it.total_price_cents / 100 : (it.line_total || (it.unit_price || 0) * (it.quantity || 1)))).toFixed(2)}
-                        </div>
-                        <div className="text-[11px] text-slate-400">
-                          ₹{(it.unit_price_cents ? it.unit_price_cents / 100 : (it.unit_price || 0)).toFixed(2)} / pc
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 

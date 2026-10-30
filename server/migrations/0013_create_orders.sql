@@ -50,8 +50,16 @@ CREATE TABLE IF NOT EXISTS supplier_order_lines (
 CREATE INDEX IF NOT EXISTS idx_supplier_order_lines_order_id ON supplier_order_lines (order_id);
 CREATE INDEX IF NOT EXISTS idx_supplier_order_lines_design_id ON supplier_order_lines (design_id);
 
+-- Helper function to automatically touch updated_at
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 -- Keep supplier_orders.updated_at fresh using existing function
--- (function update_updated_at_column is defined in prior migration)
 DROP TRIGGER IF EXISTS trg_supplier_orders_updated_at ON supplier_orders;
 CREATE TRIGGER trg_supplier_orders_updated_at
 BEFORE UPDATE ON supplier_orders

@@ -10,6 +10,7 @@ import CartDrawer from '@/components/cart/CartDrawer.jsx';
 import Loader from '@/components/ui/Loader.jsx';
 import { useLocation } from 'wouter';
 import AppRoutes from '@/routes/AppRoutes.jsx';
+import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
 
 function RouteChangeListener() {
   const [location] = useLocation();
@@ -35,7 +36,9 @@ export function App() {
             <TooltipProvider>
               <Toaster />
               <RouteChangeListener />
-              <AppRoutes />
+              <ErrorBoundary>
+                <AppRoutes />
+              </ErrorBoundary>
               <CartDrawer />
               <Loader />
             </TooltipProvider>

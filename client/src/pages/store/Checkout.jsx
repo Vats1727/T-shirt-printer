@@ -147,7 +147,8 @@ export default function Checkout() {
               color_name: item.color?.name,
               color_hex: item.color?.hex,
               size_label: item.size,
-              preview_url: item.preview_url
+              preview_url: item.preview_url,
+              back_preview_url: item.back_preview_url || item.preview_back_url || null
             })),
             customerName: shippingAddress.name,
             customerEmail: shippingAddress.email,
@@ -189,7 +190,8 @@ export default function Checkout() {
             color_name: item.color?.name,
             color_hex: item.color?.hex,
             size_label: item.size,
-            preview_url: item.preview_url
+            preview_url: item.preview_url,
+            back_preview_url: item.back_preview_url || item.preview_back_url || null
           })),
           customerName: shippingAddress.name,
           customerEmail: shippingAddress.email,
@@ -238,7 +240,7 @@ export default function Checkout() {
         currency: rzpOrder.currency || 'INR',
         name: 'Tshirt-Printer Marketplace',
         description: `Order ${platformOrder.order_number}`,
-        image: '/templates/tshirt.png',
+        ...(typeof window !== 'undefined' && window.location.protocol === 'https:' ? { image: `${window.location.origin}/templates/tshirt.png` } : {}),
         order_id: rzpOrder.id,
         prefill: {
           name: shippingAddress.name,

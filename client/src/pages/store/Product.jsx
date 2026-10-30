@@ -177,10 +177,16 @@ export default function StoreProduct() {
   const resolvedSupplierId = listing.supplier_id || decodeId(supplierQuery);
   const storeUrl = resolvedSupplierId ? `/store/${encodeId(resolvedSupplierId)}` : "/store";
 
+  const resolvedDesignId = listing.design_id || (
+    listing.design_key && /^design-(\d+)$/i.test(listing.design_key)
+      ? Number(listing.design_key.match(/^design-(\d+)$/i)[1])
+      : null
+  );
+
   const handleAddToCart = () => {
     addToCart({
       listing_id: listing.id,
-      design_id: listing.design_id,
+      design_id: resolvedDesignId,
       product_id: listing.product_id,
       supplier_id: listing.supplier_id,
       title: listing.title,
@@ -188,7 +194,9 @@ export default function StoreProduct() {
       quantity,
       size: selectedSize,
       color: selectedColor,
-      preview_url: currentImg
+      preview_url: frontImg || currentImg,
+      back_preview_url: backImg || null,
+      preview_back_url: backImg || null
     });
     setAddedToCart(true);
     toast({
@@ -201,7 +209,7 @@ export default function StoreProduct() {
   const handleInstantCheckout = () => {
     addToCart({
       listing_id: listing.id,
-      design_id: listing.design_id,
+      design_id: resolvedDesignId,
       product_id: listing.product_id,
       supplier_id: listing.supplier_id,
       title: listing.title,
@@ -209,7 +217,9 @@ export default function StoreProduct() {
       quantity,
       size: selectedSize,
       color: selectedColor,
-      preview_url: currentImg
+      preview_url: frontImg || currentImg,
+      back_preview_url: backImg || null,
+      preview_back_url: backImg || null
     });
     setLocation('/checkout');
   };
@@ -324,43 +334,47 @@ export default function StoreProduct() {
               /* Garment Hero Image Display */
             }
             <div className="w-full h-full flex items-center justify-center max-h-[500px]">
-              {(!matchedColorPreview && selectedColor?.hex) ? (
-                <DesignCanvas
-                  side={previewSide}
-                  width={480}
-                  height={480}
-                  slogan={(() => {
-                    const vSides = listing.design_version?.sides || [];
-                    const sideObj = vSides.find(s => s.name === previewSide);
-                    const textLayer = sideObj?.layers?.find(l => l.type === "text");
-                    return textLayer?.text || (previewSide === "front" ? listing.slogan : listing.back_slogan) || "";
-                  })()}
-                  color={(() => {
-                    const vSides = listing.design_version?.sides || [];
-                    const sideObj = vSides.find(s => s.name === previewSide);
-                    const textLayer = sideObj?.layers?.find(l => l.type === "text");
-                    return textLayer?.color || listing.color || "#000000";
-                  })()}
-                  image={(() => {
-                    const vSides = listing.design_version?.sides || [];
-                    const sideObj = vSides.find(s => s.name === previewSide);
-                    const imgLayer = sideObj?.layers?.find(l => l.type === "image");
-                    return imgLayer?.image || (previewSide === "front" ? listing.artwork_url : null) || null;
-                  })()}
-                  template={listing.template || listing.design_version?.template || "tshirt"}
-                  templateColor={selectedColor.hex}
-                  showTemplate={true}
-                />
-              ) : (
-                <img
-                  src={currentImg}
-                  alt={listing.title}
-                  className="max-h-[480px] w-auto max-w-full object-contain drop-shadow-md group-hover:scale-105 transition-transform duration-500 ease-out"
-                  onError={(e) => {
-                    e.currentTarget.src = "/templates/tshirt.png";
-                  }}
-                />
-              )}
+              {(() => {
+                const vSides = listing.design_version?.sides || [];
+                const sideObj = vSides.find(s => s.name === previewSide || s.side === previewSide);
+                const textLayer = sideObj?.layers?.find(l => l.type === "text");
+                const imgLayer = sideObj?.layers?.find(l => l.type === "image");
+                const layerArtwork = imgLayer?.asset?.url || imgLayer?.asset?.dataUrl || imgLayer?.url || imgLayer?.image || (previewSide === "front" ? listing.artwork_url : listing.back_artwork_url) || null;
+                const layerSlogan = textLayer?.text || (previewSide === "front" ? listing.slogan : listing.back_slogan) || "";
+                const hasDynamicArtwork = Boolean(layerArtwork || layerSlogan);
+                const hasRealImage = Boolean(currentImg && !currentImg.includes('/templates/tshirt.png') && currentImg !== '/templates/tshirt.png');
+
+                // If we have a realistic product mockup photo (from preview_url or matchedColorPreview), ALWAYS display the real image!
+                // Only fall back to DesignCanvas if no realistic image exists, or if switching to an un-mocked color with dynamic artwork.
+                const shouldRenderCanvas = !hasRealImage || (!matchedColorPreview && selectedColor?.hex && hasDynamicArtwork);
+
+                if (shouldRenderCanvas && hasDynamicArtwork) {
+                  return (
+                    <DesignCanvas
+                      side={previewSide}
+                      width={480}
+                      height={480}
+                      slogan={layerSlogan}
+                      color={textLayer?.color || listing.color || "#000000"}
+                      image={layerArtwork}
+                      template={listing.template || listing.design_version?.template || "tshirt"}
+                      templateColor={selectedColor?.hex || "#ffffff"}
+                      showTemplate={true}
+                    />
+                  );
+                }
+
+                return (
+                  <img
+                    src={currentImg}
+                    alt={listing.title}
+                    className="max-h-[480px] w-auto max-w-full object-contain drop-shadow-md group-hover:scale-105 transition-transform duration-500 ease-out"
+                    onError={(e) => {
+                      e.currentTarget.src = "/templates/tshirt.png";
+                    }}
+                  />
+                );
+              })()}
             </div>
 
             {

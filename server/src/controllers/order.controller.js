@@ -240,6 +240,9 @@ export async function listSupplierOrders(req, res, next) {
           color: i.color_name,
           color_hex: i.color_hex,
           preview_url: i.custom_mockup_url || '/templates/tshirt.png',
+          print_file_url: i.print_file_url || i.custom_mockup_url || '/templates/tshirt.png',
+          print_dimensions: i.print_dimensions || null,
+          print_method: i.print_method || 'DTF',
           unit_price: (i.unit_price_cents || 0) / 100,
           price: (i.line_total_cents || 0) / 100
         }))
@@ -277,6 +280,9 @@ export async function getSupplierOrder(req, res, next) {
             color: i.color_name,
             color_hex: i.color_hex,
             preview_url: i.custom_mockup_url || '/templates/tshirt.png',
+            print_file_url: i.print_file_url || i.custom_mockup_url || '/templates/tshirt.png',
+            print_dimensions: i.print_dimensions || null,
+            print_method: i.print_method || 'DTF',
             unit_price: (i.unit_price_cents || 0) / 100,
             price: (i.line_total_cents || 0) / 100
           }))
@@ -354,6 +360,9 @@ export async function listAdminOrders(req, res, next) {
           color: i.color_name,
           color_hex: i.color_hex,
           preview_url: i.custom_mockup_url || '/templates/tshirt.png',
+          print_file_url: i.print_file_url || i.custom_mockup_url || '/templates/tshirt.png',
+          print_dimensions: i.print_dimensions || null,
+          print_method: i.print_method || 'DTF',
           unit_price: (i.unit_price_cents || 0) / 100,
           price: (i.line_total_cents || 0) / 100
         }))
@@ -390,6 +399,9 @@ export async function getAdminOrder(req, res, next) {
             color: i.color_name,
             color_hex: i.color_hex,
             preview_url: i.custom_mockup_url || '/templates/tshirt.png',
+            print_file_url: i.print_file_url || i.custom_mockup_url || '/templates/tshirt.png',
+            print_dimensions: i.print_dimensions || null,
+            print_method: i.print_method || 'DTF',
             unit_price: (i.unit_price_cents || 0) / 100,
             price: (i.line_total_cents || 0) / 100
           }))
