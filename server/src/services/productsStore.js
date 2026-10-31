@@ -31,8 +31,8 @@ export async function createProduct(payload) {
 export async function listProducts(ownerId) {
   if (pool) {
     const query = ownerId
-      ? `SELECT id, name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, created_at, designs, category, status, owner_id FROM products_full WHERE owner_id = $1 AND COALESCE(is_deleted, false) = false ORDER BY id`
-      : `SELECT id, name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, created_at, designs, category, status, owner_id FROM products_full WHERE COALESCE(is_deleted, false) = false ORDER BY id`;
+      ? `SELECT pf.id, pf.name, pf.slug, pf.single_price, pf.bulk_min, pf.bulk_price, pf.sizes, pf.colors, pf.size_chart, pf.created_at, pf.designs, pf.category, pf.status, pf.owner_id, u.name as provider_name, u.email as provider_email FROM products_full pf LEFT JOIN users u ON u.id = pf.owner_id WHERE pf.owner_id = $1 AND COALESCE(pf.is_deleted, false) = false ORDER BY pf.id`
+      : `SELECT pf.id, pf.name, pf.slug, pf.single_price, pf.bulk_min, pf.bulk_price, pf.sizes, pf.colors, pf.size_chart, pf.created_at, pf.designs, pf.category, pf.status, pf.owner_id, u.name as provider_name, u.email as provider_email FROM products_full pf LEFT JOIN users u ON u.id = pf.owner_id WHERE COALESCE(pf.is_deleted, false) = false ORDER BY pf.id`;
     const r = await pool.query(query, ownerId ? [ownerId] : []);
     return r.rows.map((row) => {
       const single_price = row.single_price !== null ? Number(row.single_price) : 0;
@@ -80,14 +80,14 @@ export async function listProducts(ownerId) {
       const back_image = designs.back?.image || designs.back?.image_url || designs_list[1]?.image || null;
       const image = front_image || back_image || null;
 
-      return { ...row, single_price, bulk_price, category, sizes, colors, size_chart, designs, designs_list, front_image, back_image, image };
+      return { ...row, single_price, bulk_price, category, sizes, colors, size_chart, designs, designs_list, front_image, back_image, image, provider_name: row.provider_name || null };
     });
   }
   return [];
 }
 export async function getProduct(id, ownerId) {
   if (pool) {
-    const query = ownerId ? "SELECT id, name, slug, category, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory, is_deleted, deleted_at, updated_at, created_at, status, owner_id FROM products_full WHERE id=$1 AND owner_id=$2" : "SELECT id, name, slug, category, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory, is_deleted, deleted_at, updated_at, created_at, status, owner_id FROM products_full WHERE id=$1";
+    const query = ownerId ? "SELECT pf.id, pf.name, pf.slug, pf.category, pf.single_price, pf.bulk_min, pf.bulk_price, pf.sizes, pf.colors, pf.size_chart, pf.designs, pf.inventory, pf.is_deleted, pf.deleted_at, pf.updated_at, pf.created_at, pf.status, pf.owner_id, u.name as provider_name, u.email as provider_email FROM products_full pf LEFT JOIN users u ON u.id = pf.owner_id WHERE pf.id=$1 AND pf.owner_id=$2" : "SELECT pf.id, pf.name, pf.slug, pf.category, pf.single_price, pf.bulk_min, pf.bulk_price, pf.sizes, pf.colors, pf.size_chart, pf.designs, pf.inventory, pf.is_deleted, pf.deleted_at, pf.updated_at, pf.created_at, pf.status, pf.owner_id, u.name as provider_name, u.email as provider_email FROM products_full pf LEFT JOIN users u ON u.id = pf.owner_id WHERE pf.id=$1";
     const params = ownerId ? [id, ownerId] : [id];
     const r = await pool.query(query, params);
     const prod = r.rows[0];
@@ -124,7 +124,7 @@ export async function getProduct(id, ownerId) {
     const back_image = designs.back?.image || designs.back?.image_url || designs_list[1]?.image || null;
     const image = front_image || back_image || null;
 
-    return { ...prod, sizes, colors, sizeChart, designs, designs_list, front_image, back_image, image, inventory };
+    return { ...prod, sizes, colors, sizeChart, designs, designs_list, front_image, back_image, image, inventory, provider_name: prod.provider_name || null };
   }
   return null;
 }

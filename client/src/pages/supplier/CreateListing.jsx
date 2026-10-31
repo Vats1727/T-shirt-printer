@@ -37,7 +37,7 @@ export default function CreateListing() {
   const [selectedDesign, setSelectedDesign] = useState(null);
   const [previewSide, setPreviewSide] = useState("front");
   const [visibility, setVisibility] = useState("public");
-  const [retailPrice, setRetailPrice] = useState(29.99);
+  const [retailPrice, setRetailPrice] = useState(499);
   const baseCost = 16.5;
   const [saving, setSaving] = useState(false);
   const [createdListing, setCreatedListing] = useState(null);
@@ -49,6 +49,27 @@ export default function CreateListing() {
     img = String(img);
     if (img.startsWith("data:") || img.startsWith("http") || img.startsWith("/")) return img;
     return `/uploads/${img}`;
+  };
+
+  const extractDesignPrice = (d) => {
+    if (!d) return null;
+    const raw = d.raw || d;
+    const meta = d.version?.metadata || raw.version?.metadata || {};
+    if (raw.price_cents && Number(raw.price_cents) > 0) return Number(raw.price_cents) / 100;
+    if (raw.retail_price && Number(raw.retail_price) > 0) return Number(raw.retail_price);
+    if (raw.price && Number(raw.price) > 0) return Number(raw.price);
+    if (meta.retail_price && Number(meta.retail_price) > 0) return Number(meta.retail_price);
+    if (meta.price && Number(meta.price) > 0) return Number(meta.price);
+    if (meta.price_cents && Number(meta.price_cents) > 0) return Number(meta.price_cents) / 100;
+    return null;
+  };
+
+  const handleSelectDesign = (d) => {
+    setSelectedDesign(d);
+    const p = extractDesignPrice(d);
+    if (p !== null && p > 0) {
+      setRetailPrice(p);
+    }
   };
 
   useEffect(() => {
@@ -128,7 +149,16 @@ export default function CreateListing() {
 
         setDesigns(validDesigns);
         if (validDesigns.length > 0) {
-          setSelectedDesign(validDesigns[0]);
+          const params = new URLSearchParams(window.location.search);
+          const qDesignId = params.get("designId") || params.get("id");
+          let initialDesign = validDesigns[0];
+          if (qDesignId) {
+            const found = validDesigns.find(d => String(d.id) === String(qDesignId) || d.key === qDesignId || d.key === `design-${qDesignId}`);
+            if (found) initialDesign = found;
+          }
+          if (initialDesign) {
+            handleSelectDesign(initialDesign);
+          }
         }
       } catch (e) {
         console.error("Failed to load designs:", e);
@@ -316,7 +346,7 @@ export default function CreateListing() {
                     return (
                       <div
                         key={d.key}
-                        onClick={() => setSelectedDesign(d)}
+                        onClick={() => handleSelectDesign(d)}
                         className={`group relative rounded-2xl border-2 p-2.5 cursor-pointer transition-all duration-200 bg-white flex flex-col items-center ${
                           isSelected
                             ? "border-indigo-600 ring-4 ring-indigo-500/10 shadow-md bg-indigo-50/20"

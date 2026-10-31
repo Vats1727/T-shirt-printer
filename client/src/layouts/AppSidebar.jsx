@@ -180,14 +180,15 @@ export function AppSidebar() {
     {
       title: 'Profile',
       icon: User,
-      url: isAdmin ? '/admin/profile' : (isDesigner ? '/supplier/profile' : '#'),
+      url: isPortalAdmin ? '/portal/profile' : (isAdmin ? '/admin/profile' : (isDesigner ? '/supplier/profile' : '#')),
       active: location.includes('profile')
     },
     {
       title: 'Help',
       icon: HelpCircle,
       url: '#',
-      active: false
+      active: false,
+      hidden: isPortalAdmin
     }
   ].filter((item) => !item.hidden);
 

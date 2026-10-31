@@ -132,6 +132,16 @@ export default function AdminCreateListing() {
 
   const handleSelectDesign = (d) => {
     setSelectedDesign(d);
+    const raw = d.raw || d;
+    const meta = d.version?.metadata || raw.version?.metadata || {};
+    const p = Number(
+      raw.price_cents ? raw.price_cents / 100 : (
+        raw.retail_price || raw.price || meta.retail_price || meta.price || (meta.price_cents ? meta.price_cents / 100 : 0)
+      )
+    );
+    if (p > 0) {
+      setRetailPrice(p);
+    }
     if (!title.trim() || title.includes('Custom Apparel')) {
       setTitle(`${d.name} Custom Apparel`);
     }

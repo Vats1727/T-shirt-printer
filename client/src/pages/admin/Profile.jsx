@@ -42,6 +42,7 @@ export default function Profile() {
   const [loading, setLoading] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const { register, handleSubmit, reset, formState: { errors } } = useForm({
     resolver: zodResolver(passwordSchema)
   });

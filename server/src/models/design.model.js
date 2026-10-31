@@ -181,7 +181,7 @@ export async function getDesign(id, userId) {
     const res = await pool.query(query, params);
     const row = res.rows[0] || null;
     if (row) {
-      const vRes = await pool.query('SELECT payload FROM design_versions WHERE design_id = $1 ORDER BY id DESC LIMIT 1', [row.id]);
+      const vRes = await pool.query('SELECT payload, price_cents, currency FROM design_versions WHERE design_id = $1 ORDER BY id DESC LIMIT 1', [row.id]);
       if (vRes.rows.length > 0) {
         let p = vRes.rows[0].payload;
         if (typeof p === 'string') {
@@ -189,6 +189,10 @@ export async function getDesign(id, userId) {
         }
         row.version = p;
         row.versions = [p];
+        row.price_cents = vRes.rows[0].price_cents || 0;
+        row.price = (row.price_cents || 0) / 100;
+        row.retail_price = row.price;
+        row.currency = vRes.rows[0].currency || 'INR';
         if (!row.image && p?.metadata?.preview_front) {
           row.image = p.metadata.preview_front;
         }
@@ -216,7 +220,7 @@ export async function listDesigns(limit = 100, userId) {
     if (rows.length > 0) {
       const designIds = rows.map((r) => r.id);
       const vRes = await pool.query(
-        'SELECT design_id, payload FROM design_versions WHERE design_id = ANY($1) ORDER BY id ASC',
+        'SELECT design_id, payload, price_cents, currency FROM design_versions WHERE design_id = ANY($1) ORDER BY id ASC',
         [designIds]
       );
       const versionMap = {};
@@ -225,12 +229,21 @@ export async function listDesigns(limit = 100, userId) {
         if (typeof p === 'string') {
           try { p = JSON.parse(p); } catch (e) {}
         }
-        versionMap[vr.design_id] = p;
+        versionMap[vr.design_id] = {
+          payload: p,
+          price_cents: vr.price_cents || 0,
+          currency: vr.currency || 'INR'
+        };
       }
       for (const row of rows) {
         if (versionMap[row.id]) {
-          row.version = versionMap[row.id];
-          row.versions = [versionMap[row.id]];
+          const vData = versionMap[row.id];
+          row.version = vData.payload;
+          row.versions = [vData.payload];
+          row.price_cents = vData.price_cents || 0;
+          row.price = (row.price_cents || 0) / 100;
+          row.retail_price = row.price;
+          row.currency = vData.currency || 'INR';
           if (!row.image && row.version?.metadata?.preview_front) {
             row.image = row.version.metadata.preview_front;
           }

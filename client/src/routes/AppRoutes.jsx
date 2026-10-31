@@ -38,6 +38,7 @@ import PortalAdminDashboard from '@/pages/Portal/Dashboard.jsx';
 import PortalAdminRequests from '@/pages/Portal/Requests.jsx';
 import PortalAdminFinancials from '@/pages/Portal/FinancialSettings.jsx';
 import PortalAdminLedger from '@/pages/Portal/PartnerLedger.jsx';
+import PortalAdminProfile from '@/pages/Portal/Profile.jsx';
 import PortalAdminRoute from '@/routes/PortalAdminRoute.jsx';
 
 import CustomerDashboard from '@/pages/Customer/Dashboard.jsx';
@@ -124,6 +125,7 @@ export function AppRoutes() {
       <PortalAdminRoute path="/portal/requests" component={PortalAdminRequests} />
       <PortalAdminRoute path="/portal/financials" component={PortalAdminFinancials} />
       <PortalAdminRoute path="/portal/ledger" component={PortalAdminLedger} />
+      <PortalAdminRoute path="/portal/profile" component={PortalAdminProfile} />
 
       {/* 404 Catch-All */}
       <Route component={NotFound} />

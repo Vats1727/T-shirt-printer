@@ -316,7 +316,7 @@ export default function SupplierDashboard() {
             <div>
               <h2 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
                 <Package className="w-4 h-4 text-indigo-600" />
-                Available Garment Blanks
+                Print Providers Fermo
               </h2>
               <p className="text-xs text-slate-500">
                 {currentProvider
@@ -415,7 +415,7 @@ export default function SupplierDashboard() {
           {/* Catalog Grid Area */}
           <div className="p-4 sm:p-5">
             {loading ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
                 {[1, 2, 3, 4, 5, 6].map((i) => (
                   <div
                     key={i}
@@ -466,7 +466,7 @@ export default function SupplierDashboard() {
                   return (
                     <div
                       key={p.id}
-                      className="rounded-xl border border-slate-200 bg-white hover:border-indigo-300 hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col justify-between group max-w-[240px]"
+                      className="rounded-2xl border border-slate-200/90 bg-white hover:border-indigo-300 hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col justify-between group w-full"
                     >
                       {/* Top Preview Area */}
                       <div>
@@ -546,11 +546,11 @@ export default function SupplierDashboard() {
                           <h3 className="font-bold text-slate-800 text-xs truncate leading-tight">
                             {p.name}
                           </h3>
-                          {p.owner_id && (
-                            <div className="text-[9px] font-semibold text-slate-400 flex items-center gap-1 mt-0.5 truncate">
-                              <Factory className="w-2.5 h-2.5 text-slate-400 shrink-0" />
-                              <span className="truncate">
-                                {providers.find((pr) => pr.id === p.owner_id)?.name || "Print Provider"}
+                          {(p.owner_id || p.provider_name) && (
+                            <div className="text-[10px] font-semibold text-slate-500 flex items-center gap-1 mt-0.5 truncate">
+                              <Factory className="w-3 h-3 text-indigo-500 shrink-0" />
+                              <span className="truncate font-semibold text-slate-700" title={p.provider_name || providers.find((pr) => Number(pr.id) === Number(p.owner_id))?.name}>
+                                {p.provider_name || providers.find((pr) => Number(pr.id) === Number(p.owner_id))?.name || "Print Provider"}
                               </span>
                             </div>
                           )}
@@ -638,41 +638,29 @@ export default function SupplierDashboard() {
                         </div>
                       </div>
 
-                      {/* Card Action Button */}
-                      <div className="p-2 pt-0 border-t border-slate-100 flex items-center gap-1.5">
-                        <Button
-                          size="sm"
-                          onClick={() => setLocation(`/supplier/product/${encodeId(p.id)}`)}
-                          className="flex-1 h-7 text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-2xs cursor-pointer"
-                        >
-                          <Paintbrush className="w-3 h-3 mr-1" />
-                          Design
-                        </Button>
+                      {/* Card Action Buttons: Design & Order B2B */}
+                      <div className="p-2.5 pt-0 border-t border-slate-100 mt-2">
+                        <div className="grid grid-cols-2 gap-1.5 w-full">
+                          <Button
+                            size="sm"
+                            onClick={() => setLocation(`/supplier/product/${encodeId(p.id)}`)}
+                            className="w-full h-8 px-2 text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs cursor-pointer flex items-center justify-center gap-1 min-w-0"
+                          >
+                            <Paintbrush className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate">Design</span>
+                          </Button>
 
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setLocation(`/supplier/product/${encodeId(p.id)}/order`)}
-                          className="h-7 px-2 text-[11px] font-bold border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:border-indigo-300 rounded-lg shadow-2xs cursor-pointer gap-1"
-                          title="Order Single Sample or Bulk Wholesale Garments"
-                        >
-                          <ShoppingCart className="w-3 h-3" />
-                          Order B2B
-                        </Button>
-
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => copyToClipboard(p)}
-                          className="h-7 w-7 rounded-lg border-slate-200 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 shadow-2xs cursor-pointer"
-                          title="Copy Listing URL"
-                        >
-                          {copiedId === p.id ? (
-                            <Check className="w-3 h-3 text-emerald-600" />
-                          ) : (
-                            <Copy className="w-3 h-3" />
-                          )}
-                        </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setLocation(`/supplier/product/${encodeId(p.id)}/order`)}
+                            className="w-full h-8 px-1.5 text-[11px] font-bold border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:border-indigo-300 rounded-xl shadow-xs cursor-pointer flex items-center justify-center gap-1 min-w-0"
+                            title="Order Single Sample or Bulk Wholesale Garments"
+                          >
+                            <ShoppingCart className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate">Order B2B</span>
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   );

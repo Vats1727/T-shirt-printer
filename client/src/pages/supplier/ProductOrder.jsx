@@ -317,8 +317,9 @@ export default function SupplierProductOrder() {
           const sIds = meta.selected_sizes.map((s) => Number(s.id || s)).filter(Boolean);
           if (sIds.length > 0) setSelectedSizes(sIds);
         }
-        if (savedD.price_cents) {
-          setPriceInput(Number(savedD.price_cents) / 100);
+        const savedPrice = Number(savedD.price_cents ? savedD.price_cents / 100 : (savedD.price || meta.retail_price || meta.price || 0));
+        if (savedPrice > 0) {
+          setPriceInput(savedPrice);
         }
       }
     };
@@ -415,6 +416,10 @@ export default function SupplierProductOrder() {
         versionName: "supplier-save",
         sides: [buildSide(frontState, "front"), buildSide(backState, "back")],
         metadata: {
+          price: Number(priceInput || 0),
+          retail_price: Number(priceInput || 0),
+          price_cents: Math.round(Number(priceInput || 0) * 100),
+          currency: "INR",
           canvasDimensions: { width: 400, height: 400 },
           dpiAware: true,
           preview_front: frontPreview,
@@ -484,10 +489,16 @@ export default function SupplierProductOrder() {
         const featuredPreview = previewByColor.find((p) => Number(p.id) === Number(featuredCid)) || previewByColor[0];
         const multiPayload = {
           ...payload,
+          price_cents: Math.round(Number(priceInput || 0) * 100),
+          currency: "INR",
           version: {
             ...payload.version,
             metadata: {
               ...payload.version?.metadata || {},
+              price: Number(priceInput || 0),
+              retail_price: Number(priceInput || 0),
+              price_cents: Math.round(Number(priceInput || 0) * 100),
+              currency: "INR",
               preview_front: featuredPreview?.preview_front || null,
               preview_back: featuredPreview?.preview_back || null,
               selected_colors: previewByColor.map((p) => ({ id: p.id, hex: p.hex, name: p.name })),
@@ -951,8 +962,8 @@ export default function SupplierProductOrder() {
         {
     /* Right column: 3D Preview */
   }
-        <div className="lg:col-span-7 space-y-6">
-          <div className="relative aspect-square w-full max-w-2xl mx-auto rounded-3xl overflow-hidden shadow-2xl shadow-indigo-100 border-8 border-white bg-slate-100 flex items-center justify-center">
+        <div className="lg:col-span-7 space-y-4 lg:sticky lg:top-20">
+          <div className="relative aspect-square w-full max-w-[440px] max-h-[440px] mx-auto rounded-3xl overflow-hidden shadow-xl shadow-indigo-100/50 border-4 border-white bg-slate-100 flex items-center justify-center">
             <DesignCanvas
     side={side}
     slogan={slogan}
@@ -973,8 +984,8 @@ export default function SupplierProductOrder() {
     imageRotation={imageRotation}
     imagePosition={imagePosition}
     onImageMove={(pos) => setActiveState({ imagePosition: pos })}
-    width={640}
-    height={640}
+    width={440}
+    height={440}
   />
             
             {
