@@ -247,7 +247,7 @@ export default function CreateListing() {
               </div>
 
               <div className="space-y-4 pt-4">
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 w-full min-w-0 max-w-full">
                   <div className="flex justify-between items-center">
                     <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
                       Product Title <span className="text-rose-500">*</span>
@@ -556,14 +556,14 @@ export default function CreateListing() {
                     </span>
                   </div>
                   <div className="flex items-baseline justify-between gap-2">
-                    <h4 className="font-extrabold text-slate-900 text-sm truncate" title={title || "Untitled Product"}>
+                    <h4 className="font-extrabold text-slate-900 text-sm break-all [overflow-wrap:anywhere] line-clamp-2 min-w-0" title={title || "Untitled Product"}>
                       {title || "Untitled Product"}
                     </h4>
                     <span className="text-base font-black text-indigo-600 shrink-0">
                       ₹{retailPrice.toFixed(2)}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500 line-clamp-1 italic">
+                  <p className="text-xs text-slate-500 break-all [overflow-wrap:anywhere] line-clamp-2 italic min-w-0">
                     {description || "No description provided yet..."}
                   </p>
                 </div>
@@ -580,7 +580,7 @@ export default function CreateListing() {
 
       {/* Success Launch Dialog */}
       <Dialog open={successDialogOpen} onOpenChange={setSuccessDialogOpen}>
-        <DialogContent className="sm:max-w-md p-0 overflow-hidden rounded-3xl border border-slate-200/90 shadow-2xl bg-white">
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-md p-0 overflow-hidden rounded-3xl border border-slate-200/90 shadow-2xl bg-white">
           {/* Header Banner with celebration gradient */}
           <div className="relative bg-gradient-to-br from-indigo-50/80 via-emerald-50/40 to-white px-6 pt-7 pb-5 text-center border-b border-slate-100">
             <div className="mx-auto size-14 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-white flex items-center justify-center shadow-lg shadow-emerald-500/25 mb-3 ring-4 ring-emerald-50/80">
@@ -600,9 +600,9 @@ export default function CreateListing() {
             </DialogDescription>
           </div>
 
-          <div className="p-6 space-y-4">
+          <div className="p-6 space-y-4 w-full min-w-0 max-w-full overflow-hidden">
             {/* Product Summary Card with Mockup Thumbnail */}
-            <div className="flex items-center gap-3.5 p-3 rounded-2xl bg-slate-50/90 border border-slate-200/80 hover:border-indigo-200 transition-all">
+            <div className="flex items-center gap-3.5 p-3 rounded-2xl bg-slate-50/90 border border-slate-200/80 hover:border-indigo-200 transition-all w-full min-w-0 max-w-full overflow-hidden">
               <div className="size-16 rounded-xl bg-white border border-slate-200/80 flex items-center justify-center overflow-hidden shrink-0 shadow-xs p-1">
                 <img
                   src={getPreviewImage(selectedDesign, "front")}
@@ -612,21 +612,27 @@ export default function CreateListing() {
               </div>
 
               <div className="flex-1 min-w-0 space-y-1">
-                <div className="flex items-center justify-between gap-2">
-                  <h4 className="text-sm font-bold text-slate-900 truncate">
+                <div className="flex items-start justify-between gap-2">
+                  <h4 className="text-sm font-bold text-slate-900 break-all [overflow-wrap:anywhere] line-clamp-2 min-w-0" title={title || "Untitled Product"}>
                     {title || "Untitled Product"}
                   </h4>
-                  <span className="text-base font-black text-emerald-600 shrink-0">
+                  <span className="text-base font-black text-emerald-600 shrink-0 whitespace-nowrap">
                     ₹{retailPrice.toFixed(2)}
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <span className="px-2 py-0.5 rounded-md bg-slate-200/70 font-mono font-medium text-[11px] text-slate-700">
+                {description && (
+                  <p className="text-xs text-slate-500 break-all [overflow-wrap:anywhere] line-clamp-2 min-w-0" title={description}>
+                    {description}
+                  </p>
+                )}
+
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                  <span className="px-2 py-0.5 rounded-md bg-slate-200/70 font-mono font-medium text-[11px] text-slate-700 shrink-0">
                     {selectedDesign?.key || "design-custom"}
                   </span>
                   <span className="text-slate-300">•</span>
-                  <span className="font-semibold text-emerald-700">
+                  <span className="font-semibold text-emerald-700 whitespace-nowrap">
                     +₹{profit.toFixed(2)} Margin ({marginPercent}%)
                   </span>
                 </div>
@@ -686,7 +692,7 @@ export default function CreateListing() {
                 <ExternalLink className="size-3.5 opacity-80" />
               </Button>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2 w-full min-w-0">
                 <Button
                   variant="outline"
                   onClick={() => {

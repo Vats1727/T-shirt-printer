@@ -30,7 +30,8 @@ import {
   HelpCircle,
   AlertTriangle,
   FileText,
-  AlertCircle
+  AlertCircle,
+  Lock
 } from "lucide-react";
 import { DesignCanvas } from "@/components/common/DesignCanvas";
 import { useToast } from "@/hooks/use-toast";
@@ -200,6 +201,15 @@ export default function AdminClothes() {
       return;
     }
 
+    if (colorName.trim().length > 30) {
+      toast({
+        title: "Color Name Too Long",
+        description: "Fabric shade name must be 30 characters or less.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     const normalizeHex = (h) => {
       if (!h) return "";
       let clean = h.trim().toLowerCase();
@@ -317,12 +327,6 @@ export default function AdminClothes() {
   const [designSide, setDesignSide] = useState("front");
   const [activeTab, setActiveTab] = useState("product");
 
-  const handleTabChange = (tabId) => {
-    setActiveTab(tabId);
-    if (typeof window !== "undefined") {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
-  };
   const [designs, setDesigns] = useState({
     front: {
       image: null,
@@ -353,6 +357,92 @@ export default function AdminClothes() {
   const [productStatus, setProductStatus] = useState("published");
   const [missingFieldsModalOpen, setMissingFieldsModalOpen] = useState(false);
   const [missingFieldsList, setMissingFieldsList] = useState([]);
+
+  const validateStepRequirements = (targetTabId) => {
+    const tabOrder = ["product", "design", "sizes", "pricing"];
+    const currentIndex = tabOrder.indexOf(activeTab);
+    const targetIndex = tabOrder.indexOf(targetTabId);
+
+    // Navigating backwards is always allowed
+    if (targetIndex <= currentIndex) {
+      return { ok: true };
+    }
+
+    // Check each step up to the target
+    for (let i = 0; i < targetIndex; i++) {
+      const step = tabOrder[i];
+      if (step === "product") {
+        if (!productName.trim()) {
+          return {
+            ok: false,
+            stepId: "product",
+            title: "Product Title Required",
+            description: "Please enter a product title in Step 01 before proceeding to the next step."
+          };
+        }
+        if (productName.trim().length > 60) {
+          return {
+            ok: false,
+            stepId: "product",
+            title: "Product Title Too Long",
+            description: "Product title must not exceed 60 characters before proceeding."
+          };
+        }
+      } else if (step === "design") {
+        if (!designs.front.image) {
+          return {
+            ok: false,
+            stepId: "design",
+            title: "Front Mockup Required",
+            description: "Please upload a Front View Canvas Mockup (PNG) in Step 02 before proceeding to the next step."
+          };
+        }
+      } else if (step === "sizes") {
+        if (!selectedColors || selectedColors.length === 0) {
+          return {
+            ok: false,
+            stepId: "sizes",
+            title: "Fabric Colors Required",
+            description: "Please select at least one garment color swatch in Step 03 before proceeding."
+          };
+        }
+        if (!selectedSizes || selectedSizes.length === 0) {
+          return {
+            ok: false,
+            stepId: "sizes",
+            title: "Garment Sizes Required",
+            description: "Please select at least one garment size in Step 03 before proceeding."
+          };
+        }
+      }
+    }
+
+    return { ok: true };
+  };
+
+  const isStepAccessible = (targetId) => {
+    return validateStepRequirements(targetId).ok;
+  };
+
+  const handleTabChange = (tabId) => {
+    if (tabId === activeTab) return true;
+
+    const check = validateStepRequirements(tabId);
+    if (!check.ok) {
+      toast({
+        title: check.title,
+        description: check.description,
+        variant: "destructive"
+      });
+      return false;
+    }
+
+    setActiveTab(tabId);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    return true;
+  };
 
   useEffect(() => {
     fetchData();
@@ -582,6 +672,8 @@ export default function AdminClothes() {
     const missing = [];
     if (!productName.trim()) {
       missing.push({ tab: "product", tabName: "Step 01 Product Info", field: "Product Title" });
+    } else if (productName.trim().length > 60) {
+      missing.push({ tab: "product", tabName: "Step 01 Product Info", field: "Product Title must be 60 characters or less" });
     }
     if (!designs.front.image) {
       missing.push({ tab: "design", tabName: "Step 02 Artwork & Mockups", field: "Front Mockup Image (PNG)" });
@@ -611,6 +703,16 @@ export default function AdminClothes() {
         description: isDraft
           ? "Please provide a name for this draft garment."
           : "Please enter a product title before saving.",
+        variant: "destructive"
+      });
+      handleTabChange("product");
+      return;
+    }
+
+    if (productName.trim().length > 60) {
+      toast({
+        title: "Product Title Too Long",
+        description: "Product title must not exceed 60 characters to prevent layout issues.",
         variant: "destructive"
       });
       handleTabChange("product");
@@ -729,6 +831,7 @@ export default function AdminClothes() {
 
   function handleSaveAll(e) {
     if (e && e.preventDefault) e.preventDefault();
+    if (activeTab !== "pricing") return;
     handleSave(false);
   }
 
@@ -802,8 +905,10 @@ export default function AdminClothes() {
             <nav className="flex divide-x divide-slate-100 overflow-x-auto no-scrollbar" aria-label="Garment Studio Steps">
               {tabList.map((t, index) => {
                 const isActive = activeTab === t.id;
-                const activeIndex = tabList.findIndex((item) => item.id === activeTab);
+                const tabOrder = ["product", "design", "sizes", "pricing"];
+                const activeIndex = tabOrder.indexOf(activeTab);
                 const isPassed = index < activeIndex;
+                const isAccessible = isStepAccessible(t.id);
 
                 return (
                   <button
@@ -813,7 +918,9 @@ export default function AdminClothes() {
                     className={`group relative flex-1 min-w-[180px] sm:min-w-0 py-4 px-4 sm:px-6 flex items-center gap-3.5 text-left transition-all ${
                       isActive
                         ? "bg-slate-50/70"
-                        : "bg-white hover:bg-slate-50/40"
+                        : isAccessible
+                        ? "bg-white hover:bg-slate-50/40 cursor-pointer"
+                        : "bg-slate-50/30 opacity-70 cursor-not-allowed hover:bg-slate-50/50"
                     }`}
                   >
                     {/* Step Indicator Badge */}
@@ -823,11 +930,15 @@ export default function AdminClothes() {
                           ? "bg-indigo-600 text-white shadow-xs"
                           : isPassed
                           ? "bg-emerald-50 text-emerald-700 border border-emerald-200/80"
-                          : "bg-slate-100 text-slate-500 border border-slate-200/70"
+                          : isAccessible
+                          ? "bg-slate-100 text-slate-500 border border-slate-200/70"
+                          : "bg-slate-100 text-slate-400 border border-slate-200/50"
                       }`}
                     >
                       {isPassed ? (
                         <Check className="h-3.5 w-3.5 stroke-[3]" />
+                      ) : !isAccessible ? (
+                        <Lock className="h-3.5 w-3.5 text-slate-400" />
                       ) : (
                         <span>0{t.number}</span>
                       )}
@@ -841,16 +952,20 @@ export default function AdminClothes() {
                             ? "text-indigo-600"
                             : isPassed
                             ? "text-emerald-700"
-                            : "text-slate-400 group-hover:text-slate-500"
+                            : isAccessible
+                            ? "text-slate-400 group-hover:text-slate-500"
+                            : "text-slate-400"
                         }`}
                       >
-                        Step 0{t.number}
+                        Step 0{t.number} {!isAccessible && "• Locked"}
                       </div>
                       <div
                         className={`text-sm transition-colors whitespace-nowrap ${
                           isActive
                             ? "text-slate-900 font-bold"
-                            : "text-slate-600 font-semibold group-hover:text-slate-900"
+                            : isAccessible
+                            ? "text-slate-600 font-semibold group-hover:text-slate-900"
+                            : "text-slate-400 font-medium"
                         }`}
                       >
                         {t.label}
@@ -980,16 +1095,39 @@ export default function AdminClothes() {
                         <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
                           Product Title <span className="text-rose-500">*</span>
                         </label>
-                        <span className="text-xs text-slate-400">
-                          Shown to designers in catalog
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-400">
+                            Shown to designers in catalog
+                          </span>
+                          <span
+                            className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                              productName.length >= 60
+                                ? "bg-rose-100 text-rose-700 border border-rose-200"
+                                : productName.length > 50
+                                ? "bg-amber-100 text-amber-700 border border-amber-200"
+                                : "bg-slate-100 text-slate-600 border border-slate-200"
+                            }`}
+                          >
+                            {productName.length}/60
+                          </span>
+                        </div>
                       </div>
                       <input
                         value={productName}
-                        onChange={(e) => setProductName(e.target.value)}
+                        maxLength={60}
+                        onChange={(e) => setProductName(e.target.value.slice(0, 60))}
                         placeholder="e.g. Men's Heavyweight 240 GSM Oversized Tee"
-                        className="w-full border border-slate-200 bg-white px-4 py-3 rounded-xl text-slate-900 font-medium placeholder:text-slate-400 shadow-2xs focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+                        className={`w-full border px-4 py-3 rounded-xl text-slate-900 font-medium placeholder:text-slate-400 shadow-2xs focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition ${
+                          productName.length >= 60
+                            ? "border-amber-300 bg-amber-50/20"
+                            : "border-slate-200 bg-white"
+                        }`}
                       />
+                      {productName.length >= 60 && (
+                        <p className="text-[11px] text-amber-600 font-medium flex items-center gap-1">
+                          Maximum product title character limit reached (60 characters).
+                        </p>
+                      )}
                     </div>
                   </CardContent>
 
@@ -1008,18 +1146,12 @@ export default function AdminClothes() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleSave(false)}
-                        disabled={isSaving}
-                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold shadow-2xs transition cursor-pointer"
-                        title="Validate all required specifications and publish to catalog"
-                      >
-                        <Save className="h-4 w-4" />
-                        <span>Save All</span>
-                      </button>
-                      <button
-                        type="button"
                         onClick={() => handleTabChange("design")}
-                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-xs transition"
+                        className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold shadow-xs transition ${
+                          !productName.trim()
+                            ? "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
+                            : "bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer"
+                        }`}
                       >
                         <span>Continue to Mockups</span>
                         <ArrowRight className="h-4 w-4" />
@@ -1565,18 +1697,12 @@ export default function AdminClothes() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleSave(false)}
-                        disabled={isSaving}
-                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold shadow-2xs transition cursor-pointer"
-                        title="Validate all required specifications and publish to catalog"
-                      >
-                        <Save className="h-4 w-4" />
-                        <span>Save All</span>
-                      </button>
-                      <button
-                        type="button"
                         onClick={() => handleTabChange("sizes")}
-                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-xs transition"
+                        className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold shadow-xs transition ${
+                          !designs.front.image
+                            ? "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
+                            : "bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer"
+                        }`}
                       >
                         <span>Continue to Colors & Sizes</span>
                         <ArrowRight className="h-4 w-4" />
@@ -1805,13 +1931,19 @@ export default function AdminClothes() {
 
                           {/* Color Name Input */}
                           <div className="md:col-span-3">
-                            <label className="text-[11px] font-bold text-slate-600 block mb-1">
-                              Fabric Shade Name
-                            </label>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[11px] font-bold text-slate-600 block">
+                                Fabric Shade Name
+                              </label>
+                              <span className="text-[10px] font-mono text-slate-400">
+                                {colorName.length}/30
+                              </span>
+                            </div>
                             <input
                               type="text"
                               value={colorName}
-                              onChange={(e) => setColorName(e.target.value)}
+                              maxLength={30}
+                              onChange={(e) => setColorName(e.target.value.slice(0, 30))}
                               onKeyDown={(e) => {
                                 if (e.key === "Enter") {
                                   e.preventDefault();
@@ -1847,14 +1979,16 @@ export default function AdminClothes() {
                             <button
                               type="button"
                               onClick={() => setSelectedColors(colors.map((c) => c.id))}
-                              className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition"
+                              disabled={colors.length === 0}
+                              className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
                             >
                               Select All
                             </button>
                             <button
                               type="button"
                               onClick={() => setSelectedColors([])}
-                              className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition"
+                              disabled={selectedColors.length === 0}
+                              className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-40 disabled:cursor-not-allowed transition"
                             >
                               Clear
                             </button>
@@ -1862,48 +1996,54 @@ export default function AdminClothes() {
                         </div>
 
                         <div className="flex flex-wrap gap-2">
-                          {colors.map((c) => {
-                            const isSelected = selectedColors.includes(c.id);
-                            return (
-                              <div
-                                key={c.id}
-                                className={`group flex items-center gap-2 pl-2.5 pr-2 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-2xs ${
-                                  isSelected
-                                    ? "bg-indigo-50/80 border-indigo-600 text-indigo-950 font-bold ring-1 ring-indigo-500/20"
-                                    : "bg-white border-slate-200 text-slate-700 hover:border-slate-300"
-                                }`}
-                              >
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedColors((prev) =>
-                                      prev.includes(c.id)
-                                        ? prev.filter((x) => x !== c.id)
-                                        : [...prev, c.id]
-                                    );
-                                  }}
-                                  className="flex items-center gap-2"
+                          {colors.length === 0 ? (
+                            <div className="w-full py-5 px-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 text-center">
+                              <Palette className="h-5 w-5 text-slate-400 mx-auto mb-1.5" />
+                              <p className="text-xs font-semibold text-slate-700">No fabric colors in your catalog yet.</p>
+                              <p className="text-[11px] text-slate-500 mt-0.5">Use the palette builder above to define custom fabric shade swatches for this garment.</p>
+                            </div>
+                          ) : (
+                            colors.map((c) => {
+                              const isSelected = selectedColors.includes(c.id);
+                              return (
+                                <div
+                                  key={c.id}
+                                  className={`group flex items-center gap-2 pl-2.5 pr-2 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-2xs ${
+                                    isSelected
+                                      ? "bg-indigo-50/80 border-indigo-600 text-indigo-950 font-bold ring-1 ring-indigo-500/20"
+                                      : "bg-white border-slate-200 text-slate-700 hover:border-slate-300"
+                                  }`}
                                 >
-                                  <span
-                                    className="w-3.5 h-3.5 rounded-full border border-black/15 shadow-inner shrink-0"
-                                    style={{ backgroundColor: c.hex }}
-                                  />
-                                  <span>{c.name}</span>
-                                  {isSelected && <Check className="h-3.5 w-3.5 text-indigo-600 stroke-[3]" />}
-                                </button>
-                                {c.owner_id && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedColors((prev) =>
+                                        prev.includes(c.id)
+                                          ? prev.filter((x) => x !== c.id)
+                                          : [...prev, c.id]
+                                      );
+                                    }}
+                                    className="flex items-center gap-2"
+                                  >
+                                    <span
+                                      className="w-3.5 h-3.5 rounded-full border border-black/15 shadow-inner shrink-0"
+                                      style={{ backgroundColor: c.hex }}
+                                    />
+                                    <span>{c.name}</span>
+                                    {isSelected && <Check className="h-3.5 w-3.5 text-indigo-600 stroke-[3]" />}
+                                  </button>
                                   <button
                                     type="button"
                                     onClick={() => handleDeleteColor(c.id, c.name)}
-                                    className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-500 transition p-0.5 ml-0.5"
-                                    title="Delete custom color"
+                                    className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-500 transition p-0.5 ml-0.5 cursor-pointer"
+                                    title="Delete color"
                                   >
                                     <Trash2 className="h-3 w-3" />
                                   </button>
-                                )}
-                              </div>
-                            );
-                          })}
+                                </div>
+                              );
+                            })
+                          )}
                         </div>
                       </div>
                     </div>
@@ -2062,9 +2202,10 @@ export default function AdminClothes() {
                                             id={`chest-${s.id}`}
                                             type="text"
                                             inputMode="decimal"
+                                            maxLength={5}
                                             value={currentVals.chest ?? ""}
                                             onChange={(e) => {
-                                              const val = e.target.value.replace(/[^0-9.]/g, "");
+                                              const val = e.target.value.replace(/[^0-9.]/g, "").slice(0, 5);
                                               setSizeChartValues((prev) => ({
                                                 ...prev,
                                                 [s.id]: { ...(prev[s.id] || {}), chest: val }
@@ -2079,9 +2220,10 @@ export default function AdminClothes() {
                                             id={`length-${s.id}`}
                                             type="text"
                                             inputMode="decimal"
+                                            maxLength={5}
                                             value={currentVals.length ?? ""}
                                             onChange={(e) => {
-                                              const val = e.target.value.replace(/[^0-9.]/g, "");
+                                              const val = e.target.value.replace(/[^0-9.]/g, "").slice(0, 5);
                                               setSizeChartValues((prev) => ({
                                                 ...prev,
                                                 [s.id]: { ...(prev[s.id] || {}), length: val }
@@ -2096,9 +2238,10 @@ export default function AdminClothes() {
                                             id={`shoulder-${s.id}`}
                                             type="text"
                                             inputMode="decimal"
+                                            maxLength={5}
                                             value={currentVals.shoulder ?? ""}
                                             onChange={(e) => {
-                                              const val = e.target.value.replace(/[^0-9.]/g, "");
+                                              const val = e.target.value.replace(/[^0-9.]/g, "").slice(0, 5);
                                               setSizeChartValues((prev) => ({
                                                 ...prev,
                                                 [s.id]: { ...(prev[s.id] || {}), shoulder: val }
@@ -2140,18 +2283,12 @@ export default function AdminClothes() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleSave(false)}
-                        disabled={isSaving}
-                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold shadow-2xs transition cursor-pointer"
-                        title="Validate all required specifications and publish to catalog"
-                      >
-                        <Save className="h-4 w-4" />
-                        <span>Save All</span>
-                      </button>
-                      <button
-                        type="button"
                         onClick={() => handleTabChange("pricing")}
-                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-xs transition"
+                        className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold shadow-xs transition ${
+                          (!selectedColors || selectedColors.length === 0 || !selectedSizes || selectedSizes.length === 0)
+                            ? "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
+                            : "bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer"
+                        }`}
                       >
                         <span>Continue to Wholesale Pricing</span>
                         <ArrowRight className="h-4 w-4" />
@@ -2174,72 +2311,84 @@ export default function AdminClothes() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="p-6 space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
                       {/* Single Unit Tier */}
-                      <div className="border border-slate-200 rounded-2xl p-5 bg-white space-y-4 shadow-2xs">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                            Tier 1: Sample Orders
-                          </span>
-                          <span className="text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full">
-                            1 - {Math.max(1, (parseInt(bulkMin, 10) || 50) - 1)} units
-                          </span>
+                      <div className="border border-slate-200 rounded-2xl p-5 bg-white flex flex-col justify-between shadow-2xs">
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                              Tier 1: Sample Orders
+                            </span>
+                            <span className="text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full">
+                              1 - {Math.max(1, (parseInt(bulkMin, 10) || 50) - 1)} units
+                            </span>
+                          </div>
+                          <div>
+                            <h4 className="text-base font-bold text-slate-900">
+                              Single Unit Base Price <span className="text-rose-500">*</span>
+                            </h4>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              Standard rate charged when designers buy single test samples. Whole numbers only.
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <h4 className="text-base font-bold text-slate-900">
-                            Single Unit Base Price <span className="text-rose-500">*</span>
-                          </h4>
-                          <p className="text-xs text-slate-500 mt-0.5">
-                            Standard rate charged when designers buy single test samples. Whole numbers only.
-                          </p>
-                        </div>
-                        <div className="relative">
-                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-base">
-                            ₹
-                          </span>
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            value={singlePrice}
-                            onKeyDown={handleWholeNumberKeyDown}
-                            onChange={(e) => setSinglePrice(sanitizeWholeNumber(e.target.value))}
-                            onPaste={(e) => {
-                              e.preventDefault();
-                              const paste = e.clipboardData.getData("text");
-                              setSinglePrice(sanitizeWholeNumber(paste));
-                            }}
-                            placeholder="299"
-                            className="w-full border border-slate-200 pl-9 pr-4 py-3 rounded-xl text-slate-900 font-bold text-lg focus:ring-2 focus:ring-indigo-500 outline-none transition"
-                          />
+
+                        <div className="pt-4">
+                          <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                            Sample Unit Price (₹)
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-base">
+                              ₹
+                            </span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              maxLength={7}
+                              value={singlePrice}
+                              onKeyDown={handleWholeNumberKeyDown}
+                              onChange={(e) => setSinglePrice(sanitizeWholeNumber(e.target.value).slice(0, 7))}
+                              onPaste={(e) => {
+                                e.preventDefault();
+                                const paste = e.clipboardData.getData("text");
+                                setSinglePrice(sanitizeWholeNumber(paste).slice(0, 7));
+                              }}
+                              placeholder="299"
+                              className="w-full border border-slate-200 bg-white pl-8 pr-3 py-3 rounded-xl text-slate-900 font-bold text-base focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                            />
+                          </div>
                         </div>
                       </div>
 
                       {/* Bulk Wholesale Tier */}
-                      <div className="border border-indigo-200 rounded-2xl p-5 bg-indigo-50/20 space-y-4 shadow-2xs">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
-                            Tier 2: Wholesale Bulk
-                          </span>
-                          {discountPercent ? (
-                            <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                              <Percent className="h-3 w-3" /> Save {discountPercent}%
+                      <div className="border border-indigo-200 rounded-2xl p-5 bg-indigo-50/20 flex flex-col justify-between shadow-2xs">
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
+                              Tier 2: Wholesale Bulk
                             </span>
-                          ) : (
-                            <span className="text-[11px] font-bold text-indigo-700 bg-indigo-100 px-2.5 py-0.5 rounded-full">
-                              Volume Tier
-                            </span>
-                          )}
+                            {discountPercent ? (
+                              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                                <Percent className="h-3 w-3" /> Save {discountPercent}%
+                              </span>
+                            ) : (
+                              <span className="text-[11px] font-bold text-indigo-700 bg-indigo-100 px-2.5 py-0.5 rounded-full">
+                                Volume Tier
+                              </span>
+                            )}
+                          </div>
+                          <div>
+                            <h4 className="text-base font-bold text-slate-900">
+                              Bulk Production Pricing <span className="text-rose-500">*</span>
+                            </h4>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              Discounted wholesale unit price for batch manufacturing runs. Whole numbers only.
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <h4 className="text-base font-bold text-slate-900">
-                            Bulk Production Pricing <span className="text-rose-500">*</span>
-                          </h4>
-                          <p className="text-xs text-slate-500 mt-0.5">
-                            Discounted wholesale unit price for batch manufacturing runs. Whole numbers only.
-                          </p>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
+
+                        <div className="pt-4 grid grid-cols-2 gap-3">
                           <div>
                             <label className="text-[11px] font-bold text-slate-600 block mb-1">
                               Min Order Qty (MOQ)
@@ -2248,13 +2397,14 @@ export default function AdminClothes() {
                               type="text"
                               inputMode="numeric"
                               pattern="[0-9]*"
+                              maxLength={7}
                               value={bulkMin}
                               onKeyDown={handleWholeNumberKeyDown}
-                              onChange={(e) => setBulkMin(sanitizeWholeNumber(e.target.value))}
+                              onChange={(e) => setBulkMin(sanitizeWholeNumber(e.target.value).slice(0, 7))}
                               onPaste={(e) => {
                                 e.preventDefault();
                                 const paste = e.clipboardData.getData("text");
-                                setBulkMin(sanitizeWholeNumber(paste));
+                                setBulkMin(sanitizeWholeNumber(paste).slice(0, 7));
                               }}
                               placeholder="50"
                               className="w-full border border-slate-200 bg-white px-3 py-3 rounded-xl text-slate-900 font-bold text-base focus:ring-2 focus:ring-indigo-500 outline-none transition"
@@ -2265,23 +2415,24 @@ export default function AdminClothes() {
                               Bulk Unit Price (₹)
                             </label>
                             <div className="relative">
-                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">
+                              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-base">
                                 ₹
                               </span>
                               <input
                                 type="text"
                                 inputMode="numeric"
                                 pattern="[0-9]*"
+                                maxLength={7}
                                 value={bulkPrice}
                                 onKeyDown={handleWholeNumberKeyDown}
-                                onChange={(e) => setBulkPrice(sanitizeWholeNumber(e.target.value))}
+                                onChange={(e) => setBulkPrice(sanitizeWholeNumber(e.target.value).slice(0, 7))}
                                 onPaste={(e) => {
                                   e.preventDefault();
                                   const paste = e.clipboardData.getData("text");
-                                  setBulkPrice(sanitizeWholeNumber(paste));
+                                  setBulkPrice(sanitizeWholeNumber(paste).slice(0, 7));
                                 }}
                                 placeholder="199"
-                                className="w-full border border-slate-200 bg-white pl-7 pr-3 py-3 rounded-xl text-slate-900 font-bold text-base focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                                className="w-full border border-slate-200 bg-white pl-8 pr-3 py-3 rounded-xl text-slate-900 font-bold text-base focus:ring-2 focus:ring-indigo-500 outline-none transition"
                               />
                             </div>
                           </div>

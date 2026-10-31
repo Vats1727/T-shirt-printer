@@ -1307,9 +1307,11 @@ export default function AdminOrders() {
                               )}
                             </div>
 
-                            <div>
-                              <div className="font-bold text-sm text-slate-900 flex items-center gap-2">
-                                <span>{it.product_title || it.product || "Custom Apparel"}</span>
+                            <div className="min-w-0 flex-1">
+                              <div className="font-bold text-sm text-slate-900 flex items-center gap-2 min-w-0">
+                                <span className="break-all [overflow-wrap:anywhere] line-clamp-1 min-w-0" title={it.product_title || it.product || "Custom Apparel"}>
+                                  {it.product_title || it.product || "Custom Apparel"}
+                                </span>
                                 <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-bold">
                                   {it.print_method || "DTF Printing"}
                                 </Badge>

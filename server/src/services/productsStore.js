@@ -1,7 +1,8 @@
 import { pool } from '../config/database.js';
 import { slugify } from '../utils.js';
 export async function createProduct(payload) {
-  const slugBase = slugify(payload.name);
+  const safeName = String(payload.name || '').trim().slice(0, 60);
+  const slugBase = slugify(safeName || 'garment-blank');
   if (pool) {
     let slug = slugBase;
     let counter = 1;
@@ -22,7 +23,7 @@ export async function createProduct(payload) {
     const res = await pool.query(
       `INSERT INTO products_full (name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory, category, owner_id, status)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id, name, slug, category, single_price, bulk_min, bulk_price, status, created_at`,
-      [payload.name, slug, payload.single_price || 0, payload.bulk_min || 100, payload.bulk_price || 0, JSON.stringify(payload.sizes || []), JSON.stringify(payload.colors || []), JSON.stringify(payload.sizeChart || []), JSON.stringify(designsArray), JSON.stringify(payload.inventory || []), category, payload.owner_id || null, status]
+      [safeName, slug, payload.single_price || 0, payload.bulk_min || 100, payload.bulk_price || 0, JSON.stringify(payload.sizes || []), JSON.stringify(payload.colors || []), JSON.stringify(payload.sizeChart || []), JSON.stringify(designsArray), JSON.stringify(payload.inventory || []), category, payload.owner_id || null, status]
     );
     return res.rows[0];
   }
@@ -134,7 +135,8 @@ export async function updateProduct(id, payload, ownerId) {
   if (!existing) throw new Error("Product not found or access denied");
   let slug = null;
   if (payload.name) {
-    const slugBase = slugify(payload.name);
+    const safeName = String(payload.name).trim().slice(0, 60);
+    const slugBase = slugify(safeName || 'garment-blank');
     slug = slugBase;
     let counter = 1;
     let attempts = 0;
@@ -145,7 +147,7 @@ export async function updateProduct(id, payload, ownerId) {
       if (++attempts > MAX_UNIQUE_ATTEMPTS) throw new Error(`Unable to generate unique slug after ${MAX_UNIQUE_ATTEMPTS} attempts`);
       slug = `${slugBase}-${counter++}`;
     }
-    await pool.query("UPDATE products_full SET name=$1, slug=$2, single_price=$3, bulk_min=$4, bulk_price=$5, updated_at=now() WHERE id=$6 AND owner_id=$7", [payload.name, slug, payload.single_price || 0, payload.bulk_min || 100, payload.bulk_price || 0, id, ownerId]);
+    await pool.query("UPDATE products_full SET name=$1, slug=$2, single_price=$3, bulk_min=$4, bulk_price=$5, updated_at=now() WHERE id=$6 AND owner_id=$7", [safeName, slug, payload.single_price || 0, payload.bulk_min || 100, payload.bulk_price || 0, id, ownerId]);
   } else {
     await pool.query("UPDATE products_full SET single_price=$1, bulk_min=$2, bulk_price=$3, updated_at=now() WHERE id=$4 AND owner_id=$5", [payload.single_price || 0, payload.bulk_min || 100, payload.bulk_price || 0, id, ownerId]);
     const r = await pool.query("SELECT slug FROM products_full WHERE id=$1", [id]);

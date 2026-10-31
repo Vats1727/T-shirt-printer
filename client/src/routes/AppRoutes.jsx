@@ -59,7 +59,7 @@ export function AppRoutes() {
       <AdminRoute path="/admin/clothes" component={AdminClothes} />
       <AdminRoute path="/admin/orders" component={AdminOrders} />
       <AdminRoute path="/admin/profile" component={AdminProfile} />
-      <AdminRoute path="/admin/designers" component={AdminDesigners} />
+      <AdminRoute path="/admin/designers" component={() => <Redirect to="/admin/dashboard" />} />
       <AdminRoute path="/admin/designer-designs" component={AdminDesignerDesigns} />
       <AdminRoute path="/admin/listings/create" component={AdminCreateListing} />
       <AdminRoute path="/admin/listings" component={AdminListings} />

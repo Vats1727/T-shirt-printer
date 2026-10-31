@@ -3,8 +3,25 @@ import { useLocation, Link } from "wouter";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { register } from "@/services/auth";
-import { Card, CardHeader, CardContent } from "@/components/ui/card";
-import { Eye, EyeOff, Clock, CheckCircle, ArrowRight, AlertCircle, Check, Info } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import {
+  Eye,
+  EyeOff,
+  Clock,
+  CheckCircle2,
+  ArrowRight,
+  AlertCircle,
+  Check,
+  ShieldCheck,
+  Printer,
+  Palette,
+  ShoppingBag,
+  Sparkles,
+  Lock,
+  Mail,
+  User,
+  Building2
+} from "lucide-react";
 
 export default function Register() {
   const [, setLocation] = useLocation();
@@ -12,14 +29,14 @@ export default function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [role, setRole] = useState("designer");
+  const [role, setRole] = useState("designer"); // 'designer' | 'print_provider' | 'customer'
   const [loading, setLoading] = useState(false);
   const [serverError, setServerError] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [registeredProvider, setRegisteredProvider] = useState(null);
+  const [registeredEntity, setRegisteredEntity] = useState(null);
 
-  // Track which fields have been touched by user interaction
+  // Track user interactions for field errors
   const [touched, setTouched] = useState({
     name: false,
     email: false,
@@ -37,7 +54,7 @@ export default function Register() {
 
     // Name validation
     if (!name.trim()) {
-      errs.name = "Full name is required";
+      errs.name = "Full name or company name is required";
     } else if (name.trim().length < 2) {
       errs.name = "Name must be at least 2 characters";
     }
@@ -47,7 +64,7 @@ export default function Register() {
     if (!email.trim()) {
       errs.email = "Email address is required";
     } else if (!emailRegex.test(email.trim())) {
-      errs.email = "Please enter a valid email address (e.g. name@example.com)";
+      errs.email = "Please enter a valid business email address";
     }
 
     // Password validation
@@ -83,9 +100,9 @@ export default function Register() {
     if (/[^A-Za-z0-9]/.test(password)) score += 1;
 
     if (score <= 1) {
-      return { score: 1, label: "Weak", color: "bg-red-500", percent: 25, text: "text-red-500" };
+      return { score: 1, label: "Weak", color: "bg-rose-500", percent: 25, text: "text-rose-600" };
     } else if (score <= 3) {
-      return { score: 2, label: "Fair", color: "bg-amber-500", percent: 60, text: "text-amber-600" };
+      return { score: 2, label: "Fair", color: "bg-amber-500", percent: 55, text: "text-amber-600" };
     } else if (score === 4) {
       return { score: 3, label: "Good", color: "bg-sky-500", percent: 80, text: "text-sky-600" };
     }
@@ -99,7 +116,6 @@ export default function Register() {
     if (loading) return;
     setServerError(null);
 
-    // Mark all fields touched on submit attempt
     setTouched({
       name: true,
       email: true,
@@ -120,198 +136,410 @@ export default function Register() {
         role,
         associated_provider_id: null
       });
-      if (role === "print_provider") {
-        setRegisteredProvider({ name: name.trim(), email: email.trim() });
+
+      if (role === "print_provider" || role === "designer") {
+        setRegisteredEntity({ name: name.trim(), email: email.trim(), role });
       } else {
         setLocation("/login");
       }
     } catch (err) {
-      setServerError(err?.message || "Registration failed");
+      setServerError(err?.message || "Registration failed. Email may already be in use.");
     } finally {
       setLoading(false);
     }
   };
 
-  if (registeredProvider) {
+  // SUCCESS POPUP SCREEN: When a Designer or Print Provider registers and awaits Portal Admin review
+  if (registeredEntity) {
+    const isDesigner = registeredEntity.role === "designer";
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
-        <div className="w-full max-w-lg">
-          <Card className="border-2 border-amber-200/60 shadow-xl overflow-hidden rounded-2xl bg-white animate-in zoom-in-95 duration-300">
-            <div className="bg-gradient-to-r from-amber-500 to-orange-500 p-8 text-white text-center flex flex-col items-center">
-              <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center mb-3 shadow-inner">
-                <Clock className="w-9 h-9 text-white" />
-              </div>
-              <h1 className="text-2xl font-black tracking-tight">Application Submitted</h1>
-              <p className="text-amber-100 text-sm mt-1">Pending Portal Administrator Review</p>
+      <div className="min-h-screen lg:h-screen w-full flex items-center justify-center bg-slate-50 px-4 py-8 text-slate-800 font-sans selection:bg-indigo-600 selection:text-white lg:overflow-hidden">
+        <div className="w-full max-w-lg animate-in zoom-in-95 duration-300">
+          <div className="rounded-2xl border border-slate-200/90 bg-white shadow-xl shadow-slate-200/50 p-6 sm:p-8 text-center space-y-5 relative overflow-hidden">
+            {/* Top Gradient Accent */}
+            <div
+              className={`absolute top-0 left-0 right-0 h-1.5 ${
+                isDesigner
+                  ? "bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"
+                  : "bg-gradient-to-r from-amber-500 via-orange-500 to-indigo-600"
+              }`}
+            />
+            
+            {/* Icon Box */}
+            <div
+              className={`mx-auto size-16 rounded-2xl flex items-center justify-center shadow-2xs ${
+                isDesigner
+                  ? "bg-indigo-50 border border-indigo-200 text-indigo-600"
+                  : "bg-amber-50 border border-amber-200 text-amber-600"
+              }`}
+            >
+              {isDesigner ? (
+                <Palette className="size-8" />
+              ) : (
+                <Clock className="size-8" />
+              )}
             </div>
-            <CardContent className="p-8 space-y-6 text-center">
-              <div className="bg-amber-50 border border-amber-200/80 rounded-xl p-4 text-left space-y-2">
-                <div className="flex items-center gap-2 text-amber-900 font-bold text-sm">
-                  <CheckCircle className="w-4 h-4 text-amber-600" />
-                  <span>Request Sent to Portal Administrator</span>
-                </div>
-                <p className="text-xs text-amber-800 leading-relaxed">
-                  Welcome <strong>{registeredProvider.name || registeredProvider.email}</strong>! All new Print Provider applications require review and acceptance by the Portal Admin before login access is granted.
-                </p>
-              </div>
 
-              <p className="text-sm text-slate-600 leading-relaxed">
-                Once the administrator accepts your registration, you can log in to your Print Provider console.
+            {/* Heading & Badge */}
+            <div className="space-y-1.5">
+              <Badge
+                className={`text-[10px] font-bold uppercase tracking-wider ${
+                  isDesigner
+                    ? "bg-indigo-50 text-indigo-700 border-indigo-200/80"
+                    : "bg-amber-50 text-amber-700 border-amber-200/80"
+                }`}
+              >
+                {isDesigner ? "Designer Application Submitted" : "Registration Submitted"}
+              </Badge>
+              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                Application Under Review
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-600 max-w-sm mx-auto leading-relaxed">
+                Thank you, <span className="text-slate-900 font-bold">{registeredEntity.name}</span>.{" "}
+                {isDesigner
+                  ? "Your designer & creator studio account has been submitted and is currently queued for portal admin verification."
+                  : "Your print manufacturing facility account is queued for verification."}
               </p>
+            </div>
 
+            {/* Status Checklist Box */}
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 text-left text-xs space-y-2">
+              <div className="flex items-center gap-2 text-slate-800 font-semibold">
+                <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
+                <span>
+                  Account created for{" "}
+                  <code className="text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 font-mono text-[11px]">
+                    {registeredEntity.email}
+                  </code>
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-slate-600">
+                <CheckCircle2
+                  className={`size-4 shrink-0 ${
+                    isDesigner ? "text-indigo-500" : "text-amber-500"
+                  }`}
+                />
+                <span>
+                  {isDesigner
+                    ? "Portal Superadmin reviews creator profile & storefront privileges"
+                    : "Portal Superadmin verifies manufacturing capacity & tax compliance"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-slate-500">
+                <CheckCircle2 className="size-4 text-slate-400 shrink-0" />
+                <span>Instant access and email notification upon approval</span>
+              </div>
+            </div>
+
+            {/* Action Button */}
+            <div className="pt-1">
               <Button
                 onClick={() => setLocation("/login")}
-                className="w-full py-5 text-sm font-bold bg-slate-900 hover:bg-slate-800 text-white rounded-xl shadow-lg transition-all flex items-center justify-center gap-2"
+                className="w-full h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md shadow-indigo-600/20 cursor-pointer gap-2 transition-all"
               >
-                Go to Sign In <ArrowRight className="w-4 h-4" />
+                <span>Return to Sign in</span>
+                <ArrowRight className="size-4" />
               </Button>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50/80 px-4 py-8">
-      <div className="w-full max-w-3xl">
-        <Card className="border border-slate-200 shadow-md">
-          <CardHeader className="space-y-1 pb-4">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Create an account</h1>
-            <p className="text-sm text-muted-foreground">Create a designer or print provider account.</p>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-2 gap-4" noValidate>
-              {/* Full Name */}
-              <div className="md:col-span-2 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="block text-sm font-medium text-slate-700">Name</label>
-                  {touched.name && !errors.name && (
-                    <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
-                      <Check className="w-3.5 h-3.5" /> Valid
-                    </span>
-                  )}
-                </div>
-                <div className="relative">
-                  <Input
-                    value={name}
-                    onChange={(e) => {
-                      setName(e.target.value);
-                      markTouched("name");
-                      if (serverError) setServerError(null);
-                    }}
-                    onBlur={() => markTouched("name")}
-                    placeholder="Full name"
-                    className={`transition-colors pr-9 ${
-                      touched.name
-                        ? errors.name
-                          ? "border-red-500 focus-visible:ring-red-400 bg-red-50/20"
-                          : "border-emerald-500 focus-visible:ring-emerald-400 bg-emerald-50/10"
-                        : ""
-                    }`}
-                  />
-                  {touched.name && (
-                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                      {errors.name ? (
-                        <AlertCircle className="w-4 h-4 text-red-500" />
-                      ) : (
-                        <Check className="w-4 h-4 text-emerald-600" />
-                      )}
-                    </div>
-                  )}
-                </div>
-                {touched.name && errors.name && (
-                  <p className="text-xs text-red-600 flex items-center gap-1.5 mt-1 animate-in fade-in duration-200">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                    <span>{errors.name}</span>
-                  </p>
-                )}
-              </div>
+    <div className="min-h-screen lg:h-screen w-full flex flex-col lg:flex-row bg-slate-50 text-slate-800 font-sans selection:bg-indigo-600 selection:text-white lg:overflow-hidden">
+      {/* LEFT COLUMN: Clean Light SaaS Showcase */}
+      <div className="relative hidden lg:flex lg:w-5/12 xl:w-5/12 flex-col justify-between p-6 xl:p-8 overflow-hidden border-r border-slate-200/80 bg-gradient-to-br from-indigo-50/50 via-slate-50 to-indigo-100/30">
+        <div className="absolute -top-32 -left-32 w-80 h-80 bg-indigo-200/30 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-32 right-0 w-96 h-96 bg-purple-200/25 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute inset-0 bg-[radial-gradient(#6366f112_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none" />
 
-              {/* Email */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="block text-sm font-medium text-slate-700">Email</label>
-                  {touched.email && !errors.email && (
-                    <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
-                      <Check className="w-3.5 h-3.5" /> Valid
-                    </span>
-                  )}
-                </div>
-                <div className="relative">
-                  <Input
-                    value={email}
-                    onChange={(e) => {
-                      setEmail(e.target.value);
-                      markTouched("email");
-                      if (serverError) setServerError(null);
-                    }}
-                    onBlur={() => markTouched("email")}
-                    placeholder="you@example.com"
-                    type="email"
-                    className={`transition-colors pr-9 ${
-                      touched.email
-                        ? errors.email
-                          ? "border-red-500 focus-visible:ring-red-400 bg-red-50/20"
-                          : "border-emerald-500 focus-visible:ring-emerald-400 bg-emerald-50/10"
-                        : ""
-                    }`}
-                  />
-                  {touched.email && (
-                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                      {errors.email ? (
-                        <AlertCircle className="w-4 h-4 text-red-500" />
-                      ) : (
-                        <Check className="w-4 h-4 text-emerald-600" />
-                      )}
-                    </div>
-                  )}
-                </div>
-                {touched.email && errors.email && (
-                  <p className="text-xs text-red-600 flex items-center gap-1.5 mt-1 animate-in fade-in duration-200">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                    <span>{errors.email}</span>
-                  </p>
-                )}
-              </div>
+        {/* Top Brand Identity */}
+        <div className="relative z-10 flex items-center gap-3">
+          <div className="h-9 w-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-500/25 ring-4 ring-indigo-500/10">
+            <Printer className="w-4.5 h-4.5" />
+          </div>
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2">
+              <span className="font-extrabold text-base tracking-tight text-slate-900">
+                PRINT<span className="text-indigo-600">PORTAL</span>
+              </span>
+              <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200/80 text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 shadow-2xs">
+                Join Network
+              </Badge>
+            </div>
+            <span className="text-[10px] text-slate-500 font-medium">
+              Enterprise Custom Apparel Ecosystem
+            </span>
+          </div>
+        </div>
 
-              {/* Role Selection */}
-              <div className="space-y-1.5">
-                <label className="block text-sm font-medium text-slate-700">Role</label>
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="block w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        {/* Center Copy */}
+        <div className="relative z-10 my-auto py-4 space-y-4">
+          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-white/90 border border-slate-200/90 text-slate-700 text-[11px] font-semibold shadow-2xs backdrop-blur-md">
+            <Sparkles className="size-3.5 text-indigo-600" />
+            <span>Multi-Tenant Apparel Platform</span>
+          </div>
+
+          <h1 className="text-2xl xl:text-3xl font-black tracking-tight text-slate-900 leading-snug">
+            Build, sell, and fulfill custom apparel with zero upfront risk.
+          </h1>
+
+          <p className="text-xs xl:text-sm text-slate-600 leading-relaxed font-normal">
+            Join thousands of creators and print facility hubs collaborating on high-fidelity apparel merchandising with instant digital mockups, transparent payouts, and real-time order tracking.
+          </p>
+
+          <div className="space-y-2 pt-3 border-t border-slate-200/80 text-xs text-slate-700">
+            <div className="flex items-center gap-2.5">
+              <div className="size-4.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center shrink-0">
+                <Check className="size-3" />
+              </div>
+              <span className="font-medium">No subscription fees or inventory commitments required</span>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <div className="size-4.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center shrink-0">
+                <Check className="size-3" />
+              </div>
+              <span className="font-medium">Automated legal GST invoices & split settlement</span>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <div className="size-4.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center shrink-0">
+                <Check className="size-3" />
+              </div>
+              <span className="font-medium">Print-ready 300 DPI transparent PNG techpack generator</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom Guarantee */}
+        <div className="relative z-10 pt-3 border-t border-slate-200/80 flex items-center justify-between text-[11px] text-slate-500">
+          <div className="flex items-center gap-1.5 font-medium">
+            <ShieldCheck className="size-3.5 text-emerald-600" />
+            <span>Strict data privacy & partner protection</span>
+          </div>
+          <span>© 2026 PrintPortal</span>
+        </div>
+      </div>
+
+      {/* RIGHT COLUMN: Modern Light Register Form Console */}
+      <div className="flex-1 w-full flex items-center justify-center p-4 sm:p-6 lg:p-6 overflow-y-auto lg:overflow-hidden bg-slate-50/60 lg:bg-slate-50/40">
+        <div className="w-full max-w-lg bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-lg shadow-slate-200/40 space-y-3.5 animate-in fade-in duration-300">
+          {/* Mobile Brand (Visible only when left hero is hidden) */}
+          <div className="flex lg:hidden items-center gap-2.5 justify-center mb-1">
+            <div className="size-8 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-500/20">
+              <Printer className="size-4" />
+            </div>
+            <span className="font-extrabold text-lg tracking-tight text-slate-900">
+              PRINT<span className="text-indigo-600">PORTAL</span>
+            </span>
+          </div>
+
+          <div className="space-y-0.5 text-center lg:text-left">
+            <h2 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900">
+              Create your account
+            </h2>
+            <p className="text-xs text-slate-500">
+              Select your platform role and enter your details to get started.
+            </p>
+          </div>
+
+          <form onSubmit={submit} className="space-y-3" noValidate>
+            {/* Step 1: Interactive Role Selection Cards */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
+                Select Your Role
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {/* 1. Designer Card */}
+                <button
+                  type="button"
+                  onClick={() => setRole("designer")}
+                  className={`p-2 sm:p-2.5 rounded-xl border text-left transition-all cursor-pointer relative ${
+                    role === "designer"
+                      ? "bg-indigo-50/80 border-indigo-600 text-slate-900 shadow-xs ring-2 ring-indigo-500/20"
+                      : "bg-slate-50/60 border-slate-200 text-slate-600 hover:bg-slate-100/70 hover:border-slate-300"
+                  }`}
                 >
-                  <option value="customer">Customer (Storefront Shopper)</option>
-                  <option value="designer">Designer</option>
-                  <option value="print_provider">Print Provider</option>
-                </select>
-                {role === "customer" && (
-                  <p className="text-xs text-emerald-700 flex items-center gap-1 mt-1 bg-emerald-50 p-1.5 rounded border border-emerald-200/60">
-                    <Check className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
-                    <span>Instant access to browse all store collections and place orders.</span>
-                  </p>
-                )}
-                {role === "print_provider" && (
-                  <p className="text-xs text-amber-700 flex items-center gap-1 mt-1 bg-amber-50 p-1.5 rounded border border-amber-200/60">
-                    <Info className="w-3.5 h-3.5 shrink-0 text-amber-600" />
-                    <span>Requires Portal Admin review before login access is granted.</span>
-                  </p>
+                  <div className="flex items-center justify-between mb-1">
+                    <div
+                      className={`p-1.5 rounded-lg transition-colors ${
+                        role === "designer"
+                          ? "bg-indigo-600 text-white shadow-xs"
+                          : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      <Palette className="size-3.5" />
+                    </div>
+                    {role === "designer" && (
+                      <span className="size-1.5 rounded-full bg-indigo-600" />
+                    )}
+                  </div>
+                  <div className="text-xs font-bold text-slate-900">Designer</div>
+                  <div className="text-[10px] text-slate-500 leading-tight truncate">
+                    Sell apparel & earn
+                  </div>
+                </button>
+
+                {/* 2. Print Provider Card */}
+                <button
+                  type="button"
+                  onClick={() => setRole("print_provider")}
+                  className={`p-2 sm:p-2.5 rounded-xl border text-left transition-all cursor-pointer relative ${
+                    role === "print_provider"
+                      ? "bg-purple-50/80 border-purple-600 text-slate-900 shadow-xs ring-2 ring-purple-500/20"
+                      : "bg-slate-50/60 border-slate-200 text-slate-600 hover:bg-slate-100/70 hover:border-slate-300"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <div
+                      className={`p-1.5 rounded-lg transition-colors ${
+                        role === "print_provider"
+                          ? "bg-purple-600 text-white shadow-xs"
+                          : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      <Building2 className="size-3.5" />
+                    </div>
+                    {role === "print_provider" && (
+                      <span className="size-1.5 rounded-full bg-purple-600" />
+                    )}
+                  </div>
+                  <div className="text-xs font-bold text-slate-900">Print Provider</div>
+                  <div className="text-[10px] text-slate-500 leading-tight truncate">
+                    Fulfill DTF & blanks
+                  </div>
+                </button>
+
+                {/* 3. Retail Customer Card */}
+                <button
+                  type="button"
+                  onClick={() => setRole("customer")}
+                  className={`p-2 sm:p-2.5 rounded-xl border text-left transition-all cursor-pointer relative ${
+                    role === "customer"
+                      ? "bg-emerald-50/80 border-emerald-600 text-slate-900 shadow-xs ring-2 ring-emerald-500/20"
+                      : "bg-slate-50/60 border-slate-200 text-slate-600 hover:bg-slate-100/70 hover:border-slate-300"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <div
+                      className={`p-1.5 rounded-lg transition-colors ${
+                        role === "customer"
+                          ? "bg-emerald-600 text-white shadow-xs"
+                          : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      <ShoppingBag className="size-3.5" />
+                    </div>
+                    {role === "customer" && (
+                      <span className="size-1.5 rounded-full bg-emerald-600" />
+                    )}
+                  </div>
+                  <div className="text-xs font-bold text-slate-900">Customer</div>
+                  <div className="text-[10px] text-slate-500 leading-tight truncate">
+                    Shop custom creator drops
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Name Field */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
+                {role === "print_provider" ? "Facility / Company Name" : "Full Name"}
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                  <User className="size-3.5" />
+                </div>
+                <Input
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    markTouched("name");
+                    if (serverError) setServerError(null);
+                  }}
+                  onBlur={() => markTouched("name")}
+                  placeholder={role === "print_provider" ? "e.g. Apex Apparel Printing Hub" : "e.g. Alex Morgan"}
+                  type="text"
+                  className={`h-9.5 pl-9 pr-3 rounded-lg bg-slate-50/60 border text-slate-900 text-xs sm:text-sm transition-all shadow-2xs focus-visible:ring-2 placeholder:text-slate-400 ${
+                    touched.name
+                      ? errors.name
+                        ? "border-rose-400 focus-visible:ring-rose-400/20 bg-rose-50/20"
+                        : "border-emerald-400/80 focus-visible:ring-emerald-500/20 bg-emerald-50/15"
+                      : "border-slate-200 hover:border-slate-300 focus-visible:ring-indigo-500/20 focus-visible:border-indigo-600 focus-visible:bg-white"
+                  }`}
+                />
+              </div>
+              {touched.name && errors.name && (
+                <p className="text-[11px] text-rose-600 flex items-center gap-1 mt-0.5 font-medium">
+                  <AlertCircle className="size-3 shrink-0" />
+                  <span>{errors.name}</span>
+                </p>
+              )}
+            </div>
+
+            {/* Email Field */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                  Email Address
+                </label>
+                {touched.email && !errors.email && (
+                  <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-0.5">
+                    <Check className="size-3" /> Valid
+                  </span>
                 )}
               </div>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                  <Mail className="size-3.5" />
+                </div>
+                <Input
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    markTouched("email");
+                    if (serverError) setServerError(null);
+                  }}
+                  onBlur={() => markTouched("email")}
+                  placeholder="name@business.com"
+                  type="email"
+                  className={`h-9.5 pl-9 pr-3 rounded-lg bg-slate-50/60 border text-slate-900 text-xs sm:text-sm transition-all shadow-2xs focus-visible:ring-2 placeholder:text-slate-400 ${
+                    touched.email
+                      ? errors.email
+                        ? "border-rose-400 focus-visible:ring-rose-400/20 bg-rose-50/20"
+                        : "border-emerald-400/80 focus-visible:ring-emerald-500/20 bg-emerald-50/15"
+                      : "border-slate-200 hover:border-slate-300 focus-visible:ring-indigo-500/20 focus-visible:border-indigo-600 focus-visible:bg-white"
+                  }`}
+                />
+              </div>
+              {touched.email && errors.email && (
+                <p className="text-[11px] text-rose-600 flex items-center gap-1 mt-0.5 font-medium">
+                  <AlertCircle className="size-3 shrink-0" />
+                  <span>{errors.email}</span>
+                </p>
+              )}
+            </div>
 
+            {/* Password & Confirm Password (Grid) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {/* Password */}
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <div className="flex items-center justify-between">
-                  <label className="block text-sm font-medium text-slate-700">Password</label>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                    Password
+                  </label>
                   {password && (
-                    <span className={`text-xs font-semibold ${passwordStrength.text}`}>
+                    <span className={`text-[10px] font-bold ${passwordStrength.text}`}>
                       {passwordStrength.label}
                     </span>
                   )}
                 </div>
                 <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <Lock className="size-3.5" />
+                  </div>
                   <Input
                     value={password}
                     onChange={(e) => {
@@ -320,64 +548,58 @@ export default function Register() {
                       if (serverError) setServerError(null);
                     }}
                     onBlur={() => markTouched("password")}
-                    placeholder="Enter password"
+                    placeholder="Min. 6 chars"
                     type={showPassword ? "text" : "password"}
-                    className={`transition-colors pr-10 ${
+                    className={`h-9.5 pl-9 pr-9 rounded-lg bg-slate-50/60 border text-slate-900 text-xs sm:text-sm transition-all shadow-2xs focus-visible:ring-2 placeholder:text-slate-400 ${
                       touched.password
                         ? errors.password
-                          ? "border-red-500 focus-visible:ring-red-400 bg-red-50/20"
-                          : "border-emerald-500 focus-visible:ring-emerald-400 bg-emerald-50/10"
-                        : ""
+                          ? "border-rose-400 focus-visible:ring-rose-400/20 bg-rose-50/20"
+                          : "border-emerald-400/80 focus-visible:ring-emerald-500/20 bg-emerald-50/15"
+                        : "border-slate-200 hover:border-slate-300 focus-visible:ring-indigo-500/20 focus-visible:border-indigo-600 focus-visible:bg-white"
                     }`}
                   />
                   <button
                     type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    tabIndex={-1}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 focus:outline-none"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
                   >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    {showPassword ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
                   </button>
                 </div>
-
-                {/* Password strength progress bar */}
-                {password.length > 0 && (
-                  <div className="space-y-1 pt-0.5">
-                    <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                      <div
-                        className={`h-full transition-all duration-300 ${passwordStrength.color}`}
-                        style={{ width: `${passwordStrength.percent}%` }}
-                      />
-                    </div>
+                {/* Strength Meter Bar */}
+                {password && (
+                  <div className="h-1 w-full bg-slate-100 border border-slate-200/60 rounded-full overflow-hidden mt-1">
+                    <div
+                      className={`h-full ${passwordStrength.color} transition-all duration-300`}
+                      style={{ width: `${passwordStrength.percent}%` }}
+                    />
                   </div>
                 )}
-
-                {touched.password && errors.password ? (
-                  <p className="text-xs text-red-600 flex items-center gap-1.5 mt-1 animate-in fade-in duration-200">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                {touched.password && errors.password && (
+                  <p className="text-[11px] text-rose-600 flex items-center gap-1 mt-0.5 font-medium">
+                    <AlertCircle className="size-3 shrink-0" />
                     <span>{errors.password}</span>
                   </p>
-                ) : (
-                  touched.password && !errors.password && (
-                    <p className="text-xs text-emerald-600 flex items-center gap-1.5 mt-1">
-                      <Check className="w-3.5 h-3.5 shrink-0" />
-                      <span>Password meets length requirement</span>
-                    </p>
-                  )
                 )}
               </div>
 
               {/* Confirm Password */}
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <div className="flex items-center justify-between">
-                  <label className="block text-sm font-medium text-slate-700">Confirm Password</label>
-                  {touched.confirmPassword && !errors.confirmPassword && confirmPassword.length > 0 && (
-                    <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
-                      <Check className="w-3.5 h-3.5" /> Match
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                    Confirm
+                  </label>
+                  {touched.confirmPassword && !errors.confirmPassword && confirmPassword && (
+                    <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-0.5">
+                      <Check className="size-3" /> Match
                     </span>
                   )}
                 </div>
                 <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <Lock className="size-3.5" />
+                  </div>
                   <Input
                     value={confirmPassword}
                     onChange={(e) => {
@@ -386,65 +608,75 @@ export default function Register() {
                       if (serverError) setServerError(null);
                     }}
                     onBlur={() => markTouched("confirmPassword")}
-                    placeholder="Confirm password"
+                    placeholder="Repeat password"
                     type={showConfirmPassword ? "text" : "password"}
-                    className={`transition-colors pr-10 ${
+                    className={`h-9.5 pl-9 pr-9 rounded-lg bg-slate-50/60 border text-slate-900 text-xs sm:text-sm transition-all shadow-2xs focus-visible:ring-2 placeholder:text-slate-400 ${
                       touched.confirmPassword
                         ? errors.confirmPassword
-                          ? "border-red-500 focus-visible:ring-red-400 bg-red-50/20"
-                          : "border-emerald-500 focus-visible:ring-emerald-400 bg-emerald-50/10"
-                        : ""
+                          ? "border-rose-400 focus-visible:ring-rose-400/20 bg-rose-50/20"
+                          : "border-emerald-400/80 focus-visible:ring-emerald-500/20 bg-emerald-50/15"
+                        : "border-slate-200 hover:border-slate-300 focus-visible:ring-indigo-500/20 focus-visible:border-indigo-600 focus-visible:bg-white"
                     }`}
                   />
                   <button
                     type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    tabIndex={-1}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 focus:outline-none"
+                    onClick={() => setShowConfirmPassword((prev) => !prev)}
+                    className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                    aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
                   >
-                    {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    {showConfirmPassword ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
                   </button>
                 </div>
-
-                {touched.confirmPassword && errors.confirmPassword ? (
-                  <p className="text-xs text-red-600 flex items-center gap-1.5 mt-1 animate-in fade-in duration-200">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                {touched.confirmPassword && errors.confirmPassword && (
+                  <p className="text-[11px] text-rose-600 flex items-center gap-1 mt-0.5 font-medium">
+                    <AlertCircle className="size-3 shrink-0" />
                     <span>{errors.confirmPassword}</span>
                   </p>
-                ) : (
-                  touched.confirmPassword && !errors.confirmPassword && confirmPassword.length > 0 && (
-                    <p className="text-xs text-emerald-600 flex items-center gap-1.5 mt-1">
-                      <Check className="w-3.5 h-3.5 shrink-0" />
-                      <span>Passwords match</span>
-                    </p>
-                  )
                 )}
               </div>
+            </div>
 
-              {/* Server error feedback */}
-              {serverError && (
-                <div className="md:col-span-2 p-3 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-                  <span>{serverError}</span>
+            {/* Error Banner */}
+            {serverError && (
+              <div className="p-2.5 rounded-lg border bg-rose-50 border-rose-200 text-rose-800 flex items-start gap-2 text-xs animate-in fade-in duration-300">
+                <AlertCircle className="size-3.5 text-rose-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-bold uppercase tracking-wider text-[10px] text-rose-900">Registration Failed</p>
+                  <p className="mt-0.5 text-rose-700 text-[11px]">{serverError}</p>
                 </div>
-              )}
-
-              {/* Submit & Links */}
-              <div className="md:col-span-2 flex items-center justify-between mt-4">
-                <Button
-                  type="submit"
-                  className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-md shadow-sm transition-colors"
-                  disabled={loading}
-                >
-                  {loading ? "Registering..." : "Register"}
-                </Button>
-                <Link href="/login" className="text-sm text-sky-600 hover:underline">
-                  Already have an account?
-                </Link>
               </div>
-            </form>
-          </CardContent>
-        </Card>
+            )}
+
+            {/* Submit Button */}
+            <div className="pt-1">
+              <Button
+                type="submit"
+                disabled={loading}
+                className="w-full h-10 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-sm shadow-md shadow-indigo-600/25 transition-all cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {loading ? (
+                  <div className="size-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <span>Create Account</span>
+                    <ArrowRight className="size-4" />
+                  </>
+                )}
+              </Button>
+            </div>
+          </form>
+
+          {/* Switch to Login */}
+          <div className="text-center pt-0.5 text-xs text-slate-500">
+            Already have an account?{" "}
+            <Link
+              href="/login"
+              className="font-bold text-indigo-600 hover:text-indigo-700 underline underline-offset-4 cursor-pointer"
+            >
+              Sign in to your console
+            </Link>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -52,6 +52,8 @@ export default function AdminListings() {
   const [activeSide, setActiveSide] = useState({}); // { [listingId]: 'front' | 'back' }
   const [listingToDelete, setListingToDelete] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
+  const [storeSettings, setStoreSettings] = useState(null);
+  const [togglingStoreStatus, setTogglingStoreStatus] = useState(false);
 
   const providerId = user?.id || user?.sub;
   const storeUrl = providerId ? `/store/${encodeId(providerId)}` : '/store';
@@ -79,9 +81,65 @@ export default function AdminListings() {
     }
   };
 
+  const fetchStoreSettings = async () => {
+    try {
+      const res = await fetch('/api/admin/store-settings', {
+        headers: { Authorization: token ? `Bearer ${token}` : '' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStoreSettings(data.store_settings || {});
+      }
+    } catch (e) {
+      console.warn('Failed to load store settings:', e);
+    }
+  };
+
   useEffect(() => {
     fetchListings();
+    fetchStoreSettings();
   }, [token]);
+
+  const toggleStorePublic = async () => {
+    if (togglingStoreStatus) return;
+    const currentPublic = storeSettings?.is_public !== false;
+    const nextPublic = !currentPublic;
+    setTogglingStoreStatus(true);
+    try {
+      const res = await fetch('/api/admin/store-settings', {
+        method: 'PATCH',
+        headers: {
+          Authorization: token ? `Bearer ${token}` : '',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          store_settings: {
+            ...(storeSettings || {}),
+            is_public: nextPublic
+          }
+        })
+      });
+      if (res.ok) {
+        setStoreSettings((prev) => ({ ...(prev || {}), is_public: nextPublic }));
+        toast({
+          title: nextPublic ? 'Storefront Online' : 'Storefront Offline',
+          description: nextPublic
+            ? 'Your storefront is now public and visible to customers.'
+            : 'Your storefront is now private/offline for maintenance.'
+        });
+      } else {
+        throw new Error('Failed to update storefront settings');
+      }
+    } catch (err) {
+      toast({
+        title: 'Update Failed',
+        description: err?.message || 'Could not change storefront status.',
+        variant: 'destructive'
+      });
+    } finally {
+      setTogglingStoreStatus(false);
+    }
+  };
 
   const toggleListingStatus = async (listing) => {
     const isCurrentlyPublished = listing.published !== false && listing.visibility !== 'unlisted';
@@ -210,96 +268,113 @@ export default function AdminListings() {
 
   return (
     <div className="w-full space-y-6 animate-in fade-in duration-300 pb-16 pt-2">
-      {/* Header & Main Actions */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200/80">
-        <div className="space-y-1">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200/60">
-            <Store className="size-3.5" />
-            <span>Facility Store & Merchandise</span>
-          </div>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-            Store Product Listings
-          </h1>
-          <p className="text-xs text-slate-500 max-w-2xl">
-            Publish and sell apparel products created by your partnered designers. Products appear live on your dedicated provider storefront.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => window.open(storeUrl, '_blank')}
-            className="h-9 px-3.5 rounded-xl border-slate-300 text-slate-700 hover:text-indigo-600 hover:border-indigo-300 font-bold text-xs gap-1.5 shadow-2xs"
-          >
-            <ExternalLink className="size-3.5 text-indigo-600" />
-            <span>View Live Store</span>
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setLocation('/admin/customize-store')}
-            className="h-9 px-3.5 rounded-xl border-slate-300 text-slate-700 hover:text-indigo-600 hover:border-indigo-300 font-bold text-xs gap-1.5 shadow-2xs"
-          >
-            <Paintbrush className="size-3.5 text-violet-600" />
-            <span>Customize Store</span>
-          </Button>
-
-          <Button
-            size="sm"
-            onClick={() => setLocation('/admin/listings/create')}
-            className="h-9 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs gap-1.5 shadow-sm shadow-indigo-600/20"
-          >
-            <Plus className="size-4" />
-            <span>+ Add New Listing</span>
-          </Button>
-        </div>
-      </div>
 
       {/* Metrics Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs flex items-center gap-3.5">
-          <div className="size-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-            <ShoppingBag className="size-5" />
-          </div>
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Active Listings</p>
-            <h3 className="text-xl font-extrabold text-slate-900">{totalListings}</h3>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs flex items-center gap-3.5">
-          <div className="size-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-            <Users className="size-5" />
-          </div>
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Creators Represented</p>
-            <h3 className="text-xl font-extrabold text-slate-900">{uniqueDesigners}</h3>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs flex items-center gap-3.5">
-          <div className="size-11 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
-            <Tag className="size-5" />
-          </div>
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Average Price</p>
-            <h3 className="text-xl font-extrabold text-slate-900">₹{avgPrice}</h3>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs flex items-center gap-3.5">
-          <div className="size-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-            <Building2 className="size-5" />
-          </div>
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Storefront Status</p>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-sm font-extrabold text-emerald-700">Online & Live</span>
+        {/* Card 1: Active Listings */}
+        <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="size-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+              <ShoppingBag className="size-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Active Listings</p>
+              <div className="flex items-baseline gap-1.5 mt-0.5">
+                <h3 className="text-xl font-extrabold text-slate-900">{publishedCount}</h3>
+                <span className="text-[11px] text-slate-400 font-medium">/ {totalListings} total</span>
+              </div>
             </div>
           </div>
+          <Badge variant="secondary" className="text-[10px] bg-slate-100 text-slate-600 font-semibold px-2 py-0.5 shrink-0 hidden sm:inline-flex">
+            {unlistedCount} unlisted
+          </Badge>
+        </div>
+
+        {/* Card 2: Creators Represented */}
+        <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="size-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+              <Users className="size-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Creators Represented</p>
+              <h3 className="text-xl font-extrabold text-slate-900 mt-0.5">{uniqueDesigners}</h3>
+            </div>
+          </div>
+          <Badge variant="secondary" className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200/60 font-semibold px-2 py-0.5 shrink-0 hidden sm:inline-flex">
+            Designers
+          </Badge>
+        </div>
+
+        {/* Card 3: Average Retail Price */}
+        <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="size-11 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
+              <Tag className="size-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Average Price</p>
+              <h3 className="text-xl font-extrabold text-slate-900 mt-0.5">₹{avgPrice}</h3>
+            </div>
+          </div>
+          <Badge variant="secondary" className="text-[10px] bg-violet-50 text-violet-700 border border-violet-200/60 font-semibold px-2 py-0.5 shrink-0 hidden sm:inline-flex">
+            Per Item
+          </Badge>
+        </div>
+
+        {/* Card 4: Storefront Status */}
+        <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className={`size-11 rounded-xl flex items-center justify-center shrink-0 ${
+              storeSettings?.is_public === false
+                ? 'bg-rose-50 text-rose-600'
+                : publishedCount === 0
+                ? 'bg-amber-50 text-amber-600'
+                : 'bg-emerald-50 text-emerald-600'
+            }`}>
+              <Building2 className="size-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Storefront Status</p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className={`size-2 rounded-full shrink-0 ${
+                  storeSettings?.is_public === false
+                    ? 'bg-rose-500'
+                    : publishedCount === 0
+                    ? 'bg-amber-500'
+                    : 'bg-emerald-500 animate-pulse'
+                }`} />
+                <span className={`text-sm font-extrabold truncate ${
+                  storeSettings?.is_public === false
+                    ? 'text-rose-700'
+                    : publishedCount === 0
+                    ? 'text-amber-700'
+                    : 'text-emerald-700'
+                }`}>
+                  {storeSettings?.is_public === false
+                    ? 'Offline (Private)'
+                    : publishedCount === 0
+                    ? 'Draft (0 Live)'
+                    : 'Online & Live'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Toggle Button */}
+          <button
+            type="button"
+            disabled={togglingStoreStatus}
+            onClick={toggleStorePublic}
+            title={storeSettings?.is_public === false ? 'Click to turn Storefront Online' : 'Click to set Storefront Offline (Maintenance)'}
+            className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold border transition-all cursor-pointer shrink-0 disabled:opacity-50 ${
+              storeSettings?.is_public === false
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100'
+                : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-700'
+            }`}
+          >
+            {togglingStoreStatus ? 'Updating...' : storeSettings?.is_public === false ? 'Go Live' : 'Go Offline'}
+          </button>
         </div>
       </div>
 

@@ -543,7 +543,7 @@ export default function SupplierDashboard() {
 
                         {/* Card Info Area */}
                         <div className="p-2 sm:p-2.5">
-                          <h3 className="font-bold text-slate-800 text-xs truncate leading-tight">
+                          <h3 className="font-bold text-slate-800 text-xs truncate leading-tight" title={p.name}>
                             {p.name}
                           </h3>
                           {(p.owner_id || p.provider_name) && (

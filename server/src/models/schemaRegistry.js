@@ -588,25 +588,6 @@ export const INITIAL_SEEDS = [
      ('S'), ('M'), ('L'), ('XL'), ('XXL'), ('XXXL')
    ON CONFLICT (LOWER(label)) WHERE owner_id IS NULL DO NOTHING;`,
 
-  // Default Colors
-  `INSERT INTO colors (name, hex)
-   SELECT d.name, d.hex
-   FROM (VALUES
-     ('White', '#FFFFFF'),
-     ('Black', '#000000'),
-     ('Red', '#FF0000'),
-     ('Blue', '#0000FF'),
-     ('Green', '#00FF00'),
-     ('Yellow', '#FFFF00'),
-     ('Orange', '#FFA500'),
-     ('Purple', '#800080'),
-     ('Gray', '#808080'),
-     ('Pink', '#FFC0CB')
-   ) AS d(name, hex)
-   WHERE NOT EXISTS (
-     SELECT 1 FROM colors c WHERE LOWER(c.name) = LOWER(d.name) AND c.owner_id IS NULL
-   );`,
-
   // Default B2C Platform Settings
   `INSERT INTO platform_financial_settings (
      id, standard_shipping_charge, free_shipping_threshold, shipping_enabled,

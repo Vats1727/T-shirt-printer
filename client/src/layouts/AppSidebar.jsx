@@ -120,14 +120,7 @@ export function AppSidebar() {
       active: location.includes('clothes'),
       hidden: !isAdmin
     },
-    {
-      title: 'Associated Designers',
-      icon: Users,
-      url: '/admin/designers',
-      active: location.includes('designers'),
-      hidden: !isAdmin
-    },
-    {
+{
       title: 'Designer Designs',
       icon: LayoutTemplate,
       url: '/admin/designer-designs',

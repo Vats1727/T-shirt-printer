@@ -99,7 +99,7 @@ export default function Profile() {
       setLoading(false);
     }
   };
-  return <div className="space-y-6 max-w-4xl mx-auto">
+  return <div className="space-y-6 w-full pb-12">
             <div className="flex flex-col gap-1">
                 <h1 className="text-3xl font-bold tracking-tight">Account Profile</h1>
                 <p className="text-muted-foreground">Manage your account details and security settings.</p>

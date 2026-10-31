@@ -28,7 +28,11 @@ export async function createColor(req, res, next) {
     if (!name || !hex) {
       return res.status(400).json({ message: "Color name and hex code are required." });
     }
-    const color = await productModel.createColor({ ...req.body, owner_id: ownerId });
+    const trimmedName = String(name).trim();
+    if (trimmedName.length > 30) {
+      return res.status(400).json({ message: "Color name must not exceed 30 characters." });
+    }
+    const color = await productModel.createColor({ ...req.body, name: trimmedName, owner_id: ownerId });
     return res.status(201).json(color);
   } catch (err) {
     if (err && err.message && (err.message.includes("already exists") || err.code === "23505")) {
@@ -160,9 +164,15 @@ export async function getProduct(req, res, next) {
 export async function createProduct(req, res, next) {
   try {
     const body = req.body;
-    if (!body || !body.name) return res.status(400).json({ message: "Product name required" });
+    if (!body || !body.name || !String(body.name).trim()) {
+      return res.status(400).json({ message: "Product name required" });
+    }
+    const trimmedName = String(body.name).trim();
+    if (trimmedName.length > 60) {
+      return res.status(400).json({ message: "Product name must not exceed 60 characters" });
+    }
     const ownerId = req.user?.sub || req.user?.id || null;
-    const product = await productsStore.createProduct({ ...body, owner_id: ownerId });
+    const product = await productsStore.createProduct({ ...body, name: trimmedName, owner_id: ownerId });
     return res.status(201).json(product);
   } catch (err) {
     next(err);
@@ -174,7 +184,18 @@ export async function updateProduct(req, res, next) {
     const id = parseInt(req.params.id, 10);
     if (!id) return res.status(400).json({ message: 'invalid id' });
     const ownerId = req.user?.sub || req.user?.id || null;
-    const updated = await productsStore.updateProduct(id, req.body, ownerId);
+    const payload = { ...req.body };
+    if (payload.name !== undefined) {
+      const trimmedName = String(payload.name).trim();
+      if (!trimmedName) {
+        return res.status(400).json({ message: "Product name cannot be empty" });
+      }
+      if (trimmedName.length > 60) {
+        return res.status(400).json({ message: "Product name must not exceed 60 characters" });
+      }
+      payload.name = trimmedName;
+    }
+    const updated = await productsStore.updateProduct(id, payload, ownerId);
     if (!updated) return res.status(404).json({ message: 'Product not found' });
     return res.json(updated);
   } catch (err) {

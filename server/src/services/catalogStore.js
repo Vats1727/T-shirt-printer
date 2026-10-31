@@ -27,7 +27,7 @@ async function writeJson(file, data) {
 }
 export async function listColors(ownerId) {
   if (pool) {
-    const query = ownerId ? "SELECT id, name, hex, owner_id FROM colors WHERE owner_id = $1 OR owner_id IS NULL ORDER BY id" : "SELECT id, name, hex, owner_id FROM colors ORDER BY id";
+    const query = ownerId ? "SELECT id, name, hex, owner_id FROM colors WHERE owner_id = $1 ORDER BY id" : "SELECT id, name, hex, owner_id FROM colors WHERE owner_id IS NOT NULL ORDER BY id";
     const res = await pool.query(query, ownerId ? [ownerId] : []);
     const seen = /* @__PURE__ */ new Set();
     return res.rows.filter((c) => {
@@ -39,14 +39,14 @@ export async function listColors(ownerId) {
   }
   const items = await readJson(colorsFile);
   if (ownerId) return items.filter((i) => i.owner_id === ownerId);
-  return items;
+  return items.filter((i) => Boolean(i.owner_id));
 }
 export async function createColor(payload) {
   const cleanHex = (payload.hex || '').trim().toLowerCase();
   const cleanName = (payload.name || '').trim().toLowerCase();
   if (pool) {
     const existing = await pool.query(
-      "SELECT id, name, hex, owner_id FROM colors WHERE (lower(hex) = lower($1) OR lower(name) = lower($2)) AND (owner_id = $3 OR owner_id IS NULL) LIMIT 1",
+      "SELECT id, name, hex, owner_id FROM colors WHERE (lower(hex) = lower($1) OR lower(name) = lower($2)) AND owner_id = $3 LIMIT 1",
       [cleanHex, cleanName, payload.owner_id || null]
     );
     if (existing.rows.length > 0) {
@@ -65,7 +65,7 @@ export async function createColor(payload) {
   const items = await readJson(colorsFile);
   const found = items.find((i) =>
     ((i.hex || '').toLowerCase() === cleanHex || ((i.name || '').trim().toLowerCase() === cleanName)) &&
-    (i.owner_id === payload.owner_id || !i.owner_id)
+    (i.owner_id === payload.owner_id)
   );
   if (found) {
     if ((found.hex || '').toLowerCase() === cleanHex) {

@@ -635,10 +635,10 @@ export default function SavedDesignsPage({ params }) {
                 <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-100">
                   Custom Creation
                 </span>
-                <h2 className="text-xl font-bold text-slate-900 leading-snug mt-2">
+                <h2 className="text-xl font-bold text-slate-900 leading-snug mt-2 break-all [overflow-wrap:anywhere] min-w-0">
                   {activeDesign?.slogan ? `"${activeDesign.slogan}"` : activeDesign?.product || "Custom Design"}
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-slate-500 mt-0.5 break-all [overflow-wrap:anywhere] min-w-0">
                   Garment Model: <span className="font-semibold text-slate-700">{activeDesign?.product || "T-Shirt"}</span>
                 </p>
               </div>

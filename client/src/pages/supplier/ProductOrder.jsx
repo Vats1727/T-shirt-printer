@@ -588,13 +588,13 @@ export default function SupplierProductOrder() {
           >
             <ChevronLeft className="size-6" />
           </Button>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold tracking-tight">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl font-bold tracking-tight truncate max-w-xl" title={savedDesignId ? "Edit Custom Design" : (product?.name || "Product")}>
                 {savedDesignId ? "Edit Custom Design" : (product?.name || "Product")}
               </h1>
               {savedDesignId && (
-                <Badge variant="secondary" className="bg-indigo-100 text-indigo-700 font-mono text-xs">
+                <Badge variant="secondary" className="bg-indigo-100 text-indigo-700 font-mono text-xs shrink-0">
                   #DSG-{savedDesignId}
                 </Badge>
               )}
