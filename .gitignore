@@ -30,8 +30,6 @@ logs/
 npm-debug.log*
 yarn-debug.log*
 
-#Test 
-Test/
 
 # Coverage and test output
 coverage/
