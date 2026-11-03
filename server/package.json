@@ -9,7 +9,8 @@
     "db:sync": "node src/config/syncModels.js",
     "db:migrate": "node src/config/syncModels.js",
     "db:seed": "node src/config/seedAdmin.js",
-    "db:reset": "node src/config/resetDb.js"
+    "db:reset": "node src/config/resetDb.js",
+    "clean:uploads": "node src/scripts/cleanOrphanUploads.js"
   },
   "dependencies": {
     "bcrypt": "^5.1.0",

@@ -1,3 +1,4 @@
+import storageService from '../services/storage.service.js';
 import path from 'path';
 import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
@@ -195,6 +196,16 @@ export async function updateProduct(req, res, next) {
       }
       payload.name = trimmedName;
     }
+    // Clean up any replaced garment images
+    try {
+      const oldProd = await productsStore.getProduct(id, ownerId);
+      if (oldProd && (payload.colors || payload.designs)) {
+        await storageService.cleanReplacedProductImages(oldProd, payload);
+      }
+    } catch (cleanErr) {
+      console.warn('updateProduct: image cleanup warning:', cleanErr.message);
+    }
+
     const updated = await productsStore.updateProduct(id, payload, ownerId);
     if (!updated) return res.status(404).json({ message: 'Product not found' });
     return res.json(updated);
@@ -209,21 +220,11 @@ export async function deleteProduct(req, res, next) {
     if (!id) return res.status(400).json({ message: 'invalid id' });
     const ownerId = req.user?.sub || req.user?.id || null;
 
-    // Check existing product to clean up any custom uploaded design files
+    // Fetch existing product to clean up physical images from server/uploads
     try {
       const prod = await productsStore.getProduct(id, ownerId);
-      if (prod && prod.designs) {
-        const rawDesigns = Array.isArray(prod.designs) ? prod.designs : Object.values(prod.designs);
-        for (const d of rawDesigns) {
-          const imgUrl = d?.image;
-          if (imgUrl && typeof imgUrl === 'string' && imgUrl.includes('/uploads/designs/')) {
-            const relPath = imgUrl.replace(/^.*?\/uploads\//, '');
-            const safeFilePath = path.resolve(UPLOAD_DIR, relPath);
-            if (safeFilePath.startsWith(UPLOAD_DIR)) {
-              await fs.unlink(safeFilePath).catch(() => {});
-            }
-          }
-        }
+      if (prod) {
+        await storageService.deleteProductPhysicalFiles(prod, { checkOrders: true });
       }
     } catch (e) {
       console.warn('deleteProduct: file cleanup warning:', e.message);

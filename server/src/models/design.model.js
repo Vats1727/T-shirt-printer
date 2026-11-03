@@ -81,7 +81,10 @@ export async function createDesign(input) {
             if (typeof dataUrlOrUrl === 'string') {
               if (dataUrlOrUrl.startsWith('data:')) {
                 try {
-                  const stored = await storageService.storeDataUrl(dataUrlOrUrl, undefined, ownerId);
+                  const stored = await storageService.storeDataUrl(dataUrlOrUrl, undefined, ownerId, {
+                    type: 'artwork',
+                    side: (side.name || side.side || 'front').toLowerCase() === 'back' ? 'back' : 'front'
+                  });
                   layer.asset = {
                     id: stored.id,
                     url: stored.url,
@@ -138,6 +141,13 @@ export async function createDesign(input) {
         } catch (e) {
           // ignore preview error
         }
+      }
+
+      // Automatically convert any Base64 preview screenshots into physical .png files to prevent DB bloat
+      try {
+        payload = await storageService.convertPayloadBase64Images(payload, design.id, ownerId);
+      } catch (convErr) {
+        console.warn('createDesign: convertPayloadBase64Images error:', convErr.message);
       }
 
       const versionName = input.version?.versionName || 'supplier-save';
@@ -340,6 +350,9 @@ export async function updateDesign(id, changes, userId) {
     // Save/update design_versions record
     if (versionPayload) {
       try {
+        // Automatically convert any Base64 preview screenshots into physical .png files to prevent DB bloat
+        versionPayload = await storageService.convertPayloadBase64Images(versionPayload, designId, userId);
+
         await pool.query(
           `INSERT INTO design_versions (design_id, version_name, payload, price_cents, currency, processing_state, created_at)
            VALUES ($1, $2, $3, $4, $5, 'pending', NOW())`,
@@ -385,57 +398,8 @@ export async function deleteDesign(id, userId) {
     const design = designRes.rows[0];
     if (!design) return false;
 
-    // 2. Collect all files associated with this design
-    const filesToDelete = new Set();
-    if (design.image) filesToDelete.add(design.image);
-    if (design.back_image) filesToDelete.add(design.back_image);
-
-    // 3. Inspect design_versions for previews and embedded layer assets
-    const vRes = await pool.query('SELECT payload FROM design_versions WHERE design_id = $1', [designId]);
-    for (const vRow of vRes.rows) {
-      let payload = vRow.payload;
-      if (typeof payload === 'string') {
-        try { payload = JSON.parse(payload); } catch (e) {}
-      }
-      if (payload && typeof payload === 'object') {
-        if (payload.metadata?.preview_front) filesToDelete.add(payload.metadata.preview_front);
-        if (payload.metadata?.preview_back) filesToDelete.add(payload.metadata.preview_back);
-        if (Array.isArray(payload.sides)) {
-          for (const side of payload.sides) {
-            for (const layer of side.layers || []) {
-              if (layer.type === 'image' && layer.asset) {
-                if (layer.asset.url) filesToDelete.add(layer.asset.url);
-                if (layer.asset.filename) filesToDelete.add(layer.asset.filename);
-                if (layer.asset.id) filesToDelete.add(`/api/assets/${layer.asset.id}`);
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // 4. Inspect assets table for automated preview assets linked to this design
-    const assetRes = await pool.query(
-      `SELECT id, filename, storage_key 
-       FROM assets 
-       WHERE (metadata->>'designId')::int = $1
-          OR filename LIKE '%' || $2 || '%'`,
-      [designId, `design-${designId}-`]
-    );
-    for (const aRow of assetRes.rows) {
-      if (aRow.storage_key) filesToDelete.add(aRow.storage_key);
-      if (aRow.filename) filesToDelete.add(aRow.filename);
-      filesToDelete.add(`/api/assets/${aRow.id}`);
-    }
-
-    // 5. Physically unlink all collected files from disk
-    for (const fileRef of filesToDelete) {
-      try {
-        await storageService.deletePhysicalFile(fileRef);
-      } catch (err) {
-        console.warn(`deleteDesign: failed to delete physical file ${fileRef}:`, err.message);
-      }
-    }
+    // 2. Safely unlink physical upload files from server/uploads with order and shared-use protection
+    await storageService.deleteDesignPhysicalFiles(designId, { checkOrders: true });
 
     // 6. Delete linked assets from database
     await pool.query(

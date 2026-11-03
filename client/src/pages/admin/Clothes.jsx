@@ -1262,7 +1262,7 @@ export default function AdminClothes() {
                                         if (
                                           prevUrl &&
                                           typeof prevUrl === "string" &&
-                                          prevUrl.includes("/uploads/designs/")
+                                          (prevUrl.includes("/uploads/farmo/") || prevUrl.includes("/uploads/designs/"))
                                         ) {
                                           fetch("/api/assets/delete-file", {
                                             method: "POST",
@@ -1283,7 +1283,7 @@ export default function AdminClothes() {
                                             body: JSON.stringify({
                                               dataUrl,
                                               filename: f.name,
-                                              metadata: { type: "designs", side: "front" }
+                                              metadata: { type: "farmo", side: "front" }
                                             })
                                           });
                                           if (res.ok) {
@@ -1328,7 +1328,7 @@ export default function AdminClothes() {
                                     if (
                                       fileUrl &&
                                       typeof fileUrl === "string" &&
-                                      fileUrl.includes("/uploads/designs/")
+                                      (fileUrl.includes("/uploads/farmo/") || fileUrl.includes("/uploads/designs/"))
                                     ) {
                                       try {
                                         await fetch("/api/assets/delete-file", {
@@ -1386,7 +1386,7 @@ export default function AdminClothes() {
                                       body: JSON.stringify({
                                         dataUrl,
                                         filename: f.name,
-                                        metadata: { type: "designs", side: "front" }
+                                        metadata: { type: "farmo", side: "front" }
                                       })
                                     });
                                     if (res.ok) {
@@ -1505,7 +1505,7 @@ export default function AdminClothes() {
                                         if (
                                           prevUrl &&
                                           typeof prevUrl === "string" &&
-                                          prevUrl.includes("/uploads/designs/")
+                                          (prevUrl.includes("/uploads/farmo/") || prevUrl.includes("/uploads/designs/"))
                                         ) {
                                           fetch("/api/assets/delete-file", {
                                             method: "POST",
@@ -1526,7 +1526,7 @@ export default function AdminClothes() {
                                             body: JSON.stringify({
                                               dataUrl,
                                               filename: f.name,
-                                              metadata: { type: "designs", side: "back" }
+                                              metadata: { type: "farmo", side: "back" }
                                             })
                                           });
                                           if (res.ok) {
@@ -1571,7 +1571,7 @@ export default function AdminClothes() {
                                     if (
                                       fileUrl &&
                                       typeof fileUrl === "string" &&
-                                      fileUrl.includes("/uploads/designs/")
+                                      (fileUrl.includes("/uploads/farmo/") || fileUrl.includes("/uploads/designs/"))
                                     ) {
                                       try {
                                         await fetch("/api/assets/delete-file", {
@@ -1629,7 +1629,7 @@ export default function AdminClothes() {
                                       body: JSON.stringify({
                                         dataUrl,
                                         filename: f.name,
-                                        metadata: { type: "designs", side: "back" }
+                                        metadata: { type: "farmo", side: "back" }
                                       })
                                     });
                                     if (res.ok) {

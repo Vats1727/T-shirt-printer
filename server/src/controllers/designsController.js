@@ -1,3 +1,4 @@
+import storageService from '../services/storage.service.js';
 import { api } from "@shared/routes";
 import { storage } from '../services/storage.js';
 import { db } from '../../db.js';
@@ -193,41 +194,13 @@ export async function deleteDesign(req, res) {
   const user = req.user;
   const userId = user?.sub || user?.id || null;
   try {
+    // 1. Physically unlink files associated with this design (with order & shared protection)
+    await storageService.deleteDesignPhysicalFiles(id);
     const ok = await storage.deleteDesign(id, userId);
-    try {
-      if (db) {
-        const rows = await db.select().from(assetsTable).orderBy(assetsTable.id);
-        const matches = rows.filter((r) => r && (String(r.filename || "").includes(`design-${id}`) || String(r.storage_key || "").includes(`design-${id}`)));
-        for (const a of matches) {
-          if (a.filename) {
-            const fp = path.resolve(UPLOAD_DIR, a.filename);
-            try {
-              await fs.unlink(fp);
-            } catch (e) {
-            }
-          }
-          await db.delete(assetsTable).where(eq(assetsTable.id, a.id));
-        }
-      }
-      try {
-        const files = await fs.readdir(UPLOAD_DIR);
-        for (const f of files) {
-          if (f.startsWith(`design-${id}-`) || f.includes(`-design-${id}-`)) {
-            try {
-              await fs.unlink(path.join(UPLOAD_DIR, f));
-              console.log("deleteDesign: unlinked file from server/uploads:", f);
-            } catch (e) {
-            }
-          }
-        }
-      } catch (e) {
-      }
-    } catch (e) {
-      console.warn("deleteDesign: cleanup warning:", e);
-    }
     if (!ok) return res.status(404).json({ message: "Not found" });
     return res.status(204).end();
   } catch (e) {
+    console.error("deleteDesign error:", e);
     return res.status(500).json({ message: "Failed to delete design" });
   }
 }

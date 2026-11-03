@@ -1,3 +1,4 @@
+import storageService from './storage.service.js';
 import { pool } from '../../db.js';
 export async function createListing(supplierId, title, description, slug, design_key, visibility) {
   if (!pool) throw new Error("Database not configured");
@@ -74,7 +75,15 @@ export async function deleteListing(id, supplierId) {
   if (!pool) return false;
   const client = await pool.connect();
   try {
-    const res = await client.query("DELETE FROM listings WHERE id = $1 AND supplier_id = $2", [id, supplierId]);
+    try {
+      const listingRes = await client.query("SELECT * FROM listings WHERE id = $1", [id]);
+      if (listingRes.rows[0]) {
+        await storageService.deleteListingPhysicalFiles(listingRes.rows[0], { checkOrders: true });
+      }
+    } catch (cleanErr) {
+      console.warn('deleteListing: file cleanup warning:', cleanErr.message);
+    }
+    const res = await client.query("DELETE FROM listings WHERE id = $1 AND (supplier_id = $2 OR $2 IS NULL)", [id, supplierId]);
     return (res.rowCount || 0) > 0;
   } finally {
     client.release();
