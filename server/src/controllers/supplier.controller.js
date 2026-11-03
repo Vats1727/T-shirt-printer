@@ -60,10 +60,10 @@ export async function listSavedDesigns(req, res, next) {
 
     if (pool) {
       const result = await pool.query(
-        `SELECT d.*, dv.payload as version_payload 
+        `SELECT d.*, dv.payload as version_payload, dv.price_cents, dv.currency 
          FROM designs d
          LEFT JOIN LATERAL (
-           SELECT payload FROM design_versions WHERE design_id = d.id ORDER BY id DESC LIMIT 1
+           SELECT payload, price_cents, currency FROM design_versions WHERE design_id = d.id ORDER BY id DESC LIMIT 1
          ) dv ON true
          WHERE d.owner_id = $1
          ORDER BY d.id DESC`,
@@ -75,8 +75,14 @@ export async function listSavedDesigns(req, res, next) {
         if (typeof version === 'string') {
           try { version = JSON.parse(version); } catch (e) {}
         }
+        const priceCents = Number(row.price_cents || version?.metadata?.price_cents || 0);
+        const price = priceCents > 0 ? priceCents / 100 : Number(version?.metadata?.retail_price || version?.metadata?.price || 0);
+
         return {
           ...row,
+          price_cents: priceCents,
+          price: price,
+          retail_price: price,
           version: version || null,
           versions: version ? [version] : []
         };

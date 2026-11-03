@@ -96,9 +96,13 @@ export default function SupplierProductOrder() {
     let img = raw.image || raw.image_data || raw.file_name || raw.filename || raw.image_url || raw.image_src || raw.back_image || null;
     if (!img && typeof raw === "string") img = raw;
     if (!img) return null;
-    img = String(img);
-    if (!img.startsWith("data:") && !img.startsWith("http") && !img.startsWith("/")) img = `/attached_assets/${img}`;
-    return img;
+    img = String(img).trim();
+    if (img.startsWith("data:") || img.startsWith("http://") || img.startsWith("https://")) return img;
+    if (img.startsWith("/uploads/") || img.startsWith("/attached_assets/")) return img;
+    if (img.startsWith("uploads/")) return `/${img}`;
+    if (img.startsWith("attached_assets/")) return `/${img}`;
+    if (img.startsWith("/")) return img;
+    return `/uploads/${img}`;
   }
   useEffect(() => {
     const load = async () => {
@@ -172,12 +176,12 @@ export default function SupplierProductOrder() {
       let frontDesign = null;
       let backDesign = null;
 
-      if (Array.isArray(prod?.designs)) {
-        frontDesign = prod.designs.find((d) => d && (d.side || "").toLowerCase() === "front") || prod.designs[0] || null;
-        backDesign = prod.designs.find((d) => d && (d.side || "").toLowerCase() === "back") || (prod.designs.length > 1 ? prod.designs[1] : null);
-      } else if (prod?.designs && typeof prod.designs === "object") {
+      if (prod?.designs && typeof prod.designs === "object" && !Array.isArray(prod.designs)) {
         frontDesign = prod.designs.front || null;
         backDesign = prod.designs.back || null;
+      } else if (Array.isArray(prod?.designs)) {
+        frontDesign = prod.designs.find((d) => d && (d.side || "").toLowerCase() === "front") || prod.designs[0] || null;
+        backDesign = prod.designs.find((d) => d && (d.side || "").toLowerCase() === "back") || (prod.designs.length > 1 ? prod.designs[1] : null);
       }
 
       if (!frontDesign && (prod?.front_image || prod?.image)) {
@@ -211,7 +215,7 @@ export default function SupplierProductOrder() {
           ...prev,
           slogan: frontDesign.slogan || prev.slogan,
           image: null,
-          templateImage: normalizeImage(frontDesign.image || frontDesign.image_data || frontDesign.image_src || frontDesign.image_url || frontDesign.file_name || frontDesign.filename || frontDesign.template) || null,
+          templateImage: resolvedFrontImage || normalizeImage(frontDesign.image || frontDesign.image_data || frontDesign.image_src || frontDesign.image_url || frontDesign.file_name || frontDesign.filename || frontDesign.template) || null,
           imageScale: frontDesign.image_scale ? Number(frontDesign.image_scale) : prev.imageScale,
           imageRotation: frontDesign.image_rotation ? Number(frontDesign.image_rotation) : prev.imageRotation,
           imagePosition: frontDesign.image_position || prev.imagePosition,
@@ -231,7 +235,7 @@ export default function SupplierProductOrder() {
           ...prev,
           slogan: backDesign.slogan || prev.slogan,
           image: null,
-          templateImage: normalizeImage(backDesign.image || backDesign.image_data || backDesign.image_src || backDesign.image_url || backDesign.file_name || backDesign.filename || backDesign.template) || null,
+          templateImage: resolvedBackImage || normalizeImage(backDesign.image || backDesign.image_data || backDesign.image_src || backDesign.image_url || backDesign.file_name || backDesign.filename || backDesign.template) || null,
           imageScale: backDesign.image_scale ? Number(backDesign.image_scale) : prev.imageScale,
           imageRotation: backDesign.image_rotation ? Number(backDesign.image_rotation) : prev.imageRotation,
           imagePosition: backDesign.image_position || prev.imagePosition,
@@ -317,8 +321,9 @@ export default function SupplierProductOrder() {
           const sIds = meta.selected_sizes.map((s) => Number(s.id || s)).filter(Boolean);
           if (sIds.length > 0) setSelectedSizes(sIds);
         }
-        if (savedD.price_cents) {
-          setPriceInput(Number(savedD.price_cents) / 100);
+        const savedPrice = Number(savedD.price_cents ? savedD.price_cents / 100 : (savedD.price || meta.retail_price || meta.price || 0));
+        if (savedPrice > 0) {
+          setPriceInput(savedPrice);
         }
       }
     };
@@ -415,6 +420,10 @@ export default function SupplierProductOrder() {
         versionName: "supplier-save",
         sides: [buildSide(frontState, "front"), buildSide(backState, "back")],
         metadata: {
+          price: Number(priceInput || 0),
+          retail_price: Number(priceInput || 0),
+          price_cents: Math.round(Number(priceInput || 0) * 100),
+          currency: "INR",
           canvasDimensions: { width: 400, height: 400 },
           dpiAware: true,
           preview_front: frontPreview,
@@ -448,7 +457,7 @@ export default function SupplierProductOrder() {
           setFrontState((prev) => ({ ...prev, templateColor: hex }));
           setBackState((prev) => ({ ...prev, templateColor: hex }));
         }
-        await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 60)));
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 80))));
         const f = frontExportRef.current?.toDataURL?.("image/png") || null;
         const b = backExportRef.current?.toDataURL?.("image/png") || null;
         return { front: f, back: b };
@@ -484,10 +493,16 @@ export default function SupplierProductOrder() {
         const featuredPreview = previewByColor.find((p) => Number(p.id) === Number(featuredCid)) || previewByColor[0];
         const multiPayload = {
           ...payload,
+          price_cents: Math.round(Number(priceInput || 0) * 100),
+          currency: "INR",
           version: {
             ...payload.version,
             metadata: {
               ...payload.version?.metadata || {},
+              price: Number(priceInput || 0),
+              retail_price: Number(priceInput || 0),
+              price_cents: Math.round(Number(priceInput || 0) * 100),
+              currency: "INR",
               preview_front: featuredPreview?.preview_front || null,
               preview_back: featuredPreview?.preview_back || null,
               selected_colors: previewByColor.map((p) => ({ id: p.id, hex: p.hex, name: p.name })),
@@ -496,6 +511,8 @@ export default function SupplierProductOrder() {
                 label: getSizeLabel(sid)
               })),
               featured_color: featuredObj ? { id: Number(featuredObj.id), hex: featuredObj.hex, name: featuredObj.name } : null,
+              template_image_front: frontState.templateImage || null,
+              template_image_back: backState.templateImage || null,
               preview_by_color: previewByColor
             }
           }
@@ -577,13 +594,13 @@ export default function SupplierProductOrder() {
           >
             <ChevronLeft className="size-6" />
           </Button>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold tracking-tight">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl font-bold tracking-tight truncate max-w-xl" title={savedDesignId ? "Edit Custom Design" : (product?.name || "Product")}>
                 {savedDesignId ? "Edit Custom Design" : (product?.name || "Product")}
               </h1>
               {savedDesignId && (
-                <Badge variant="secondary" className="bg-indigo-100 text-indigo-700 font-mono text-xs">
+                <Badge variant="secondary" className="bg-indigo-100 text-indigo-700 font-mono text-xs shrink-0">
                   #DSG-{savedDesignId}
                 </Badge>
               )}
@@ -869,7 +886,11 @@ export default function SupplierProductOrder() {
             "Content-Type": "application/json",
             "Authorization": token ? `Bearer ${token}` : ""
           },
-          body: JSON.stringify({ dataUrl: result, filename: f.name })
+          body: JSON.stringify({
+            dataUrl: result,
+            filename: f.name,
+            metadata: { type: "artwork", side: side === "back" ? "back" : "front" }
+          })
         });
         if (res.ok) {
           const js = await res.json();
@@ -916,7 +937,16 @@ export default function SupplierProductOrder() {
                               <input type="range" min={0} max={360} value={imageRotation} onChange={(e) => setActiveState({ imageRotation: Number(e.target.value) })} className="w-full accent-indigo-600 h-1.5 bg-muted rounded-lg appearance-none cursor-pointer" />
                             </div>
                             <div className="flex items-center gap-2 pt-2">
-                              <Button variant="outline" size="sm" onClick={() => setActiveState({ image: null })} className="text-xs flex-grow text-red-600 hover:text-red-700 hover:bg-red-50">Remove</Button>
+                              <Button variant="outline" size="sm" onClick={() => {
+    if (image && !image.startsWith("data:")) {
+      fetch("/api/assets/delete-file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": token ? `Bearer ${token}` : "" },
+        body: JSON.stringify({ url: image })
+      }).catch(() => {});
+    }
+    setActiveState({ image: null });
+  }} className="text-xs flex-grow text-red-600 hover:text-red-700 hover:bg-red-50">Remove</Button>
                               <Button variant="ghost" size="sm" onClick={() => setActiveState({ imageScale: 100, imageRotation: 0, imagePosition: { x: 180, y: 180 } })} className="text-xs">Reset</Button>
                             </div>
                           </div>
@@ -951,8 +981,8 @@ export default function SupplierProductOrder() {
         {
     /* Right column: 3D Preview */
   }
-        <div className="lg:col-span-7 space-y-6">
-          <div className="relative aspect-square w-full max-w-2xl mx-auto rounded-3xl overflow-hidden shadow-2xl shadow-indigo-100 border-8 border-white bg-slate-100 flex items-center justify-center">
+        <div className="lg:col-span-7 space-y-4 lg:sticky lg:top-20">
+          <div className="relative aspect-square w-full max-w-[440px] max-h-[440px] mx-auto rounded-3xl overflow-hidden shadow-xl shadow-indigo-100/50 border-4 border-white bg-slate-100 flex items-center justify-center">
             <DesignCanvas
     side={side}
     slogan={slogan}
@@ -973,8 +1003,8 @@ export default function SupplierProductOrder() {
     imageRotation={imageRotation}
     imagePosition={imagePosition}
     onImageMove={(pos) => setActiveState({ imagePosition: pos })}
-    width={640}
-    height={640}
+    width={440}
+    height={440}
   />
             
             {

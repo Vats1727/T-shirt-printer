@@ -21,4 +21,32 @@ export async function changePassword(currentPassword, newPassword) {
   });
 }
 
-export default { login, register, changePassword };
+export async function forgotPassword(email) {
+  return request('/api/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email })
+  });
+}
+
+export async function verifyOtp(email, otp) {
+  return request('/api/auth/verify-otp', {
+    method: 'POST',
+    body: JSON.stringify({ email, otp })
+  });
+}
+
+export async function resetPassword(email, otp, newPassword) {
+  return request('/api/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ email, otp, newPassword })
+  });
+}
+
+export default {
+  login,
+  register,
+  changePassword,
+  forgotPassword,
+  verifyOtp,
+  resetPassword
+};

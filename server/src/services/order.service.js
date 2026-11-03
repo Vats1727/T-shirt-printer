@@ -21,14 +21,14 @@ export async function placeSupplierOrder(userId, items, shipping) {
     if (!snap || typeof snap !== 'object') return null;
     const clone = JSON.parse(JSON.stringify(snap));
 
-    const stripLargeImages = (obj) => {
-      if (!obj || typeof obj !== 'object') return;
+    const stripLargeImages = (obj, depth = 0) => {
+      if (!obj || typeof obj !== 'object' || depth > 20) return;
       for (const k of Object.keys(obj)) {
         const v = obj[k];
         if (typeof v === 'string' && (v.startsWith('data:') || v.length > 200 * 1024)) {
           obj[k] = null;
         } else if (typeof v === 'object') {
-          stripLargeImages(v);
+          stripLargeImages(v, depth + 1);
         }
       }
     };

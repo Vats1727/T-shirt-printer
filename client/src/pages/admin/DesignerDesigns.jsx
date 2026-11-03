@@ -703,10 +703,10 @@ export default function DesignerDesigns() {
                     Designer Creation
                   </span>
                 </div>
-                <h2 className="text-xl font-bold text-slate-900 leading-snug">
+                <h2 className="text-xl font-bold text-slate-900 leading-snug break-all [overflow-wrap:anywhere] min-w-0">
                   {activeDesign?.slogan ? `"${activeDesign.slogan}"` : activeDesign?.product_name || activeDesign?.product || "Custom Design"}
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-slate-500 mt-0.5 break-all [overflow-wrap:anywhere] min-w-0">
                   Garment: <span className="font-semibold text-slate-700">{activeDesign?.product_name || activeDesign?.product || "T-Shirt"}</span>
                 </p>
               </div>

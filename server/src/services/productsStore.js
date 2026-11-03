@@ -1,7 +1,8 @@
 import { pool } from '../config/database.js';
 import { slugify } from '../utils.js';
 export async function createProduct(payload) {
-  const slugBase = slugify(payload.name);
+  const safeName = String(payload.name || '').trim().slice(0, 60);
+  const slugBase = slugify(safeName || 'garment-blank');
   if (pool) {
     let slug = slugBase;
     let counter = 1;
@@ -22,7 +23,7 @@ export async function createProduct(payload) {
     const res = await pool.query(
       `INSERT INTO products_full (name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory, category, owner_id, status)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id, name, slug, category, single_price, bulk_min, bulk_price, status, created_at`,
-      [payload.name, slug, payload.single_price || 0, payload.bulk_min || 100, payload.bulk_price || 0, JSON.stringify(payload.sizes || []), JSON.stringify(payload.colors || []), JSON.stringify(payload.sizeChart || []), JSON.stringify(designsArray), JSON.stringify(payload.inventory || []), category, payload.owner_id || null, status]
+      [safeName, slug, payload.single_price || 0, payload.bulk_min || 100, payload.bulk_price || 0, JSON.stringify(payload.sizes || []), JSON.stringify(payload.colors || []), JSON.stringify(payload.sizeChart || []), JSON.stringify(designsArray), JSON.stringify(payload.inventory || []), category, payload.owner_id || null, status]
     );
     return res.rows[0];
   }
@@ -31,8 +32,8 @@ export async function createProduct(payload) {
 export async function listProducts(ownerId) {
   if (pool) {
     const query = ownerId
-      ? `SELECT id, name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, created_at, designs, category, status, owner_id FROM products_full WHERE owner_id = $1 AND COALESCE(is_deleted, false) = false ORDER BY id`
-      : `SELECT id, name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, created_at, designs, category, status, owner_id FROM products_full WHERE COALESCE(is_deleted, false) = false ORDER BY id`;
+      ? `SELECT pf.id, pf.name, pf.slug, pf.single_price, pf.bulk_min, pf.bulk_price, pf.sizes, pf.colors, pf.size_chart, pf.created_at, pf.designs, pf.category, pf.status, pf.owner_id, u.name as provider_name, u.email as provider_email FROM products_full pf LEFT JOIN users u ON u.id = pf.owner_id WHERE pf.owner_id = $1 AND COALESCE(pf.is_deleted, false) = false ORDER BY pf.id`
+      : `SELECT pf.id, pf.name, pf.slug, pf.single_price, pf.bulk_min, pf.bulk_price, pf.sizes, pf.colors, pf.size_chart, pf.created_at, pf.designs, pf.category, pf.status, pf.owner_id, u.name as provider_name, u.email as provider_email FROM products_full pf LEFT JOIN users u ON u.id = pf.owner_id WHERE COALESCE(pf.is_deleted, false) = false ORDER BY pf.id`;
     const r = await pool.query(query, ownerId ? [ownerId] : []);
     return r.rows.map((row) => {
       const single_price = row.single_price !== null ? Number(row.single_price) : 0;
@@ -80,14 +81,14 @@ export async function listProducts(ownerId) {
       const back_image = designs.back?.image || designs.back?.image_url || designs_list[1]?.image || null;
       const image = front_image || back_image || null;
 
-      return { ...row, single_price, bulk_price, category, sizes, colors, size_chart, designs, designs_list, front_image, back_image, image };
+      return { ...row, single_price, bulk_price, category, sizes, colors, size_chart, designs, designs_list, front_image, back_image, image, provider_name: row.provider_name || null };
     });
   }
   return [];
 }
 export async function getProduct(id, ownerId) {
   if (pool) {
-    const query = ownerId ? "SELECT id, name, slug, category, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory, is_deleted, deleted_at, updated_at, created_at, status, owner_id FROM products_full WHERE id=$1 AND owner_id=$2" : "SELECT id, name, slug, category, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory, is_deleted, deleted_at, updated_at, created_at, status, owner_id FROM products_full WHERE id=$1";
+    const query = ownerId ? "SELECT pf.id, pf.name, pf.slug, pf.category, pf.single_price, pf.bulk_min, pf.bulk_price, pf.sizes, pf.colors, pf.size_chart, pf.designs, pf.inventory, pf.is_deleted, pf.deleted_at, pf.updated_at, pf.created_at, pf.status, pf.owner_id, u.name as provider_name, u.email as provider_email FROM products_full pf LEFT JOIN users u ON u.id = pf.owner_id WHERE pf.id=$1 AND pf.owner_id=$2" : "SELECT pf.id, pf.name, pf.slug, pf.category, pf.single_price, pf.bulk_min, pf.bulk_price, pf.sizes, pf.colors, pf.size_chart, pf.designs, pf.inventory, pf.is_deleted, pf.deleted_at, pf.updated_at, pf.created_at, pf.status, pf.owner_id, u.name as provider_name, u.email as provider_email FROM products_full pf LEFT JOIN users u ON u.id = pf.owner_id WHERE pf.id=$1";
     const params = ownerId ? [id, ownerId] : [id];
     const r = await pool.query(query, params);
     const prod = r.rows[0];
@@ -124,7 +125,7 @@ export async function getProduct(id, ownerId) {
     const back_image = designs.back?.image || designs.back?.image_url || designs_list[1]?.image || null;
     const image = front_image || back_image || null;
 
-    return { ...prod, sizes, colors, sizeChart, designs, designs_list, front_image, back_image, image, inventory };
+    return { ...prod, sizes, colors, sizeChart, designs, designs_list, front_image, back_image, image, inventory, provider_name: prod.provider_name || null };
   }
   return null;
 }
@@ -134,7 +135,8 @@ export async function updateProduct(id, payload, ownerId) {
   if (!existing) throw new Error("Product not found or access denied");
   let slug = null;
   if (payload.name) {
-    const slugBase = slugify(payload.name);
+    const safeName = String(payload.name).trim().slice(0, 60);
+    const slugBase = slugify(safeName || 'garment-blank');
     slug = slugBase;
     let counter = 1;
     let attempts = 0;
@@ -145,7 +147,7 @@ export async function updateProduct(id, payload, ownerId) {
       if (++attempts > MAX_UNIQUE_ATTEMPTS) throw new Error(`Unable to generate unique slug after ${MAX_UNIQUE_ATTEMPTS} attempts`);
       slug = `${slugBase}-${counter++}`;
     }
-    await pool.query("UPDATE products_full SET name=$1, slug=$2, single_price=$3, bulk_min=$4, bulk_price=$5, updated_at=now() WHERE id=$6 AND owner_id=$7", [payload.name, slug, payload.single_price || 0, payload.bulk_min || 100, payload.bulk_price || 0, id, ownerId]);
+    await pool.query("UPDATE products_full SET name=$1, slug=$2, single_price=$3, bulk_min=$4, bulk_price=$5, updated_at=now() WHERE id=$6 AND owner_id=$7", [safeName, slug, payload.single_price || 0, payload.bulk_min || 100, payload.bulk_price || 0, id, ownerId]);
   } else {
     await pool.query("UPDATE products_full SET single_price=$1, bulk_min=$2, bulk_price=$3, updated_at=now() WHERE id=$4 AND owner_id=$5", [payload.single_price || 0, payload.bulk_min || 100, payload.bulk_price || 0, id, ownerId]);
     const r = await pool.query("SELECT slug FROM products_full WHERE id=$1", [id]);

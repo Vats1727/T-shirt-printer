@@ -1,9 +1,14 @@
 import { Router } from 'express';
 import portalController from '../controllers/portal.controller.js';
 import orderController from '../controllers/order.controller.js';
+import userController from '../controllers/user.controller.js';
 import { requireAuth, requireRole } from '../middleware/auth.middleware.js';
 
 const router = Router();
+
+// Portal Admin Profile Management
+router.get('/profile', requireAuth, requireRole('portal_admin'), userController.getProfile);
+router.patch('/profile', requireAuth, requireRole('portal_admin'), userController.updateProfile);
 
 router.get('/providers', requireAuth, requireRole('portal_admin'), portalController.listProviders);
 router.patch('/providers/:id', requireAuth, requireRole('portal_admin'), portalController.updateProviderStatus);

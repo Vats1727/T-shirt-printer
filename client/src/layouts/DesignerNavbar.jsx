@@ -131,7 +131,7 @@ export function DesignerNavbar({ onRefresh, isRefreshing, onChangeProvider }) {
     <header className="sticky top-0 z-40 w-full select-none font-sans bg-white border-b border-slate-200/80 shadow-xs">
       {/* Top Main Navigation Bar */}
       <div className="px-4 py-2.5 sm:px-6">
-        <div className="mx-auto max-w-7xl flex flex-col md:flex-row items-center justify-between gap-3 md:gap-4">
+        <div className="w-full flex flex-col md:flex-row items-center justify-between gap-3 md:gap-4">
           {/* Brand & Portal Identity */}
           <div className="flex items-center justify-between w-full md:w-auto gap-4">
             <Link href="/supplier/dashboard" className="flex items-center gap-2.5 group cursor-pointer">
@@ -246,30 +246,6 @@ export function DesignerNavbar({ onRefresh, isRefreshing, onChangeProvider }) {
                 </DropdownMenuItem>
 
                 <DropdownMenuItem
-                  onClick={() => setLocation('/supplier/orders')}
-                  className="cursor-pointer text-xs font-medium py-2 rounded-lg hover:bg-slate-100 text-slate-700"
-                >
-                  <ShoppingBag className="w-3.5 h-3.5 mr-2 text-violet-600" />
-                  My Orders ({pendingOrdersCount})
-                </DropdownMenuItem>
-
-                <DropdownMenuItem
-                  onClick={() => setLocation('/supplier/listings')}
-                  className="cursor-pointer text-xs font-medium py-2 rounded-lg hover:bg-slate-100 text-slate-700"
-                >
-                  <Store className="w-3.5 h-3.5 mr-2 text-violet-600" />
-                  Store Product Listings
-                </DropdownMenuItem>
-
-                <DropdownMenuItem
-                  onClick={() => setLocation('/supplier/customize-store')}
-                  className="cursor-pointer text-xs font-medium py-2 rounded-lg hover:bg-slate-100 text-slate-700"
-                >
-                  <Paintbrush className="w-3.5 h-3.5 mr-2 text-violet-600" />
-                  Customize Storefront
-                </DropdownMenuItem>
-
-                <DropdownMenuItem
                   onClick={() => {
                     try {
                       window.open('mailto:portaladmin@gmail.com');
@@ -298,7 +274,7 @@ export function DesignerNavbar({ onRefresh, isRefreshing, onChangeProvider }) {
 
       {/* Sub-Navigation Strip (Modern Segmented Tab Control - Full Width Expanded) */}
       <div className="bg-white border-t border-slate-200/80 px-4 sm:px-6">
-        <div className="mx-auto max-w-7xl flex items-center justify-between overflow-x-auto custom-scrollbar pt-2 pb-2.5 px-0.5 gap-3">
+        <div className="w-full flex items-center justify-between overflow-x-auto custom-scrollbar pt-2 pb-2.5 px-0.5 gap-3">
           {/* Segmented Navigation Tabs Expanded */}
           <nav className="w-full min-w-max flex-1 flex items-center p-1.5 bg-slate-100/90 rounded-xl border border-slate-200/80 shadow-2xs gap-1.5">
             {navLinks.map((link) => {

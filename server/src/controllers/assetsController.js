@@ -1,3 +1,4 @@
+import storageService from '../services/storage.service.js';
 import * as assetStore from '../services/assetStore.js';
 import fs from "fs/promises";
 import path from "path";
@@ -48,23 +49,8 @@ export async function deleteAsset(req, res) {
       if (!row) return res.status(404).json({ message: "Asset not found or not owned by you" });
     }
     try {
-      const candidates = /* @__PURE__ */ new Set();
-      if (row?.filename) {
-        candidates.add(path.resolve(UPLOAD_DIR, row.filename));
-        candidates.add(path.resolve(process.cwd(), "uploads", row.filename));
-        candidates.add(path.resolve(process.cwd(), "server", "uploads", row.filename));
-      }
-      if (row?.storage_key) {
-        candidates.add(path.resolve(UPLOAD_DIR, path.basename(row.storage_key)));
-        candidates.add(path.resolve(process.cwd(), row.storage_key));
-        candidates.add(path.resolve(process.cwd(), "server", row.storage_key));
-      }
-      for (const p of candidates) {
-        try {
-          await fs.unlink(p);
-          console.log("deleteAsset: physically unlinked file:", p);
-        } catch (e) {
-        }
+      if (row) {
+        await storageService.safeDeletePhysicalFile(row.storage_key || row.filename || id);
       }
     } catch (e) {
       console.warn("deleteAsset: file cleanup warning:", e);

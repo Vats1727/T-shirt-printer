@@ -8,6 +8,9 @@ const usersFile = path.resolve(process.cwd(), 'users.json');
 let usersCache = null;
 const USERS_CACHE_TTL = 2000;
 
+// In-memory fallback for password reset OTPs
+let otpsMemory = [];
+
 async function readUsers() {
   const now = Date.now();
   if (usersCache && (now - usersCache.ts) < USERS_CACHE_TTL) return usersCache.data;
@@ -30,10 +33,13 @@ async function writeUsers(users) {
 }
 
 export async function findByEmail(email) {
+  if (!email) return undefined;
+  const normalizedEmail = email.trim().toLowerCase();
+
   if (pool) {
     const res = await pool.query(
       'SELECT id, name, email, role, password_hash, status, subscription_tier, subscription_expiry, associated_provider_id, created_at FROM users WHERE LOWER(email)=LOWER($1)',
-      [email]
+      [normalizedEmail]
     );
     const row = res.rows[0];
     if (!row) return undefined;
@@ -52,7 +58,7 @@ export async function findByEmail(email) {
   }
 
   const users = await readUsers();
-  return users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+  return users.find((u) => u.email?.trim().toLowerCase() === normalizedEmail);
 }
 
 export async function findById(id) {
@@ -127,6 +133,21 @@ export async function updateStoreSettings(userId, settings) {
 }
 
 export async function createUser({ name, email, role, password, associated_provider_id }) {
+  const normalizedEmail = (email || '').trim().toLowerCase();
+  if (!normalizedEmail) {
+    const err = new Error('Valid email address is required');
+    err.status = 400;
+    throw err;
+  }
+
+  // Pre-check across all roles to ensure email uniqueness
+  const existing = await findByEmail(normalizedEmail);
+  if (existing) {
+    const err = new Error('An account with this email address already exists. Email must be unique across all roles.');
+    err.status = 400;
+    throw err;
+  }
+
   const hashed = await bcrypt.hash(password, 10);
 
   if (pool) {
@@ -134,7 +155,7 @@ export async function createUser({ name, email, role, password, associated_provi
       const initialStatus = (role === 'print_provider' || role === 'designer') ? 'pending' : 'active';
       const res = await pool.query(
         'INSERT INTO users (name, email, password_hash, role, status, associated_provider_id, created_at) VALUES ($1,$2,$3,$4,$5,$6,NOW()) RETURNING id, name, email, role, status, subscription_tier, subscription_expiry, associated_provider_id, created_at',
-        [name || null, email, hashed, role, initialStatus, associated_provider_id || null]
+        [name || null, normalizedEmail, hashed, role, initialStatus, associated_provider_id || null]
       );
       const row = res.rows[0];
       return {
@@ -149,8 +170,10 @@ export async function createUser({ name, email, role, password, associated_provi
         createdAt: row.created_at?.toISOString?.() || row.created_at,
       };
     } catch (err) {
-      if (err && err.code === '23505') {
-        throw new Error('email already in use');
+      if (err && (err.code === '23505' || err.message?.includes('duplicate key') || err.message?.includes('unique'))) {
+        const error = new Error('An account with this email address already exists. Email must be unique across all roles.');
+        error.status = 400;
+        throw error;
       }
       throw err;
     }
@@ -161,7 +184,7 @@ export async function createUser({ name, email, role, password, associated_provi
   const user = {
     id: maxId + 1,
     name,
-    email,
+    email: normalizedEmail,
     role,
     password: hashed,
     status: (role === 'print_provider' || role === 'designer') ? 'pending' : 'active',
@@ -255,8 +278,100 @@ export async function updatePassword(id, newPassword) {
   }
 }
 
+export async function updatePasswordByEmail(email, newPassword) {
+  const normalizedEmail = (email || '').trim().toLowerCase();
+  const hashed = await bcrypt.hash(newPassword, 10);
+  if (pool) {
+    await pool.query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE LOWER(email) = LOWER($2)', [hashed, normalizedEmail]);
+    return true;
+  }
+
+  const users = await readUsers();
+  const idx = users.findIndex((u) => u.email?.trim().toLowerCase() === normalizedEmail);
+  if (idx !== -1) {
+    users[idx].password = hashed;
+    await writeUsers(users);
+    return true;
+  }
+  return false;
+}
+
 export async function verifyPassword(user, password) {
   return bcrypt.compare(password, user.password);
+}
+
+// ----------------- PASSWORD RESET OTP METHODS -----------------
+
+export async function createPasswordResetOtp(email, otpCode, expiryMinutes = 10) {
+  const normalizedEmail = (email || '').trim().toLowerCase();
+  const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000);
+
+  if (pool) {
+    // Invalidate any previous unused OTPs for this email
+    await pool.query(
+      'UPDATE password_reset_otps SET used = TRUE WHERE LOWER(email) = LOWER($1) AND used = FALSE',
+      [normalizedEmail]
+    );
+
+    const res = await pool.query(
+      'INSERT INTO password_reset_otps (email, otp_code, expires_at, used, created_at) VALUES ($1, $2, $3, FALSE, NOW()) RETURNING id, email, otp_code, expires_at',
+      [normalizedEmail, otpCode, expiresAt]
+    );
+    return res.rows[0];
+  }
+
+  // Memory fallback
+  otpsMemory = otpsMemory.filter((o) => o.email !== normalizedEmail || o.used);
+  const otpRecord = {
+    id: Date.now(),
+    email: normalizedEmail,
+    otp_code: otpCode,
+    expires_at: expiresAt,
+    used: false,
+    created_at: new Date()
+  };
+  otpsMemory.push(otpRecord);
+  return otpRecord;
+}
+
+export async function verifyPasswordResetOtp(email, otpCode) {
+  const normalizedEmail = (email || '').trim().toLowerCase();
+  const code = (otpCode || '').trim();
+
+  if (pool) {
+    const res = await pool.query(
+      'SELECT id, email, otp_code, expires_at, used FROM password_reset_otps WHERE LOWER(email) = LOWER($1) AND otp_code = $2 AND used = FALSE AND expires_at > NOW() ORDER BY id DESC LIMIT 1',
+      [normalizedEmail, code]
+    );
+    return !!res.rows[0];
+  }
+
+  const record = otpsMemory.find(
+    (o) => o.email === normalizedEmail && o.otp_code === code && !o.used && new Date(o.expires_at) > new Date()
+  );
+  return !!record;
+}
+
+export async function consumePasswordResetOtp(email, otpCode) {
+  const normalizedEmail = (email || '').trim().toLowerCase();
+  const code = (otpCode || '').trim();
+
+  if (pool) {
+    await pool.query(
+      'UPDATE password_reset_otps SET used = TRUE WHERE LOWER(email) = LOWER($1) AND otp_code = $2',
+      [normalizedEmail, code]
+    );
+    return true;
+  }
+
+  const record = otpsMemory.find(
+    (o) => o.email === normalizedEmail && o.otp_code === code && !o.used
+  );
+  if (record) {
+    record.used = true;
+    return true;
+  }
+  return false;
 }
 
 export default {
@@ -269,5 +384,9 @@ export default {
   getDesignersByProvider,
   updateUser,
   updatePassword,
-  verifyPassword
+  updatePasswordByEmail,
+  verifyPassword,
+  createPasswordResetOtp,
+  verifyPasswordResetOtp,
+  consumePasswordResetOtp
 };

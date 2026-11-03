@@ -123,7 +123,15 @@ export default function Home() {
       reader.onloadend = async () => {
         const base64String = reader.result;
         try {
-          const res = await fetch("/api/assets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl: base64String, filename: file.name }) });
+          const res = await fetch("/api/assets", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              dataUrl: base64String,
+              filename: file.name,
+              metadata: { type: "artwork", side: side === "back" ? "back" : "front" }
+            })
+          });
           if (res.ok) {
             const js = await res.json();
             const url = js?.url || `/attached_assets/${js?.filename}`;
@@ -308,6 +316,13 @@ export default function Home() {
     size="icon"
     className="text-destructive"
     onClick={() => {
+      if (image && !image.startsWith("data:")) {
+        fetch("/api/assets/delete-file", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: image })
+        }).catch(() => {});
+      }
       setActiveState({ image: null });
       form.setValue("image", null);
     }}

@@ -8,15 +8,5 @@
     "status": "active",
     "associated_provider_id": null,
     "createdAt": "2026-03-10T15:52:01.605Z"
-  },
-  {
-    "id": 8,
-    "name": "Designerone",
-    "email": "designerone@gmail.com",
-    "role": "designer",
-    "password": "$2b$10$/td5oi26KrLtLoTcSYXHze/erSx3CS0paOdylpJ30K8wQyWWekIky",
-    "status": "active",
-    "associated_provider_id": 12,
-    "createdAt": "2026-03-11T09:31:10.289Z"
   }
 ]

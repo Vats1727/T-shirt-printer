@@ -6,6 +6,7 @@ import Home from '@/pages/Home/index.jsx';
 import NotFound from '@/pages/NotFound/index.jsx';
 import Login from '@/pages/Auth/Login.jsx';
 import Register from '@/pages/Auth/Register.jsx';
+import ForgotPassword from '@/pages/Auth/ForgotPassword.jsx';
 
 import AdminDashboard from '@/pages/Admin/Dashboard.jsx';
 import AdminClothes from '@/pages/Admin/Clothes.jsx';
@@ -38,6 +39,7 @@ import PortalAdminDashboard from '@/pages/Portal/Dashboard.jsx';
 import PortalAdminRequests from '@/pages/Portal/Requests.jsx';
 import PortalAdminFinancials from '@/pages/Portal/FinancialSettings.jsx';
 import PortalAdminLedger from '@/pages/Portal/PartnerLedger.jsx';
+import PortalAdminProfile from '@/pages/Portal/Profile.jsx';
 import PortalAdminRoute from '@/routes/PortalAdminRoute.jsx';
 
 import CustomerDashboard from '@/pages/Customer/Dashboard.jsx';
@@ -51,6 +53,7 @@ export function AppRoutes() {
       <Route path="/home" component={Home} />
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
+      <Route path="/forgot-password" component={ForgotPassword} />
       <Route path="/admin/login" component={Login} />
 
       {/* Admin / Print Provider Protected Routes */}
@@ -58,7 +61,7 @@ export function AppRoutes() {
       <AdminRoute path="/admin/clothes" component={AdminClothes} />
       <AdminRoute path="/admin/orders" component={AdminOrders} />
       <AdminRoute path="/admin/profile" component={AdminProfile} />
-      <AdminRoute path="/admin/designers" component={AdminDesigners} />
+      <AdminRoute path="/admin/designers" component={() => <Redirect to="/admin/dashboard" />} />
       <AdminRoute path="/admin/designer-designs" component={AdminDesignerDesigns} />
       <AdminRoute path="/admin/listings/create" component={AdminCreateListing} />
       <AdminRoute path="/admin/listings" component={AdminListings} />
@@ -124,6 +127,7 @@ export function AppRoutes() {
       <PortalAdminRoute path="/portal/requests" component={PortalAdminRequests} />
       <PortalAdminRoute path="/portal/financials" component={PortalAdminFinancials} />
       <PortalAdminRoute path="/portal/ledger" component={PortalAdminLedger} />
+      <PortalAdminRoute path="/portal/profile" component={PortalAdminProfile} />
 
       {/* 404 Catch-All */}
       <Route component={NotFound} />

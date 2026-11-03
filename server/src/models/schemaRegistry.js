@@ -35,7 +35,7 @@ export const TABLES = [
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     `,
     indexes: [
-      `CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users(LOWER(email));`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_unique ON users(LOWER(email));`,
       `CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);`,
       `CREATE INDEX IF NOT EXISTS idx_users_associated_provider ON users(associated_provider_id);`
     ],
@@ -579,6 +579,23 @@ export const TABLES = [
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       CONSTRAINT single_b2b_row_check CHECK (id = 1)
     `
+  },
+
+  // 15. Password Reset OTPs
+  {
+    name: 'password_reset_otps',
+    columns: `
+      id BIGSERIAL PRIMARY KEY,
+      email TEXT NOT NULL,
+      otp_code TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    `,
+    indexes: [
+      `CREATE INDEX IF NOT EXISTS idx_password_reset_otps_email ON password_reset_otps(LOWER(email));`,
+      `CREATE INDEX IF NOT EXISTS idx_password_reset_otps_expiry ON password_reset_otps(expires_at);`
+    ]
   }
 ];
 
@@ -587,25 +604,6 @@ export const INITIAL_SEEDS = [
   `INSERT INTO sizes (label) VALUES
      ('S'), ('M'), ('L'), ('XL'), ('XXL'), ('XXXL')
    ON CONFLICT (LOWER(label)) WHERE owner_id IS NULL DO NOTHING;`,
-
-  // Default Colors
-  `INSERT INTO colors (name, hex)
-   SELECT d.name, d.hex
-   FROM (VALUES
-     ('White', '#FFFFFF'),
-     ('Black', '#000000'),
-     ('Red', '#FF0000'),
-     ('Blue', '#0000FF'),
-     ('Green', '#00FF00'),
-     ('Yellow', '#FFFF00'),
-     ('Orange', '#FFA500'),
-     ('Purple', '#800080'),
-     ('Gray', '#808080'),
-     ('Pink', '#FFC0CB')
-   ) AS d(name, hex)
-   WHERE NOT EXISTS (
-     SELECT 1 FROM colors c WHERE LOWER(c.name) = LOWER(d.name) AND c.owner_id IS NULL
-   );`,
 
   // Default B2C Platform Settings
   `INSERT INTO platform_financial_settings (

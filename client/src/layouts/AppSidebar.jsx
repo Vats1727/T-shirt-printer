@@ -120,14 +120,7 @@ export function AppSidebar() {
       active: location.includes('clothes'),
       hidden: !isAdmin
     },
-    {
-      title: 'Associated Designers',
-      icon: Users,
-      url: '/admin/designers',
-      active: location.includes('designers'),
-      hidden: !isAdmin
-    },
-    {
+{
       title: 'Designer Designs',
       icon: LayoutTemplate,
       url: '/admin/designer-designs',
@@ -180,14 +173,15 @@ export function AppSidebar() {
     {
       title: 'Profile',
       icon: User,
-      url: isAdmin ? '/admin/profile' : (isDesigner ? '/supplier/profile' : '#'),
+      url: isPortalAdmin ? '/portal/profile' : (isAdmin ? '/admin/profile' : (isDesigner ? '/supplier/profile' : '#')),
       active: location.includes('profile')
     },
     {
       title: 'Help',
       icon: HelpCircle,
       url: '#',
-      active: false
+      active: false,
+      hidden: isPortalAdmin
     }
   ].filter((item) => !item.hidden);
 

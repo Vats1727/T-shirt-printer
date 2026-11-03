@@ -599,15 +599,20 @@ export default function SavedDesignsPage({ params }) {
                     );
                   }
 
+                  const targetSide = activeDesign.version?.sides?.find((s) => s.name === previewSide);
+                  const imgLayer = targetSide?.layers?.find((l) => l.type === "image");
+                  const userImgUrl = imgLayer?.asset?.url || imgLayer?.url || (previewSide === "front" ? activeDesign.image : activeDesign.back_image);
+                  const tImage = previewSide === "front"
+                    ? (meta.template_image_front || activeDesign.template_image_front)
+                    : (meta.template_image_back || activeDesign.template_image_back);
+
                   return (
                     <DesignCanvas
                       side={previewSide}
                       width={460}
                       height={460}
                       slogan={(() => {
-                        const v2Slogan = activeDesign.version?.sides
-                          ?.find((s) => s.name === previewSide)
-                          ?.layers?.find((l) => l.type === "text")?.text;
+                        const v2Slogan = targetSide?.layers?.find((l) => l.type === "text")?.text;
                         return (
                           v2Slogan ||
                           (previewSide === "front" ? activeDesign.slogan : activeDesign.back_slogan) ||
@@ -615,14 +620,17 @@ export default function SavedDesignsPage({ params }) {
                         );
                       })()}
                       color={(() => {
-                        const v2Color = activeDesign.version?.sides
-                          ?.find((s) => s.name === previewSide)
-                          ?.layers?.find((l) => l.type === "text")?.color;
+                        const v2Color = targetSide?.layers?.find((l) => l.type === "text")?.color;
                         return v2Color || activeDesign.color || "#000000";
                       })()}
                       template={activeDesign.template || "tshirt"}
+                      templateImage={normalizeImage(tImage) || void 0}
                       templateColor={previewColor || activeDesign.templateColor || "#ffffff"}
                       showTemplate={true}
+                      image={normalizeImage(userImgUrl)}
+                      imageScale={imgLayer?.scale ? (Number(imgLayer.scale) <= 1 ? Number(imgLayer.scale) : Number(imgLayer.scale) / 100) : 1}
+                      imageRotation={imgLayer?.rotation ? Number(imgLayer.rotation) : 0}
+                      imagePosition={imgLayer?.position || { x: 180, y: 180 }}
                     />
                   );
                 })()}
@@ -635,10 +643,10 @@ export default function SavedDesignsPage({ params }) {
                 <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-100">
                   Custom Creation
                 </span>
-                <h2 className="text-xl font-bold text-slate-900 leading-snug mt-2">
+                <h2 className="text-xl font-bold text-slate-900 leading-snug mt-2 break-all [overflow-wrap:anywhere] min-w-0">
                   {activeDesign?.slogan ? `"${activeDesign.slogan}"` : activeDesign?.product || "Custom Design"}
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-slate-500 mt-0.5 break-all [overflow-wrap:anywhere] min-w-0">
                   Garment Model: <span className="font-semibold text-slate-700">{activeDesign?.product || "T-Shirt"}</span>
                 </p>
               </div>

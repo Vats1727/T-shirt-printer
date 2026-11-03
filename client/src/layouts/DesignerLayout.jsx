@@ -13,14 +13,14 @@ export function DesignerLayout({ children, onRefresh, isRefreshing, onChangeProv
 
       {/* Main Content Area - Full width with maximum container */}
       <main className="flex-1 w-full py-5 px-4 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-7xl w-full">
+        <div className="w-full">
           {children}
         </div>
       </main>
 
       {/* Designer Studio Subtle Footer */}
       <footer className="w-full border-t border-slate-200 bg-white py-4 px-6 text-center text-xs text-slate-500">
-        <div className="mx-auto max-w-7xl flex flex-col sm:flex-row items-center justify-between gap-2">
+        <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-2 px-2 sm:px-4">
           <div className="flex items-center gap-2">
             <span className="font-bold text-slate-800">PrintPortal</span>
             <span>·</span>

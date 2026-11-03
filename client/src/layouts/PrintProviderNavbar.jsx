@@ -100,12 +100,6 @@ export function PrintProviderNavbar({ onRefresh, isRefreshing }) {
       icon: ShoppingBag
     },
     {
-      title: 'Associated Designers',
-      url: '/admin/designers',
-      active: location.startsWith('/admin/designers'),
-      icon: Users
-    },
-    {
       title: 'Designer Designs',
       url: '/admin/designer-designs',
       active: location.startsWith('/admin/designer-designs'),
@@ -135,7 +129,7 @@ export function PrintProviderNavbar({ onRefresh, isRefreshing }) {
     <header className="sticky top-0 z-40 w-full select-none font-sans bg-white border-b border-slate-200/80 shadow-xs">
       {/* Top Main Navigation Bar - Project's Signature Clean Aesthetic with Indigo / Violet Brand Accent */}
       <div className="px-4 py-2.5 sm:px-6">
-        <div className="mx-auto max-w-7xl flex flex-col md:flex-row items-center justify-between gap-3 md:gap-4">
+        <div className="w-full flex flex-col md:flex-row items-center justify-between gap-3 md:gap-4">
           
           {/* Brand & Portal Identity */}
           <div className="flex items-center justify-between w-full md:w-auto gap-4">
@@ -157,18 +151,6 @@ export function PrintProviderNavbar({ onRefresh, isRefreshing }) {
                 </span>
               </div>
             </Link>
-
-            {/* Mobile Actions (Visible on small screens) */}
-            <div className="flex items-center gap-2 md:hidden">
-              <Button
-                size="sm"
-                onClick={() => setLocation('/admin/clothes')}
-                className="h-8 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-lg px-2.5 shadow-xs"
-              >
-                <Plus className="w-3.5 h-3.5 mr-1" />
-                Add Blank
-              </Button>
-            </div>
           </div>
 
           {/* Storefront Central Search Bar (Expanded width) */}
@@ -221,16 +203,6 @@ export function PrintProviderNavbar({ onRefresh, isRefreshing }) {
               <span className="size-2 rounded-full bg-emerald-500 animate-pulse ml-0.5" />
             </Button>
 
-            {/* Primary Action Button (+ Add Garment in Project Indigo) */}
-            <Button
-              size="sm"
-              onClick={() => setLocation('/admin/clothes')}
-              className="h-9 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl px-3.5 shadow-sm shadow-indigo-600/20 gap-1.5 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add Garment</span>
-            </Button>
-
             {/* Account & Facility Menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -255,32 +227,6 @@ export function PrintProviderNavbar({ onRefresh, isRefreshing }) {
                   <span className="block font-bold text-slate-900 truncate">{user?.email || user?.name || 'Print Provider'}</span>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator className="bg-slate-100" />
-                
-                <DropdownMenuItem
-                  onClick={() => setLocation('/admin/listings')}
-                  className="cursor-pointer text-xs font-medium py-2 rounded-lg hover:bg-slate-100 text-slate-700"
-                >
-                  <Store className="w-3.5 h-3.5 mr-2 text-indigo-600" />
-                  Store Product Listings
-                </DropdownMenuItem>
-
-                <DropdownMenuItem
-                  onClick={() => setLocation('/admin/customize-store')}
-                  className="cursor-pointer text-xs font-medium py-2 rounded-lg hover:bg-slate-100 text-slate-700"
-                >
-                  <Paintbrush className="w-3.5 h-3.5 mr-2 text-violet-600" />
-                  Customize Storefront
-                </DropdownMenuItem>
-
-                <DropdownMenuItem
-                  onClick={() => window.open(storeUrl, '_blank')}
-                  className="cursor-pointer text-xs font-medium py-2 rounded-lg hover:bg-slate-100 text-slate-700"
-                >
-                  <ExternalLink className="w-3.5 h-3.5 mr-2 text-emerald-600" />
-                  View Public Store
-                </DropdownMenuItem>
-
-                <DropdownMenuSeparator className="bg-slate-100" />
 
                 <DropdownMenuItem
                   onClick={() => setLocation('/admin/profile')}
@@ -288,14 +234,6 @@ export function PrintProviderNavbar({ onRefresh, isRefreshing }) {
                 >
                   <User className="w-3.5 h-3.5 mr-2 text-indigo-600" />
                   Facility Profile & Credentials
-                </DropdownMenuItem>
-
-                <DropdownMenuItem
-                  onClick={() => setLocation('/admin/orders')}
-                  className="cursor-pointer text-xs font-medium py-2 rounded-lg hover:bg-slate-100 text-slate-700"
-                >
-                  <ShoppingBag className="w-3.5 h-3.5 mr-2 text-indigo-600" />
-                  Production Queue ({pendingOrdersCount})
                 </DropdownMenuItem>
 
                 <DropdownMenuItem
@@ -327,7 +265,7 @@ export function PrintProviderNavbar({ onRefresh, isRefreshing }) {
 
       {/* Sub-Navigation Strip (Modern Segmented Tab Control - Full Width Expanded) */}
       <div className="bg-white border-t border-slate-200/80 px-4 sm:px-6">
-        <div className="mx-auto max-w-7xl flex items-center justify-between overflow-x-auto custom-scrollbar pt-2 pb-2.5 px-0.5 gap-3">
+        <div className="w-full flex items-center justify-between overflow-x-auto custom-scrollbar pt-2 pb-2.5 px-0.5 gap-3">
           {/* Segmented Navigation Tabs Expanded */}
           <nav className="w-full min-w-max flex-1 flex items-center p-1.5 bg-slate-100/90 rounded-xl border border-slate-200/80 shadow-2xs gap-1.5">
             {navLinks.map((link) => {

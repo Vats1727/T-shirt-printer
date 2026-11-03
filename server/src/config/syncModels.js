@@ -102,13 +102,20 @@ export async function syncModelsToDb() {
       }
     }
 
-    // 3. Seed default base data (sizes, colors, default financial settings)
+    // 3. Seed default base data (sizes, default financial settings)
     for (const seedSql of INITIAL_SEEDS) {
       try {
         await client.query(seedSql);
       } catch (seedErr) {
         console.warn('[ModelSync] Note executing initial seed:', seedErr.message);
       }
+    }
+
+    // 3b. Ensure no default unowned colors exist in the catalog
+    try {
+      await client.query('DELETE FROM colors WHERE owner_id IS NULL');
+    } catch (cleanErr) {
+      // Ignore if colors table is not yet created
     }
 
     // 4. Guarantee Portal Admin credentials

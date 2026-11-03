@@ -586,10 +586,12 @@ export default function SupplierProductPurchase() {
           >
             <ArrowLeft className="size-5" />
           </Button>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-black text-slate-900 tracking-tight">{product.name}</h1>
-              <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-bold">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-xl font-black text-slate-900 tracking-tight break-words line-clamp-1 max-w-xl" title={product.name}>
+                {product.name}
+              </h1>
+              <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-bold shrink-0">
                 B2B Procurement
               </Badge>
             </div>
@@ -1030,7 +1032,7 @@ export default function SupplierProductPurchase() {
 
       {/* Checkout & Delivery Modal */}
       <Dialog open={showCheckoutModal} onOpenChange={setShowCheckoutModal}>
-        <DialogContent className="max-w-lg rounded-3xl p-6">
+        <DialogContent className="max-w-lg w-full rounded-3xl p-6 overflow-hidden">
           <DialogHeader>
             <DialogTitle className="text-lg font-black text-slate-900">
               Confirm Wholesale Order & Shipping
@@ -1042,17 +1044,19 @@ export default function SupplierProductPurchase() {
 
           <div className="space-y-4 py-2 text-xs">
             {/* Quick Order Capsule */}
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
-              <div>
-                <span className="font-bold text-slate-900 block">{product.name}</span>
-                <span className="text-[11px] text-slate-500 block">
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3 overflow-hidden">
+              <div className="min-w-0 flex-1">
+                <span className="font-bold text-slate-900 block break-all [overflow-wrap:anywhere] line-clamp-1 min-w-0" title={product.name}>
+                  {product.name}
+                </span>
+                <span className="text-[11px] text-slate-500 block truncate">
                   {totalUnits} units ({pricingTier === "bulk" ? "Bulk Wholesale" : "Sample"})
                 </span>
-                <span className="text-[10px] text-indigo-600 font-semibold block mt-0.5">
+                <span className="text-[10px] text-indigo-600 font-semibold block mt-0.5 truncate" title={selectedOrderItems.map((it) => `${it.garment_size} (${it.quantity} pcs)`).join(" • ")}>
                   Size Breakdown: {selectedOrderItems.map((it) => `${it.garment_size} (${it.quantity} pcs)`).join(" • ")}
                 </span>
               </div>
-              <span className="text-base font-black text-indigo-700">₹{quote.grandTotal.toFixed(2)}</span>
+              <span className="text-base font-black text-indigo-700 shrink-0">₹{quote.grandTotal.toFixed(2)}</span>
             </div>
 
             {/* Address fields */}
@@ -1061,6 +1065,7 @@ export default function SupplierProductPurchase() {
                 <label className="block text-[11px] font-bold text-slate-700 mb-1">Recipient Name *</label>
                 <Input
                   value={shippingAddress.name}
+                  maxLength={60}
                   onChange={(e) => setShippingAddress({ ...shippingAddress, name: e.target.value })}
                   className="h-8 text-xs rounded-lg"
                   placeholder="Studio or Contact Name"
@@ -1070,6 +1075,7 @@ export default function SupplierProductPurchase() {
                 <label className="block text-[11px] font-bold text-slate-700 mb-1">Phone Number *</label>
                 <Input
                   value={shippingAddress.phone}
+                  maxLength={15}
                   onChange={(e) => setShippingAddress({ ...shippingAddress, phone: e.target.value })}
                   className="h-8 text-xs rounded-lg"
                   placeholder="10-digit mobile"
@@ -1081,6 +1087,7 @@ export default function SupplierProductPurchase() {
               <label className="block text-[11px] font-bold text-slate-700 mb-1">Street Address *</label>
               <Input
                 value={shippingAddress.address}
+                maxLength={120}
                 onChange={(e) => setShippingAddress({ ...shippingAddress, address: e.target.value })}
                 className="h-8 text-xs rounded-lg"
                 placeholder="Studio building, street, landmark"
@@ -1092,6 +1099,7 @@ export default function SupplierProductPurchase() {
                 <label className="block text-[11px] font-bold text-slate-700 mb-1">City *</label>
                 <Input
                   value={shippingAddress.city}
+                  maxLength={50}
                   onChange={(e) => setShippingAddress({ ...shippingAddress, city: e.target.value })}
                   className="h-8 text-xs rounded-lg"
                   placeholder="City"
@@ -1101,6 +1109,7 @@ export default function SupplierProductPurchase() {
                 <label className="block text-[11px] font-bold text-slate-700 mb-1">State *</label>
                 <Input
                   value={shippingAddress.state}
+                  maxLength={50}
                   onChange={(e) => setShippingAddress({ ...shippingAddress, state: e.target.value })}
                   className="h-8 text-xs rounded-lg"
                   placeholder="State"
@@ -1110,6 +1119,7 @@ export default function SupplierProductPurchase() {
                 <label className="block text-[11px] font-bold text-slate-700 mb-1">PIN Code *</label>
                 <Input
                   value={shippingAddress.pincode}
+                  maxLength={10}
                   onChange={(e) => setShippingAddress({ ...shippingAddress, pincode: e.target.value })}
                   className="h-8 text-xs rounded-lg"
                   placeholder="PIN code"
@@ -1121,6 +1131,7 @@ export default function SupplierProductPurchase() {
               <label className="block text-[11px] font-bold text-slate-700 mb-1">Notes to Manufacturer (Optional)</label>
               <Input
                 value={designerNotes}
+                maxLength={200}
                 onChange={(e) => setDesignerNotes(e.target.value)}
                 className="h-8 text-xs rounded-lg"
                 placeholder="E.g., Special packaging or rush shipping instructions"

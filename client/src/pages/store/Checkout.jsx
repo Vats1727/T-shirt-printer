@@ -106,8 +106,8 @@ export default function Checkout() {
       toast({ title: 'Validation Error', description: 'Please enter your street address', variant: 'destructive' });
       return false;
     }
-    if (!shippingAddress.city.trim() || !shippingAddress.pincode.trim()) {
-      toast({ title: 'Validation Error', description: 'City and Pincode are required', variant: 'destructive' });
+    if (!shippingAddress.city.trim() || !shippingAddress.state.trim() || !shippingAddress.pincode.trim()) {
+      toast({ title: 'Validation Error', description: 'City, State, and Pincode are required', variant: 'destructive' });
       return false;
     }
     return true;
@@ -477,7 +477,7 @@ export default function Checkout() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5 sm:col-span-2">
-                  <Label className="text-xs font-bold text-slate-700">Full Name</Label>
+                  <Label className="text-xs font-bold text-slate-700">Full Name <span className="text-rose-500">*</span></Label>
                   <Input
                     name="name"
                     value={shippingAddress.name}
@@ -489,7 +489,7 @@ export default function Checkout() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-slate-700">Email Address</Label>
+                  <Label className="text-xs font-bold text-slate-700">Email Address <span className="text-rose-500">*</span></Label>
                   <Input
                     name="email"
                     type="email"
@@ -502,7 +502,7 @@ export default function Checkout() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-slate-700">Mobile Phone</Label>
+                  <Label className="text-xs font-bold text-slate-700">Mobile Phone <span className="text-rose-500">*</span></Label>
                   <Input
                     name="phone"
                     value={shippingAddress.phone}
@@ -514,7 +514,7 @@ export default function Checkout() {
                 </div>
 
                 <div className="space-y-1.5 sm:col-span-2">
-                  <Label className="text-xs font-bold text-slate-700">Street Address</Label>
+                  <Label className="text-xs font-bold text-slate-700">Street Address <span className="text-rose-500">*</span></Label>
                   <Input
                     name="address"
                     value={shippingAddress.address}
@@ -526,7 +526,7 @@ export default function Checkout() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-slate-700">City</Label>
+                  <Label className="text-xs font-bold text-slate-700">City <span className="text-rose-500">*</span></Label>
                   <Input
                     name="city"
                     value={shippingAddress.city}
@@ -538,7 +538,7 @@ export default function Checkout() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-slate-700">State</Label>
+                  <Label className="text-xs font-bold text-slate-700">State <span className="text-rose-500">*</span></Label>
                   <Input
                     name="state"
                     value={shippingAddress.state}
@@ -550,7 +550,7 @@ export default function Checkout() {
                 </div>
 
                 <div className="space-y-1.5 sm:col-span-2">
-                  <Label className="text-xs font-bold text-slate-700">Pincode</Label>
+                  <Label className="text-xs font-bold text-slate-700">Pincode <span className="text-rose-500">*</span></Label>
                   <Input
                     name="pincode"
                     value={shippingAddress.pincode}

@@ -1,3 +1,4 @@
+import storageService from '../services/storage.service.js';
 import { pool } from '../config/database.js';
 
 export async function createListing(supplierId, title, description, slug, design_key, visibility, price) {
@@ -124,6 +125,16 @@ export async function deleteListing(id, supplierId) {
         [id, supplierId]
       );
       return { success: (res.rowCount || 0) > 0, archived: true };
+    }
+
+    // Fetch listing details to safely unlink physical images
+    try {
+      const listingRes = await client.query('SELECT * FROM listings WHERE id = $1', [id]);
+      if (listingRes.rows[0]) {
+        await storageService.deleteListingPhysicalFiles(listingRes.rows[0], { checkOrders: true });
+      }
+    } catch (cleanErr) {
+      console.warn('deleteListing: file cleanup warning:', cleanErr.message);
     }
 
     // No orders referencing it: safe to delete row completely
