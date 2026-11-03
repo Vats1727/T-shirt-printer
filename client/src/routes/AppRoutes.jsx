@@ -6,6 +6,7 @@ import Home from '@/pages/Home/index.jsx';
 import NotFound from '@/pages/NotFound/index.jsx';
 import Login from '@/pages/Auth/Login.jsx';
 import Register from '@/pages/Auth/Register.jsx';
+import ForgotPassword from '@/pages/Auth/ForgotPassword.jsx';
 
 import AdminDashboard from '@/pages/Admin/Dashboard.jsx';
 import AdminClothes from '@/pages/Admin/Clothes.jsx';
@@ -52,6 +53,7 @@ export function AppRoutes() {
       <Route path="/home" component={Home} />
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
+      <Route path="/forgot-password" component={ForgotPassword} />
       <Route path="/admin/login" component={Login} />
 
       {/* Admin / Print Provider Protected Routes */}

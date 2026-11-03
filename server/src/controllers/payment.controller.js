@@ -1,13 +1,17 @@
 import paymentService from '../services/payment.service.js';
 import customerOrderModel from '../models/customerOrder.model.js';
 
-export async function getConfig(req, res) {
-  const keyId = paymentService.getKeyId();
-  return res.json({
-    key_id: keyId,
-    keyId: keyId,
-    currency: 'INR'
-  });
+export async function getConfig(req, res, next) {
+  try {
+    const keyId = paymentService.getKeyId();
+    return res.json({
+      key_id: keyId,
+      keyId: keyId,
+      currency: 'INR'
+    });
+  } catch (err) {
+    next(err);
+  }
 }
 
 export async function createCheckoutOrder(req, res, next) {

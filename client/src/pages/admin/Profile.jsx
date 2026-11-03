@@ -138,71 +138,11 @@ export default function Profile() {
                                 </span>
                             </div>
                         </div>
-                        <div className="flex items-center gap-3 text-sm">
-                            <CheckCircle className="size-4 text-muted-foreground" />
-                            <div className="flex flex-col">
-                                <span className="text-xs text-muted-foreground">Current Plan</span>
-                                <span className="font-medium capitalize">{userData?.subscription_tier && userData.subscription_tier !== "none" ? userData.subscription_tier : "Free/None"}</span>
-                            </div>
-                        </div>
+                        
                     </CardContent>
                 </Card>
 
                 <div className="md:col-span-2 space-y-6">
-                    <Card className="shadow-sm border-primary/10">
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2 text-xl">
-                                <CreditCard className="size-5 text-primary" />
-                                Subscription Plan
-                            </CardTitle>
-                            <CardDescription>
-                                Choose a plan that best fits your business needs.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                {["pro", "business", "enterprise"].map((tier) => <div
-    key={tier}
-    className={cn(
-      "relative p-4 rounded-lg border-2 cursor-pointer transition-all hover:border-primary/50",
-      userData?.subscription_tier === tier ? "border-primary bg-primary/5" : "border-muted"
-    )}
-    onClick={async () => {
-      try {
-        const res = await fetch("/api/admin/profile", {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: token ? `Bearer ${token}` : ""
-          },
-          body: JSON.stringify({ subscription_tier: tier })
-        });
-        if (res.ok) {
-          setUserData({ ...userData, subscription_tier: tier });
-          toast({ title: "Success", description: `Upgraded to ${tier} plan` });
-        } else {
-          const err = await res.json().catch(() => ({ message: "Failed to update plan" }));
-          toast({ title: "Error", description: err.message || "Failed to update plan", variant: "destructive" });
-        }
-      } catch (e) {
-        toast({ title: "Error", description: "Network error. Please ensure server is running.", variant: "destructive" });
-      }
-    }}
-  >
-                                        <div className="font-bold capitalize mb-1">{tier}</div>
-                                        <div className="text-xs text-muted-foreground">
-                                            {tier === "pro" && "Basic professional tools"}
-                                            {tier === "business" && "Advanced features for growth"}
-                                            {tier === "enterprise" && "Full control and priority support"}
-                                        </div>
-                                        {userData?.subscription_tier === tier && <div className="absolute top-2 right-2">
-                                                <CheckCircle className="size-4 text-primary" />
-                                            </div>}
-                                    </div>)}
-                            </div>
-                        </CardContent>
-                    </Card>
-
                     <Card className="shadow-sm border-primary/10">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-xl">

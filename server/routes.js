@@ -43,6 +43,9 @@ export async function registerRoutes(httpServer, app) {
   app.post("/api/auth/register", safe(auth.register));
   app.post("/api/auth/login", safe(auth.login));
   app.post("/api/auth/change-password", requireAuth, safe(auth.changePassword));
+  app.post("/api/auth/forgot-password", safe(auth.forgotPassword));
+  app.post("/api/auth/verify-otp", safe(auth.verifyOtp));
+  app.post("/api/auth/reset-password", safe(auth.resetPassword));
   app.post("/api/assets", safe(assetsCtrl.uploadAsset));
   app.delete("/api/assets/:id", requireAuth, safe(assetsCtrl.deleteAsset));
   app.get("/api/admin/colors", requireAuth, requireRole("print_provider"), safe(adminCtrl.listColors));

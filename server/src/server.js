@@ -19,6 +19,15 @@ if (process.platform !== 'win32') {
   listenOptions.reusePort = true;
 }
 
+httpServer.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`[Server Port Conflict] Port ${port} is already in use. Please terminate conflicting process or select another port.`);
+    process.exit(1);
+  } else {
+    console.error('[HTTP Server Error]:', err);
+  }
+});
+
 httpServer.listen(listenOptions, async () => {
   log(`Tshirt-printer Server running on http://localhost:${port}`);
   log(`Storage driver: ${pool ? 'PostgreSQL database' : 'JSON file fallback'}`);

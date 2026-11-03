@@ -19,6 +19,9 @@ export const env = {
   CORS_ORIGIN: process.env.CORS_ORIGIN || 'http://localhost:5173',
   RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID || '',
   RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET || '',
+  EMAIL_SERVICE_URL: process.env.EMAIL_SERVICE_URL || 'https://silverapi.allysoftsolutions.com/email/email-service',
+  EMAIL_SERVICE_EMAIL: process.env.EMAIL_SERVICE_EMAIL || 'test.allysoftsolutions@gmail.com',
+  EMAIL_SERVICE_PASSKEY: process.env.EMAIL_SERVICE_PASSKEY || 'sowm fxar lzhf endf',
 };
 
 export default env;

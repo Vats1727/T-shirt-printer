@@ -58,7 +58,7 @@ function getPool() {
 export async function findByEmail(email) {
   const pool = getPool();
   if (pool) {
-    const res = await pool.query("SELECT id, name, email, role, password_hash, status, subscription_tier, subscription_expiry, associated_provider_id, created_at FROM users WHERE email=$1", [email]);
+    const res = await pool.query("SELECT id, name, email, role, password_hash, status, subscription_tier, subscription_expiry, associated_provider_id, created_at FROM users WHERE LOWER(email)=LOWER($1)", [email]);
     const row = res.rows[0];
     if (!row) return void 0;
     return {
@@ -174,7 +174,7 @@ export async function createUser({ name, email, role, password, associated_provi
       };
     } catch (err) {
       if (err && err.code === "23505") {
-        throw new Error("email already in use");
+        throw new Error("An account with this email address already exists. Email must be unique across all roles.");
       }
       throw err;
     }

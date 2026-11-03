@@ -246,30 +246,6 @@ export function DesignerNavbar({ onRefresh, isRefreshing, onChangeProvider }) {
                 </DropdownMenuItem>
 
                 <DropdownMenuItem
-                  onClick={() => setLocation('/supplier/orders')}
-                  className="cursor-pointer text-xs font-medium py-2 rounded-lg hover:bg-slate-100 text-slate-700"
-                >
-                  <ShoppingBag className="w-3.5 h-3.5 mr-2 text-violet-600" />
-                  My Orders ({pendingOrdersCount})
-                </DropdownMenuItem>
-
-                <DropdownMenuItem
-                  onClick={() => setLocation('/supplier/listings')}
-                  className="cursor-pointer text-xs font-medium py-2 rounded-lg hover:bg-slate-100 text-slate-700"
-                >
-                  <Store className="w-3.5 h-3.5 mr-2 text-violet-600" />
-                  Store Product Listings
-                </DropdownMenuItem>
-
-                <DropdownMenuItem
-                  onClick={() => setLocation('/supplier/customize-store')}
-                  className="cursor-pointer text-xs font-medium py-2 rounded-lg hover:bg-slate-100 text-slate-700"
-                >
-                  <Paintbrush className="w-3.5 h-3.5 mr-2 text-violet-600" />
-                  Customize Storefront
-                </DropdownMenuItem>
-
-                <DropdownMenuItem
                   onClick={() => {
                     try {
                       window.open('mailto:portaladmin@gmail.com');

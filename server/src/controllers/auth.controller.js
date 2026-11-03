@@ -29,4 +29,41 @@ export async function changePassword(req, res, next) {
   }
 }
 
-export default { register, login, changePassword };
+export async function forgotPassword(req, res, next) {
+  try {
+    const { email } = req.body;
+    const result = await authService.forgotPassword(email);
+    return res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function verifyOtp(req, res, next) {
+  try {
+    const { email, otp } = req.body;
+    const result = await authService.verifyOtp(email, otp);
+    return res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function resetPassword(req, res, next) {
+  try {
+    const { email, otp, newPassword } = req.body;
+    const result = await authService.resetPassword({ email, otp, newPassword });
+    return res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export default {
+  register,
+  login,
+  changePassword,
+  forgotPassword,
+  verifyOtp,
+  resetPassword
+};

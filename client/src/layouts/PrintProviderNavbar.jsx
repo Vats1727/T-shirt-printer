@@ -227,32 +227,6 @@ export function PrintProviderNavbar({ onRefresh, isRefreshing }) {
                   <span className="block font-bold text-slate-900 truncate">{user?.email || user?.name || 'Print Provider'}</span>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator className="bg-slate-100" />
-                
-                <DropdownMenuItem
-                  onClick={() => setLocation('/admin/listings')}
-                  className="cursor-pointer text-xs font-medium py-2 rounded-lg hover:bg-slate-100 text-slate-700"
-                >
-                  <Store className="w-3.5 h-3.5 mr-2 text-indigo-600" />
-                  Store Product Listings
-                </DropdownMenuItem>
-
-                <DropdownMenuItem
-                  onClick={() => setLocation('/admin/customize-store')}
-                  className="cursor-pointer text-xs font-medium py-2 rounded-lg hover:bg-slate-100 text-slate-700"
-                >
-                  <Paintbrush className="w-3.5 h-3.5 mr-2 text-violet-600" />
-                  Customize Storefront
-                </DropdownMenuItem>
-
-                <DropdownMenuItem
-                  onClick={() => window.open(storeUrl, '_blank')}
-                  className="cursor-pointer text-xs font-medium py-2 rounded-lg hover:bg-slate-100 text-slate-700"
-                >
-                  <ExternalLink className="w-3.5 h-3.5 mr-2 text-emerald-600" />
-                  View Public Store
-                </DropdownMenuItem>
-
-                <DropdownMenuSeparator className="bg-slate-100" />
 
                 <DropdownMenuItem
                   onClick={() => setLocation('/admin/profile')}
@@ -260,14 +234,6 @@ export function PrintProviderNavbar({ onRefresh, isRefreshing }) {
                 >
                   <User className="w-3.5 h-3.5 mr-2 text-indigo-600" />
                   Facility Profile & Credentials
-                </DropdownMenuItem>
-
-                <DropdownMenuItem
-                  onClick={() => setLocation('/admin/orders')}
-                  className="cursor-pointer text-xs font-medium py-2 rounded-lg hover:bg-slate-100 text-slate-700"
-                >
-                  <ShoppingBag className="w-3.5 h-3.5 mr-2 text-indigo-600" />
-                  Production Queue ({pendingOrdersCount})
                 </DropdownMenuItem>
 
                 <DropdownMenuItem

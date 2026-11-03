@@ -35,7 +35,7 @@ export const TABLES = [
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     `,
     indexes: [
-      `CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users(LOWER(email));`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_unique ON users(LOWER(email));`,
       `CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);`,
       `CREATE INDEX IF NOT EXISTS idx_users_associated_provider ON users(associated_provider_id);`
     ],
@@ -579,6 +579,23 @@ export const TABLES = [
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       CONSTRAINT single_b2b_row_check CHECK (id = 1)
     `
+  },
+
+  // 15. Password Reset OTPs
+  {
+    name: 'password_reset_otps',
+    columns: `
+      id BIGSERIAL PRIMARY KEY,
+      email TEXT NOT NULL,
+      otp_code TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    `,
+    indexes: [
+      `CREATE INDEX IF NOT EXISTS idx_password_reset_otps_email ON password_reset_otps(LOWER(email));`,
+      `CREATE INDEX IF NOT EXISTS idx_password_reset_otps_expiry ON password_reset_otps(expires_at);`
+    ]
   }
 ];
 

@@ -153,8 +153,8 @@ export class JsonStorage {
     };
     designs.push(newDesign);
     console.log("json.createDesign: stored design id=", newDesign.id, "hasVersion=", !!insertDesign.version);
-    async function replaceDataUrlsInObject(obj, idPrefix) {
-      if (!obj || typeof obj !== "object") return;
+    async function replaceDataUrlsInObject(obj, idPrefix, depth = 0) {
+      if (!obj || typeof obj !== "object" || depth > 20) return;
       if (Array.isArray(obj)) {
         for (let i = 0; i < obj.length; i++) {
           const v = obj[i];
@@ -166,7 +166,7 @@ export class JsonStorage {
             } catch (e) {
             }
           } else if (typeof v === "object") {
-            await replaceDataUrlsInObject(v, `${idPrefix}-${i}`);
+            await replaceDataUrlsInObject(v, `${idPrefix}-${i}`, depth + 1);
           }
         }
         return;
@@ -181,7 +181,7 @@ export class JsonStorage {
           } catch (e) {
           }
         } else if (typeof v === "object") {
-          await replaceDataUrlsInObject(v, `${idPrefix}-${k}`);
+          await replaceDataUrlsInObject(v, `${idPrefix}-${k}`, depth + 1);
         }
       }
     }
@@ -339,8 +339,8 @@ export class JsonStorage {
       }
     } catch (e) {
     }
-    async function replaceDataUrlsInObject_update(obj, idPrefix) {
-      if (!obj || typeof obj !== "object") return;
+    async function replaceDataUrlsInObject_update(obj, idPrefix, depth = 0) {
+      if (!obj || typeof obj !== "object" || depth > 20) return;
       if (Array.isArray(obj)) {
         for (let i = 0; i < obj.length; i++) {
           const v = obj[i];
@@ -352,7 +352,7 @@ export class JsonStorage {
             } catch (e) {
             }
           } else if (typeof v === "object") {
-            await replaceDataUrlsInObject_update(v, `${idPrefix}-${i}`);
+            await replaceDataUrlsInObject_update(v, `${idPrefix}-${i}`, depth + 1);
           }
         }
         return;
@@ -367,7 +367,7 @@ export class JsonStorage {
           } catch (e) {
           }
         } else if (typeof v === "object") {
-          await replaceDataUrlsInObject_update(v, `${idPrefix}-${k}`);
+          await replaceDataUrlsInObject_update(v, `${idPrefix}-${k}`, depth + 1);
         }
       }
     }

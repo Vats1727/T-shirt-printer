@@ -12,7 +12,6 @@ import {
   ArrowRight,
   AlertCircle,
   Check,
-  ShieldCheck,
   Printer,
   Palette,
   ShoppingBag,
@@ -250,7 +249,7 @@ export default function Register() {
   return (
     <div className="min-h-screen lg:h-screen w-full flex flex-col lg:flex-row bg-slate-50 text-slate-800 font-sans selection:bg-indigo-600 selection:text-white lg:overflow-hidden">
       {/* LEFT COLUMN: Clean Light SaaS Showcase */}
-      <div className="relative hidden lg:flex lg:w-5/12 xl:w-5/12 flex-col justify-between p-6 xl:p-8 overflow-hidden border-r border-slate-200/80 bg-gradient-to-br from-indigo-50/50 via-slate-50 to-indigo-100/30">
+      <div className="relative hidden lg:flex lg:w-1/2 flex-col p-6 xl:p-10 overflow-hidden border-r border-slate-200/80 bg-gradient-to-br from-indigo-50/50 via-slate-50 to-indigo-100/30">
         <div className="absolute -top-32 -left-32 w-80 h-80 bg-indigo-200/30 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-32 right-0 w-96 h-96 bg-purple-200/25 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute inset-0 bg-[radial-gradient(#6366f112_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none" />
@@ -312,18 +311,11 @@ export default function Register() {
           </div>
         </div>
 
-        {/* Bottom Guarantee */}
-        <div className="relative z-10 pt-3 border-t border-slate-200/80 flex items-center justify-between text-[11px] text-slate-500">
-          <div className="flex items-center gap-1.5 font-medium">
-            <ShieldCheck className="size-3.5 text-emerald-600" />
-            <span>Strict data privacy & partner protection</span>
-          </div>
-          <span>© 2026 PrintPortal</span>
-        </div>
+
       </div>
 
       {/* RIGHT COLUMN: Modern Light Register Form Console */}
-      <div className="flex-1 w-full flex items-center justify-center p-4 sm:p-6 lg:p-6 overflow-y-auto lg:overflow-hidden bg-slate-50/60 lg:bg-slate-50/40">
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-4 sm:p-6 lg:p-8 overflow-y-auto lg:overflow-hidden bg-slate-50/60 lg:bg-slate-50/40">
         <div className="w-full max-w-lg bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-lg shadow-slate-200/40 space-y-3.5 animate-in fade-in duration-300">
           {/* Mobile Brand (Visible only when left hero is hidden) */}
           <div className="flex lg:hidden items-center gap-2.5 justify-center mb-1">
