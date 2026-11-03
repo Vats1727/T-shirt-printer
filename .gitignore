@@ -78,4 +78,4 @@ server/designs.json.corrupt-*
 
 # Scratch and test files
 scratch/
-Test/
+Test/"Test/" 
