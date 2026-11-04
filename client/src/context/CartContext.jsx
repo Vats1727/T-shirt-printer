@@ -47,7 +47,7 @@ export function CartProvider({ children }) {
         quantity: Math.max(1, Number(product.quantity || 1)),
         color: product.color || null,
         size: product.size || 'M',
-        preview_url: product.preview_url || '/templates/tshirt.png'
+        preview_url: product.preview_url || product.image_url || ''
       };
 
       return [...prev, cartItem];
