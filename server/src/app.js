@@ -28,6 +28,14 @@ app.use((req, res, next) => {
   next();
 });
 
+// Normalize reverse-proxy path prefix so all downstream routes match cleanly
+app.use((req, _res, next) => {
+  if (req.url.startsWith('/t-shirt-printer')) {
+    req.url = req.url.slice('/t-shirt-printer'.length) || '/';
+  }
+  next();
+});
+
 // Request logger middleware
 app.use((req, res, next) => {
   const start = Date.now();

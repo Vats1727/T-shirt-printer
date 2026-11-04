@@ -10,7 +10,15 @@ httpServer.on("connection", (socket) => {
   connections.add(socket);
   socket.on("close", () => connections.delete(socket));
 });
-app.get("/healthz", (_req, res) => res.status(200).send("ok"));
+// Normalize reverse proxy prefix (/t-shirt-printer/*)
+app.use((req, _res, next) => {
+  if (req.url.startsWith('/t-shirt-printer')) {
+    req.url = req.url.slice('/t-shirt-printer'.length) || '/';
+  }
+  next();
+});
+
+app.get(['/healthz', '/t-shirt-printer/healthz'], (_req, res) => res.status(200).send("ok"));
 app.get("/ready", (_req, res) => {
   return res.status(isReady ? 200 : 503).json({ ready: isReady });
 });
