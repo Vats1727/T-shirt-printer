@@ -1,3 +1,5 @@
+import { resolveApiUrl } from '../lib/apiUrl.js';
+
 export async function request(endpoint, options = {}, retries = 2) {
   const token = localStorage.getItem('token');
   const headers = {
@@ -7,7 +9,8 @@ export async function request(endpoint, options = {}, retries = 2) {
   };
 
   try {
-    const res = await fetch(endpoint, {
+    const targetUrl = resolveApiUrl(endpoint);
+    const res = await fetch(targetUrl, {
       ...options,
       headers
     });
