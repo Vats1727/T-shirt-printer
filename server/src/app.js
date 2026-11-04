@@ -37,9 +37,10 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (
       reqPath.startsWith('/api') ||
+      reqPath.startsWith('/t-shirt-printer') ||
       (API_PREFIX && reqPath.startsWith(API_PREFIX)) ||
-      reqPath === '/healthz' ||
-      reqPath === '/ready'
+      reqPath.includes('/healthz') ||
+      reqPath.includes('/ready')
     ) {
       log(`${req.method} ${reqPath} ${res.statusCode} in ${duration}ms`);
     }
@@ -48,18 +49,28 @@ app.use((req, res, next) => {
   next();
 });
 
-// Static uploads serving
+// Static uploads serving (both root and reverse-proxy prefix)
 app.use('/uploads', express.static(UPLOAD_DIR));
+app.use('/t-shirt-printer/uploads', express.static(UPLOAD_DIR));
 app.use('/attached_assets', express.static(UPLOAD_DIR));
+app.use('/t-shirt-printer/attached_assets', express.static(UPLOAD_DIR));
 
-// Root-level health endpoints (for container / host liveness checks)
-app.get('/healthz', getHealth);
-app.get('/ready', getReadiness);
+// Root and reverse-proxy health & readiness endpoints
+app.get(['/healthz', '/t-shirt-printer/healthz'], getHealth);
+app.get(['/ready', '/t-shirt-printer/ready'], getReadiness);
 
-// Mount API routes at production reverse proxy prefix (/t-shirt-printer/api/v1)
+// Mount API routes:
+// 1. Production reverse proxy full prefix (/t-shirt-printer/api/v1)
 app.use(API_PREFIX, apiRoutes);
 
-// Compatibility alias for standard /api calls (preserves automated tests and local dev)
+// 2. Reverse proxy with /api (without /v1) (/t-shirt-printer/api)
+app.use('/t-shirt-printer/api', apiRoutes);
+
+// 3. Reverse proxy direct base mount (/t-shirt-printer)
+app.use('/t-shirt-printer', apiRoutes);
+
+// 4. Local dev / standard test mounts
+app.use('/api/v1', apiRoutes);
 app.use('/api', apiRoutes);
 
 // Error and 404 middlewares
