@@ -41,6 +41,8 @@ router.get(`${API_PREFIX}/listing/:slug`, supplierController.getListingBySlugJso
 router.get(`${API_PREFIX}/listing/id/:id`, supplierController.getListingByIdJson);
 
 // Diagnostics / Health
+router.get(`${API_PREFIX}/healthz`, (_req, res) => res.status(200).send('ok'));
+router.get(`${API_PREFIX}/ready`, (_req, res) => res.status(200).json({ ready: true }));
 router.get(`${API_PREFIX}/_test`, (_req, res) => res.json({ ok: true, time: Date.now() }));
 router.get(`${API_PREFIX}/storage-type`, (_req, res) => res.json({ type: pool ? 'postgres' : 'json' }));
 
