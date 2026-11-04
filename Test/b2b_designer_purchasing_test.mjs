@@ -41,6 +41,7 @@ import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
 import jwt from '../server/node_modules/jsonwebtoken/index.js';
 import dotenv from '../server/node_modules/dotenv/lib/main.js';
+import { resolveTestUsers, generateTestTokens } from './test_helper.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../server/.env') });
@@ -51,24 +52,12 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key-123';
 const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_test_SgRf2CKVk35fBy';
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || 'rq7MWyAp6BVEorzrCpzw1oCn';
 
-// Pre-configured test tokens for all roles
-const designerToken = jwt.sign(
-  { sub: 8, id: 8, role: 'designer', email: 'designerone@gmail.com', name: 'Designerone' },
-  JWT_SECRET,
-  { expiresIn: '1d' }
-);
-
-const providerToken = jwt.sign(
-  { sub: 15, id: 15, role: 'print_provider', email: 'printproviderone@gmail.com', name: 'Print Provider One' },
-  JWT_SECRET,
-  { expiresIn: '1d' }
-);
-
-const adminToken = jwt.sign(
-  { sub: 6, id: 6, role: 'portal_admin', email: 'portaladmin@gmail.com', name: 'Portal Admin' },
-  JWT_SECRET,
-  { expiresIn: '1d' }
-);
+// Resolve database test users & generate tokens dynamically
+const users = await resolveTestUsers();
+const { adminToken, designerToken, providerToken } = generateTestTokens(users, JWT_SECRET);
+const designerId = Number(users.designer.id);
+const providerId = Number(users.provider.id);
+const adminId = Number(users.admin.id);
 
 let passed = 0;
 let failed = 0;
@@ -395,7 +384,7 @@ async function runB2BTests() {
   // 3.1 Checkout Single Sample Order (1 pc)
   {
     const samplePayload = {
-      providerId: 15,
+      providerId: providerId,
       designerNotes: 'Fitment sample piece for fabric texture validation',
       shippingAddress: testShippingAddress,
       paymentMethod: 'razorpay',
@@ -443,7 +432,7 @@ async function runB2BTests() {
   // 3.2 Checkout Wholesale Bulk Multi-Size Batch Order (50 pcs across sizes S: 10, M: 15, L: 15, XL: 10)
   {
     const bulkPayload = {
-      providerId: 15,
+      providerId: providerId,
       designerNotes: 'Official Winter 2026 Storefront Launch Multi-Size Stock Batch (50 pcs)',
       shippingAddress: testShippingAddress,
       paymentMethod: 'razorpay',
@@ -727,7 +716,7 @@ async function runB2BTests() {
 
   // 7.2 Partner Financial Statement Integration (GET /api/portal/ledger/statement/15)
   {
-    const { res, data } = await api('/api/portal/ledger/statement/15', {
+    const { res, data } = await api(`/api/portal/ledger/statement/${providerId}`, {
       headers: { Authorization: `Bearer ${adminToken}` }
     });
     const orders = data?.orders || [];

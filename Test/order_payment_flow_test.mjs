@@ -20,6 +20,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import jwt from '../server/node_modules/jsonwebtoken/index.js';
 import dotenv from '../server/node_modules/dotenv/lib/main.js';
+import { resolveTestUsers, generateTestTokens } from './test_helper.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../server/.env') });
@@ -30,30 +31,14 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key-123';
 const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_test_SgRf2CKVk35fBy';
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || 'rq7MWyAp6BVEorzrCpzw1oCn';
 
-// Pre-configured test tokens for all 4 roles
-const customerToken = jwt.sign(
-  { sub: 16, id: 16, role: 'customer', email: 'customerone@gmail.com', name: 'Customer One' },
-  JWT_SECRET,
-  { expiresIn: '1d' }
-);
-
-const designerToken = jwt.sign(
-  { sub: 8, id: 8, role: 'designer', email: 'designerone@gmail.com', name: 'Designerone' },
-  JWT_SECRET,
-  { expiresIn: '1d' }
-);
-
-const providerToken = jwt.sign(
-  { sub: 15, id: 15, role: 'print_provider', email: 'printproviderone@gmail.com', name: 'Print Provider One' },
-  JWT_SECRET,
-  { expiresIn: '1d' }
-);
-
-const adminToken = jwt.sign(
-  { sub: 6, id: 6, role: 'portal_admin', email: 'portaladmin@gmail.com', name: 'Portal Admin' },
-  JWT_SECRET,
-  { expiresIn: '1d' }
-);
+// Resolve database test users & generate tokens dynamically
+const users = await resolveTestUsers();
+const { adminToken, designerToken, providerToken, customerToken } = generateTestTokens(users, JWT_SECRET);
+const customerId = Number(users.customer.id);
+const customerName = users.customer.name || 'Customer One';
+const customerEmail = users.customer.email || 'customerone@gmail.com';
+const designerId = Number(users.designer.id);
+const providerId = Number(users.provider.id);
 
 // Test state
 let passed = 0;
@@ -237,11 +222,11 @@ async function runTests() {
   // Test 2.1: Place customer order with garment options
   {
     const orderPayload = {
-      customerName: 'Customer One',
-      customerEmail: 'customerone@gmail.com',
+      customerName: customerName,
+      customerEmail: customerEmail,
       customerPhone: '+91 9876543210',
-      designerId: 8,
-      providerId: 15,
+      designerId: designerId,
+      providerId: providerId,
       shippingAddress: {
         street: '42 MG Road, Indiranagar',
         city: 'Bengaluru',

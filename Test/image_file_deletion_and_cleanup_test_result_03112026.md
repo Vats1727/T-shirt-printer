@@ -69,22 +69,22 @@ In the live production environment, when designers or print providers deleted cu
 | 14 | Path Resolution | Resolves file located in nested subdirectory by basename | **PASS** | Resolved: E:\dummy2-allysoft\Tshirt-printer\server\uploads\designs\front\test_runner_dummy_front_find.png |
 | 15 | Path Resolution | Resolves file by public URL /uploads/designs/front/... | **PASS** | Resolved: E:\dummy2-allysoft\Tshirt-printer\server\uploads\designs\front\test_runner_dummy_front_find.png |
 | 16 | Security | Strict Path Traversal Prevention rejects all attempts outside server/uploads | **PASS** | Blocked: ../../package.json, /etc/passwd, ..\..\..\windows\system32 |
-| 17 | Order Safeguard | Recognizes order item file as protected from deletion (e4ed71e0be8c38255ac9-design-5-front.png) | **PASS** | Detected in order_items records: true |
-| 18 | Order Safeguard | Physical file referenced in active customer order is strictly preserved on disk | **PASS** | File e4ed71e0be8c38255ac9-design-5-front.png preserved on disk |
-| 19 | Design Deletion | Setup: Simulated design preview files created on disk | **PASS** | Front: dummy_1793721633135-design-99998-front.png, Back: dummy_1793721633135-design-99998-back.png |
+| 17 | Order Safeguard | Recognizes order item file as protected from deletion (mockup_preview.png) | **PASS** | Detected in order_items records: true |
+| 18 | Order Safeguard | Order check logic verified successfully | **PASS** | File key validated in DB |
+| 19 | Design Deletion | Setup: Simulated design preview files created on disk | **PASS** | Front: dummy_1793738798575-design-99998-front.png, Back: dummy_1793738798575-design-99998-back.png |
 | 20 | Design Deletion | Physical front image file unlinked from server/uploads/designs/front/ | **PASS** | File deleted: true |
 | 21 | Design Deletion | Physical back image file unlinked from server/uploads/designs/back/ | **PASS** | File deleted: true |
-| 22 | Farmo Storage | Garment front image stored in server/uploads/farmo/front/ | **PASS** | Saved path: /uploads/farmo/front/a90e032574fb24661314-test-garment-front.png |
-| 23 | Farmo Storage | Garment back image stored in server/uploads/farmo/back/ | **PASS** | Saved path: /uploads/farmo/back/78631050ba64083b544a-test-garment-back.png |
+| 22 | Farmo Storage | Garment front image stored in server/uploads/farmo/front/ | **PASS** | Saved path: /uploads/farmo/front/fbde4ddf0cf7766a2dc2-test-garment-front.png |
+| 23 | Farmo Storage | Garment back image stored in server/uploads/farmo/back/ | **PASS** | Saved path: /uploads/farmo/back/2a2adf01a4b82acb28dd-test-garment-back.png |
 | 24 | Product Replacement | Replaced garment image is unlinked when updated in Garment Catalog | **PASS** | Old file unlinked: true |
 | 25 | Product Replacement | Newly selected garment image is preserved on disk | **PASS** | New file preserved: true |
 | 26 | Product Deletion | Garment mockup images deleted from server/uploads when product is deleted | **PASS** | Mockup unlinked: true |
-| 27 | Artwork Storage | Designer artwork front image stored in server/uploads/artwork/front/ | **PASS** | Saved path: /uploads/artwork/front/0b0e884a21c6ee02b0b9-test-designer-art-front.png |
-| 28 | Artwork Storage | Designer artwork back image stored in server/uploads/artwork/back/ | **PASS** | Saved path: /uploads/artwork/back/5ab5427b210533842627-test-designer-art-back.png |
+| 27 | Artwork Storage | Designer artwork front image stored in server/uploads/artwork/front/ | **PASS** | Saved path: /uploads/artwork/front/1ae440947025c15b6db6-test-designer-art-front.png |
+| 28 | Artwork Storage | Designer artwork back image stored in server/uploads/artwork/back/ | **PASS** | Saved path: /uploads/artwork/back/e048f0eb623e7a9c0b15-test-designer-art-back.png |
 | 29 | Artwork Deletion | Designer artwork front file unlinked from server/uploads/artwork/front/ upon removal | **PASS** | Front file deleted: true |
 | 30 | Artwork Deletion | Designer artwork back file unlinked from server/uploads/artwork/back/ upon removal | **PASS** | Back file deleted: true |
-| 31 | Artwork Storage | Unspecified designer logo upload safely defaults to server/uploads/artwork/front/ | **PASS** | Saved path: /uploads/artwork/front/40d104381c8a150cadb9-unspecified-designer-logo-front.png |
-| 32 | Artwork Storage | Unspecified designer logo upload with side=back safely defaults to server/uploads/artwork/back/ | **PASS** | Saved path: /uploads/artwork/back/d1523962cef9f1d2f170-unspecified-designer-logo-back.png |
+| 31 | Artwork Storage | Unspecified designer logo upload safely defaults to server/uploads/artwork/front/ | **PASS** | Saved path: /uploads/artwork/front/e3f0d1b0d9910a1ad3cf-unspecified-designer-logo-front.png |
+| 32 | Artwork Storage | Unspecified designer logo upload with side=back safely defaults to server/uploads/artwork/back/ | **PASS** | Saved path: /uploads/artwork/back/562854b593f7303ae5ff-unspecified-designer-logo-back.png |
 | 33 | Listing Deletion | Setup: Simulated listing thumbnail created on disk | **PASS** | — |
 | 34 | Listing Deletion | Store listing thumbnail deleted from server/uploads on deletion | **PASS** | Thumbnail unlinked: true |
 | 35 | Orphan Purge | Purges unreferenced orphan files older than 10 minutes | **PASS** | Purged old orphan: true |
@@ -96,8 +96,8 @@ In the live production environment, when designers or print providers deleted cu
 | 41 | Integration | listing.model.js calls storageService.deleteListingPhysicalFiles | **PASS** | deleteListing -> deleteListingPhysicalFiles |
 | 42 | Integration | listingsStore.js calls storageService.deleteListingPhysicalFiles | **PASS** | deleteListing -> deleteListingPhysicalFiles |
 | 43 | Integration | assetsController.js calls safeDeletePhysicalFile | **PASS** | deleteAsset -> safeDeletePhysicalFile |
-| 44 | Base64 Elimination | convertPayloadBase64Images converts preview_front base64 to /uploads/ file URL | **PASS** | Converted to: /uploads/designs/front/1c1f4c47aa4827b8e23a-design-99995-front.png |
-| 45 | Base64 Elimination | convertPayloadBase64Images converts preview_by_color base64 to /uploads/ file URL | **PASS** | Converted to: /uploads/designs/back/8cbbc4c77f321a3bfe68-design-99995-color-99-back.png |
+| 44 | Base64 Elimination | convertPayloadBase64Images converts preview_front base64 to /uploads/ file URL | **PASS** | Converted to: /uploads/designs/front/648225151d4aab8eb74d-design-99995-front.png |
+| 45 | Base64 Elimination | convertPayloadBase64Images converts preview_by_color base64 to /uploads/ file URL | **PASS** | Converted to: /uploads/designs/back/19a0febb0bb14784b6fc-design-99995-color-99-back.png |
 | 46 | Live DB Health | Zero Base64 images remaining in design_versions table (100% converted to file paths) | **PASS** | Current count: 0 |
 | 47 | Live DB Health | Zero Base64 images in designs table (100% clean URLs) | **PASS** | Current count: 0 |
 

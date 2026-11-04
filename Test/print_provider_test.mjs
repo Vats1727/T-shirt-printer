@@ -21,6 +21,7 @@ import jwt from '../server/node_modules/jsonwebtoken/index.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from '../server/node_modules/dotenv/lib/main.js';
+import { resolveTestUsers, generateTestTokens } from './test_helper.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../server/.env') });
@@ -29,18 +30,12 @@ const API_BASE = `http://localhost:${process.env.PORT || 5000}`;
 const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:5173';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key-123';
 
-// Generate valid tokens
-const providerToken = jwt.sign(
-  { sub: 12, role: 'print_provider', email: 'vijaypp1720@gmail.com' },
-  JWT_SECRET,
-  { expiresIn: '1d' }
-);
-
-const customerToken = jwt.sign(
-  { sub: 16, role: 'customer', email: 'customerone@gmail.com' },
-  JWT_SECRET,
-  { expiresIn: '1d' }
-);
+// Resolve database test users & generate tokens dynamically
+const users = await resolveTestUsers();
+const { providerToken, customerToken } = generateTestTokens(users, JWT_SECRET);
+const providerId = Number(users.provider.id);
+const providerName = users.provider.name || 'Print Provider';
+const providerEmail = users.provider.email;
 
 // Test metrics
 let passed = 0;
@@ -119,7 +114,7 @@ async function runTests() {
   console.log(`\nStarting Print Provider Comprehensive Test Suite`);
   console.log(`Target Server: ${API_BASE}`);
   console.log(`Configured CORS_ORIGIN from .env: ${CORS_ORIGIN}`);
-  console.log(`Testing with Provider User: Vijay (ID: 12)`);
+  console.log(`Testing with Provider User: ${providerName} (ID: ${providerId})`);
 
   // ================================================================
   // 1. CORS PREFLIGHT (OPTIONS) TESTS
@@ -188,7 +183,7 @@ async function runTests() {
     const createRes = await api('/api/admin/colors', {
       method: 'POST',
       headers: { Authorization: `Bearer ${providerToken}` },
-      body: JSON.stringify({ name: `Automated Test Teal ${Date.now()}`, hex: '#008080' })
+      body: JSON.stringify({ name: `Teal_${Date.now().toString().slice(-6)}`, hex: '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0') })
     });
     createdColorId = createRes.data?.id;
     if (!validColorId) validColorId = createdColorId;
@@ -390,13 +385,13 @@ async function runTests() {
     const profRes = await api('/api/admin/profile', {
       headers: { Authorization: `Bearer ${providerToken}` }
     });
-    recordResult('GET /api/admin/profile returns facility details', profRes.status === 200 && profRes.data?.email === 'vijaypp1720@gmail.com', `Facility Name: ${profRes.data?.name}`);
+    recordResult('GET /api/admin/profile returns facility details', profRes.status === 200 && profRes.data?.email === providerEmail, `Facility Name: ${profRes.data?.name}`);
     verifyCors(profRes.headers, 'GET /api/admin/profile');
 
     const patchProf = await api('/api/admin/profile', {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${providerToken}` },
-      body: JSON.stringify({ name: 'Vijay' })
+      body: JSON.stringify({ name: providerName })
     });
     recordResult('PATCH /api/admin/profile updates facility profile', patchProf.status === 200, `Status: ${patchProf.status}`);
     verifyCors(patchProf.headers, 'PATCH /api/admin/profile');
@@ -463,12 +458,12 @@ async function runTests() {
     verifyCors(setPrivateRes.headers, 'PATCH /api/admin/store-settings');
 
     // Verify unauthenticated visitor gets 403 Forbidden on private store
-    const unauthStoreRes = await api('/api/store/12');
+    const unauthStoreRes = await api(`/api/store/${providerId}`);
     recordResult('Unauthenticated visitor receives 403 Forbidden on private store', unauthStoreRes.status === 403 && unauthStoreRes.data?.is_private === true, `Response: ${unauthStoreRes.data?.message}`);
     verifyCors(unauthStoreRes.headers, 'GET /api/store/:id (Private, Visitor)');
 
     // Verify provider (owner) can view private store in preview mode
-    const ownerStoreRes = await api('/api/store/12', {
+    const ownerStoreRes = await api(`/api/store/${providerId}`, {
       headers: { Authorization: `Bearer ${providerToken}` }
     });
     recordResult('Store owner can access private store with preview permission (200 OK)', ownerStoreRes.status === 200 && ownerStoreRes.data?.is_owner === true, `is_owner: true, is_public: false`);
@@ -476,8 +471,8 @@ async function runTests() {
 
     // Verify private store is EXCLUDED from Customer Directory
     const customerDirectoryPrivate = await api('/api/customer/stores');
-    const isHiddenFromDirectory = !customerDirectoryPrivate.data?.stores?.some(s => Number(s.id) === 12);
-    recordResult('Private store is excluded from Customer Portal directory (/api/customer/stores)', isHiddenFromDirectory, `Vijay (ID: 12) excluded: ${isHiddenFromDirectory}`);
+    const isHiddenFromDirectory = !customerDirectoryPrivate.data?.stores?.some(s => Number(s.id) === providerId);
+    recordResult('Private store is excluded from Customer Portal directory (/api/customer/stores)', isHiddenFromDirectory, `${providerName} (ID: ${providerId}) excluded: ${isHiddenFromDirectory}`);
     verifyCors(customerDirectoryPrivate.headers, 'GET /api/customer/stores');
 
     // D. Test Privacy Toggle: Restoring is_public = true, show_in_customer_portal = true
@@ -496,14 +491,14 @@ async function runTests() {
     verifyCors(setPublicRes.headers, 'PATCH /api/admin/store-settings (Restore)');
 
     // Verify public store is accessible to anyone now
-    const publicVisitorRes = await api('/api/store/12');
+    const publicVisitorRes = await api(`/api/store/${providerId}`);
     recordResult('Public store is now accessible to all visitors (200 OK)', publicVisitorRes.status === 200, `Store: ${publicVisitorRes.data?.store_settings?.store_name || 'Vijay'}`);
     verifyCors(publicVisitorRes.headers, 'GET /api/store/:id (Public, Visitor)');
 
     // Verify store card reappears in Customer Directory
     const customerDirectoryPublic = await api('/api/customer/stores');
-    const isVisibleInDirectory = customerDirectoryPublic.data?.stores?.some(s => Number(s.id) === 12);
-    recordResult('Public store reappears in Customer Portal directory (/api/customer/stores)', isVisibleInDirectory, `Vijay (ID: 12) visible: ${isVisibleInDirectory}`);
+    const isVisibleInDirectory = customerDirectoryPublic.data?.stores?.some(s => Number(s.id) === providerId);
+    recordResult('Public store reappears in Customer Portal directory (/api/customer/stores)', isVisibleInDirectory, `${providerName} (ID: ${providerId}) visible: ${isVisibleInDirectory}`);
     verifyCors(customerDirectoryPublic.headers, 'GET /api/customer/stores (Public)');
 
     // E. Test Privacy Toggle: is_public = true but show_in_customer_portal = false
@@ -519,8 +514,8 @@ async function runTests() {
       })
     });
     const customPortalCheck = await api('/api/customer/stores');
-    const isExcludedFromCustomerOnly = !customPortalCheck.data?.stores?.some(s => Number(s.id) === 12);
-    const directLinkStillWorks = (await api('/api/store/12')).status === 200;
+    const isExcludedFromCustomerOnly = !customPortalCheck.data?.stores?.some(s => Number(s.id) === providerId);
+    const directLinkStillWorks = (await api(`/api/store/${providerId}`)).status === 200;
     recordResult('Store can be Public via direct URL while hidden from Customer Directory', isExcludedFromCustomerOnly && directLinkStillWorks, `Direct URL works: ${directLinkStillWorks}, Hidden from Directory: ${isExcludedFromCustomerOnly}`);
 
     // Clean restore initial settings

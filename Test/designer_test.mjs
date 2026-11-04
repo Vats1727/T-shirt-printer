@@ -21,6 +21,7 @@ import jwt from '../server/node_modules/jsonwebtoken/index.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from '../server/node_modules/dotenv/lib/main.js';
+import { resolveTestUsers, generateTestTokens } from './test_helper.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../server/.env') });
@@ -29,24 +30,12 @@ const API_BASE = `http://localhost:${process.env.PORT || 5000}`;
 const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:5173';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key-123';
 
-// Generate tokens for testing
-const designerToken = jwt.sign(
-  { sub: 8, role: 'designer', email: 'designerone@gmail.com' },
-  JWT_SECRET,
-  { expiresIn: '1d' }
-);
-
-const customerToken = jwt.sign(
-  { sub: 16, role: 'customer', email: 'customerone@gmail.com' },
-  JWT_SECRET,
-  { expiresIn: '1d' }
-);
-
-const providerToken = jwt.sign(
-  { sub: 12, role: 'print_provider', email: 'vijaypp1720@gmail.com' },
-  JWT_SECRET,
-  { expiresIn: '1d' }
-);
+// Resolve database test users & generate tokens dynamically
+const users = await resolveTestUsers();
+const { designerToken, providerToken, customerToken } = generateTestTokens(users, JWT_SECRET);
+const designerId = Number(users.designer.id);
+const providerId = Number(users.provider.id);
+const designerName = users.designer.name || 'Designer';
 
 // Test metrics
 let passed = 0;
@@ -125,7 +114,7 @@ async function runTests() {
   console.log(`\nStarting Designer Comprehensive Test Suite`);
   console.log(`Target Server: ${API_BASE}`);
   console.log(`Configured CORS_ORIGIN from .env: ${CORS_ORIGIN}`);
-  console.log(`Testing with Designer User: Designerone (ID: 8)`);
+  console.log(`Testing with Designer User: ${designerName} (ID: ${designerId})`);
 
   // ================================================================
   // 1. CORS PREFLIGHT (OPTIONS) TESTS
@@ -273,7 +262,7 @@ async function runTests() {
         template: 'tshirt',
         product: 'T-shirt',
         product_id: sampleProduct ? sampleProduct.id : 30,
-        provider_id: 12
+        provider_id: providerId
       })
     });
     const designObj = createRes.data?.design || createRes.data;
@@ -351,14 +340,14 @@ async function runTests() {
       headers: { Authorization: `Bearer ${designerToken}` },
       body: JSON.stringify({
         productId: sampleProduct ? sampleProduct.id : 30,
-        providerId: 12,
+        providerId: providerId,
         productSku: sampleProduct ? sampleProduct.slug : 'mens-t-shirt-1',
         size: 'L',
         color: 'Black',
         quantity: 1,
         unitPrice: 299,
         shipping: {
-          customer_name: 'Designerone',
+          customer_name: designerName,
           customer_email: 'designerone@gmail.com'
         }
       })
@@ -392,7 +381,7 @@ async function runTests() {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${designerToken}` },
       body: JSON.stringify({
-        name: 'Designerone'
+        name: designerName
       })
     });
     recordResult('PATCH /api/supplier/profile updates profile information', patchRes.status === 200, `Profile verified`);
@@ -476,12 +465,12 @@ async function runTests() {
   logSection(`11. Storefront Privacy Enforcement & Visitor Gate`);
   {
     // A. Unauthenticated visitor receives 403 on private store
-    const visitorPrivate = await api('/api/store/8');
+    const visitorPrivate = await api(`/api/store/${designerId}`);
     recordResult('Unauthenticated visitor receives 403 Forbidden on private designer store', visitorPrivate.status === 403 && visitorPrivate.data?.is_private === true, `Response: ${visitorPrivate.data?.message}`);
     verifyCors(visitorPrivate.headers, 'GET /api/store/:id (Private, Visitor)');
 
     // B. Designer owner can view private store in preview mode (200 OK)
-    const ownerPreview = await api('/api/store/8', {
+    const ownerPreview = await api(`/api/store/${designerId}`, {
       headers: { Authorization: `Bearer ${designerToken}` }
     });
     recordResult('Designer owner can access private store with preview permission (200 OK)', ownerPreview.status === 200 && ownerPreview.data?.is_owner === true, `is_owner: true, is_public: ${ownerPreview.data?.is_public}`);
@@ -490,8 +479,8 @@ async function runTests() {
     // C. Private store is excluded from Customer Portal directory
     const portalRes = await api('/api/customer/stores?category=designers');
     const storeList = portalRes.data?.stores || portalRes.data || [];
-    const isExcluded = !storeList.some(s => Number(s.id) === 8);
-    recordResult('Private designer store is excluded from Customer Portal directory (/api/customer/stores)', isExcluded, `Designerone (ID: 8) excluded: ${isExcluded}`);
+    const isExcluded = !storeList.some(s => Number(s.id) === designerId);
+    recordResult('Private designer store is excluded from Customer Portal directory (/api/customer/stores)', isExcluded, `${designerName} (ID: ${designerId}) excluded: ${isExcluded}`);
     verifyCors(portalRes.headers, 'GET /api/customer/stores (Filtered)');
 
     // D. Restore store to public
@@ -510,15 +499,15 @@ async function runTests() {
     verifyCors(patchPublic.headers, 'PATCH /api/supplier/store-settings (Restore)');
 
     // E. Public visitor receives 200 OK
-    const visitorPublic = await api('/api/store/8');
-    recordResult('Public designer store is now accessible to all visitors (200 OK)', visitorPublic.status === 200 && visitorPublic.data?.is_public === true, `Store: ${visitorPublic.data?.designer?.name || 'Designerone'}`);
+    const visitorPublic = await api(`/api/store/${designerId}`);
+    recordResult('Public designer store is now accessible to all visitors (200 OK)', visitorPublic.status === 200 && visitorPublic.data?.is_public === true, `Store: ${visitorPublic.data?.designer?.name || designerName}`);
     verifyCors(visitorPublic.headers, 'GET /api/store/:id (Public, Visitor)');
 
     // F. Reappears in Customer Portal directory
     const portalReappear = await api('/api/customer/stores?category=designers');
     const reappearList = portalReappear.data?.stores || portalReappear.data || [];
-    const isVisible = reappearList.some(s => Number(s.id) === 8);
-    recordResult('Public designer store reappears in Customer Portal directory (/api/customer/stores)', isVisible, `Designerone (ID: 8) visible: ${isVisible}`);
+    const isVisible = reappearList.some(s => Number(s.id) === designerId);
+    recordResult('Public designer store reappears in Customer Portal directory (/api/customer/stores)', isVisible, `${designerName} (ID: ${designerId}) visible: ${isVisible}`);
     verifyCors(portalReappear.headers, 'GET /api/customer/stores (Public)');
 
     // G. Independent isolation test: Public direct URL while hidden from portal
@@ -534,9 +523,9 @@ async function runTests() {
       })
     });
 
-    const directOk = (await api('/api/store/8')).status === 200;
+    const directOk = (await api(`/api/store/${designerId}`)).status === 200;
     const portalHiddenList = (await api('/api/customer/stores?category=designers')).data?.stores || [];
-    const isHiddenFromDirectory = !portalHiddenList.some(s => Number(s.id) === 8);
+    const isHiddenFromDirectory = !portalHiddenList.some(s => Number(s.id) === designerId);
 
     recordResult('Designer store can be Public via direct URL while hidden from Customer Directory', directOk && isHiddenFromDirectory, `Direct URL works: ${directOk}, Hidden from Directory: ${isHiddenFromDirectory}`);
 

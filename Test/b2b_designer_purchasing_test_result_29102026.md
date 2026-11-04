@@ -77,8 +77,8 @@ All tests covering the autonomous B2B financial governance, single vs bulk commi
 ### Module 3: Designer Checkout & Razorpay Order Generation
 | # | Test Case Description | Method & Endpoint | Status | Verification Details |
 |---|---|---|:---:|---|
-| 12 | Designer Checkouts B2B Single Sample Order (1 pc) & generates Razorpay Order Session | `POST /api/b2b-orders/checkout` | **PASS** | Order Ref: B2B-30102026-6599, Type: sample, Total: ₹435, Razorpay Order ID: order_TtxwRZuiEH0qqt |
-| 13 | Designer Checkouts 50 pcs B2B Wholesale Multi-Size Batch with Size Breakdown | `POST /api/b2b-orders/checkout` | **PASS** | Order Ref: B2B-30102026-2297, Type: bulk, Units: 50, Net: ₹15000, Razorpay Order ID: order_TtxwRkTKffCBbF |
+| 12 | Designer Checkouts B2B Single Sample Order (1 pc) & generates Razorpay Order Session | `POST /api/b2b-orders/checkout` | **PASS** | Order Ref: B2B-04112026-3885, Type: sample, Total: ₹435, Razorpay Order ID: order_Tvq6RikcJ73iD5 |
+| 13 | Designer Checkouts 50 pcs B2B Wholesale Multi-Size Batch with Size Breakdown | `POST /api/b2b-orders/checkout` | **PASS** | Order Ref: B2B-04112026-7217, Type: bulk, Units: 50, Net: ₹15000, Razorpay Order ID: order_Tvq6RuqOzpaIMq |
 
 ---
 
@@ -86,15 +86,15 @@ All tests covering the autonomous B2B financial governance, single vs bulk commi
 | # | Test Case Description | Method & Endpoint | Status | Verification Details |
 |---|---|---|:---:|---|
 | 14 | Payment Tamper Defense: Invalid / Forged signature rejected (400 Bad Request) | `POST /api/b2b-orders/verify-payment` | **PASS** | Response status: 400 |
-| 15 | Cryptographic Verification: Legitimate HMAC-SHA256 signature confirms B2B Order | `POST /api/b2b-orders/verify-payment` | **PASS** | Status: confirmed, Payment: paid, Payment ID: pay_b2b_1793329711280 |
+| 15 | Cryptographic Verification: Legitimate HMAC-SHA256 signature confirms B2B Order | `POST /api/b2b-orders/verify-payment` | **PASS** | Status: confirmed, Payment: paid, Payment ID: pay_b2b_1793738787343 |
 
 ---
 
 ### Module 5: Designer Past Purchases & Unified Orders Visibility
 | # | Test Case Description | Method & Endpoint | Status | Verification Details |
 |---|---|---|:---:|---|
-| 16 | Designer B2B Orders API: Lists all sample & wholesale purchases made by designer | Verified Endpoint | **PASS** | Total B2B Orders found: 2. Located Bulk Order B2B-30102026-2297 & Sample Order B2B-30102026-6599 |
-| 17 | Unified Designer Console Integration: B2B purchases seamlessly present in /api/supplier/orders | Verified Endpoint | **PASS** | B2B Orders in Unified Feed: 2. Target Order tagged with is_b2b_order: true |
+| 16 | Designer B2B Orders API: Lists all sample & wholesale purchases made by designer | Verified Endpoint | **PASS** | Total B2B Orders found: 6. Located Bulk Order B2B-04112026-7217 & Sample Order B2B-04112026-3885 |
+| 17 | Unified Designer Console Integration: B2B purchases seamlessly present in /api/supplier/orders | Verified Endpoint | **PASS** | B2B Orders in Unified Feed: 6. Target Order tagged with is_b2b_order: true |
 
 ---
 
@@ -112,11 +112,11 @@ All tests covering the autonomous B2B financial governance, single vs bulk commi
 ### Module 7: Portal Admin Global Governance & Partner Statement Integration
 | # | Test Case Description | Method & Endpoint | Status | Verification Details |
 |---|---|---|:---:|---|
-| 23 | Admin Global B2B Oversight: Superadmin audits wholesale orders & verified 8% platform cut | Verified Oversight | **PASS** | Total B2B Network Orders: 3, Verified Admin Commission on Target Order: ₹1200 |
-| 24 | Partner Ledger Statement: Provider statement includes B2B wholesale orders alongside retail orders | Verified Oversight | **PASS** | Partner: Print Provider One, Located B2B Order: B2B-30102026-2297, Provider Earnings: ₹13800.000000000000 |
+| 23 | Admin Global B2B Oversight: Superadmin audits wholesale orders & verified 8% platform cut | Verified Oversight | **PASS** | Total B2B Network Orders: 6, Verified Admin Commission on Target Order: ₹1200 |
+| 24 | Partner Ledger Statement: Provider statement includes B2B wholesale orders alongside retail orders | Verified Oversight | **PASS** | Partner: Vatsal, Located B2B Order: B2B-04112026-7217, Provider Earnings: ₹13800.000000000000 |
 
 ---
 
 ## 3. Order Reference Audit Log
-- **Sample Order Number:** `B2B-30102026-6599`
-- **Wholesale Bulk Order Number:** `B2B-30102026-2297`
+- **Sample Order Number:** `B2B-04112026-3885`
+- **Wholesale Bulk Order Number:** `B2B-04112026-7217`
