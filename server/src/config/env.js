@@ -7,7 +7,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 export const env = {
   NODE_ENV: process.env.NODE_ENV || 'development',
-  PORT: parseInt(process.env.PORT || '5000', 10),
+  PORT: parseInt(process.env.PORT || (process.env.NODE_ENV === 'production' ? '3018' : '5000'), 10),
   DATABASE_URL: process.env.DATABASE_URL,
   DB_NAME: process.env.DB_NAME || 'tshirt_printer_db',
   DB_USER: process.env.DB_USER || 'postgres',

@@ -12,38 +12,41 @@ import b2bOrderRoutes from './b2bOrder.routes.js';
 import userController from '../controllers/user.controller.js';
 import supplierController from '../controllers/supplier.controller.js';
 import portalController from '../controllers/portal.controller.js';
+import { getHealth, getReadiness } from '../controllers/health.controller.js';
 import { pool } from '../config/database.js';
 
 export const API_PREFIX = '/t-shirt-printer/api/v1';
 
 const router = Router();
 
+// Health & Readiness probes
+router.get('/healthz', getHealth);
+router.get('/ready', getReadiness);
+
+// Diagnostics / Utility
+router.get('/_test', (_req, res) => res.json({ ok: true, time: Date.now() }));
+router.get('/storage-type', (_req, res) => res.json({ type: pool ? 'postgres' : 'json' }));
+
 // Modular Sub-routers
-router.use(`${API_PREFIX}/auth`, authRoutes);
-router.use(`${API_PREFIX}/portal`, portalRoutes);
-router.use(`${API_PREFIX}/designs`, designRoutes);
-router.use(`${API_PREFIX}/admin`, productRoutes);
-router.use(`${API_PREFIX}/supplier`, supplierRoutes);
-router.use(`${API_PREFIX}/assets`, assetRoutes);
-router.use(`${API_PREFIX}/customer`, customerRoutes);
-router.use(`${API_PREFIX}/orders`, orderRoutes);
-router.use(`${API_PREFIX}/payments`, paymentRoutes);
-router.use(`${API_PREFIX}/b2b-orders`, b2bOrderRoutes);
+router.use('/auth', authRoutes);
+router.use('/portal', portalRoutes);
+router.use('/designs', designRoutes);
+router.use('/admin', productRoutes);
+router.use('/supplier', supplierRoutes);
+router.use('/assets', assetRoutes);
+router.use('/customer', customerRoutes);
+router.use('/orders', orderRoutes);
+router.use('/payments', paymentRoutes);
+router.use('/b2b-orders', b2bOrderRoutes);
 
 // Public Financial & Pricing Governance Rules
-router.get(`${API_PREFIX}/settings/financial`, portalController.getPublicFinancialSettings);
-router.get(`${API_PREFIX}/settings/b2b-financial`, portalController.getPublicB2BFinancialSettings);
+router.get('/settings/financial', portalController.getPublicFinancialSettings);
+router.get('/settings/b2b-financial', portalController.getPublicB2BFinancialSettings);
 
 // Public Providers & Storefront
-router.get(`${API_PREFIX}/public/providers`, userController.getPublicProviders);
-router.get(`${API_PREFIX}/store/:supplierId`, supplierController.getStoreFront);
-router.get(`${API_PREFIX}/listing/:slug`, supplierController.getListingBySlugJson);
-router.get(`${API_PREFIX}/listing/id/:id`, supplierController.getListingByIdJson);
-
-// Diagnostics / Health
-router.get(`${API_PREFIX}/healthz`, (_req, res) => res.status(200).send('ok'));
-router.get(`${API_PREFIX}/ready`, (_req, res) => res.status(200).json({ ready: true }));
-router.get(`${API_PREFIX}/_test`, (_req, res) => res.json({ ok: true, time: Date.now() }));
-router.get(`${API_PREFIX}/storage-type`, (_req, res) => res.json({ type: pool ? 'postgres' : 'json' }));
+router.get('/public/providers', userController.getPublicProviders);
+router.get('/store/:supplierId', supplierController.getStoreFront);
+router.get('/listing/:slug', supplierController.getListingBySlugJson);
+router.get('/listing/id/:id', supplierController.getListingByIdJson);
 
 export default router;

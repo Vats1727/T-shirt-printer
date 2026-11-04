@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import env from './config/env.js';
 import apiRoutes, { API_PREFIX } from './routes/index.js';
+import { getHealth, getReadiness } from './controllers/health.controller.js';
 import errorHandler from './middleware/error.middleware.js';
 import notFoundHandler from './middleware/not-found.middleware.js';
 import { log } from './utils/logger.js';
@@ -34,7 +35,12 @@ app.use((req, res, next) => {
 
   res.on('finish', () => {
     const duration = Date.now() - start;
-    if (reqPath.startsWith('/api') || (API_PREFIX && reqPath.startsWith(API_PREFIX))) {
+    if (
+      reqPath.startsWith('/api') ||
+      (API_PREFIX && reqPath.startsWith(API_PREFIX)) ||
+      reqPath === '/healthz' ||
+      reqPath === '/ready'
+    ) {
       log(`${req.method} ${reqPath} ${res.statusCode} in ${duration}ms`);
     }
   });
@@ -46,16 +52,15 @@ app.use((req, res, next) => {
 app.use('/uploads', express.static(UPLOAD_DIR));
 app.use('/attached_assets', express.static(UPLOAD_DIR));
 
-// Health endpoints
-app.get('/healthz', (_req, res) => res.status(200).send('ok'));
-app.get('/ready', (_req, res) => res.status(200).json({ ready: true }));
+// Root-level health endpoints (for container / host liveness checks)
+app.get('/healthz', getHealth);
+app.get('/ready', getReadiness);
 
-// Mount API routes
-app.use(apiRoutes);
-app.use('/api', (req, res, next) => {
-  req.url = `${API_PREFIX}${req.url}`;
-  apiRoutes(req, res, next);
-});
+// Mount API routes at production reverse proxy prefix (/t-shirt-printer/api/v1)
+app.use(API_PREFIX, apiRoutes);
+
+// Compatibility alias for standard /api calls (preserves automated tests and local dev)
+app.use('/api', apiRoutes);
 
 // Error and 404 middlewares
 app.use(notFoundHandler);
