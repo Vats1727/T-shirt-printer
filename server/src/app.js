@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import env from './config/env.js';
-import apiRoutes from './routes/index.js';
+import apiRoutes, { API_PREFIX } from './routes/index.js';
 import errorHandler from './middleware/error.middleware.js';
 import notFoundHandler from './middleware/not-found.middleware.js';
 import { log } from './utils/logger.js';
@@ -34,7 +34,7 @@ app.use((req, res, next) => {
 
   res.on('finish', () => {
     const duration = Date.now() - start;
-    if (reqPath.startsWith('/api')) {
+    if (reqPath.startsWith('/api') || (API_PREFIX && reqPath.startsWith(API_PREFIX))) {
       log(`${req.method} ${reqPath} ${res.statusCode} in ${duration}ms`);
     }
   });
@@ -51,7 +51,11 @@ app.get('/healthz', (_req, res) => res.status(200).send('ok'));
 app.get('/ready', (_req, res) => res.status(200).json({ ready: true }));
 
 // Mount API routes
-app.use('/api', apiRoutes);
+app.use(apiRoutes);
+app.use('/api', (req, res, next) => {
+  req.url = `${API_PREFIX}${req.url}`;
+  apiRoutes(req, res, next);
+});
 
 // Error and 404 middlewares
 app.use(notFoundHandler);
