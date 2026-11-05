@@ -43,13 +43,13 @@ export default function StoreProduct() {
   const [addedToCart, setAddedToCart] = useState(false);
   const [isWishlisted, setIsWishlisted] = useState(false);
   const [freeShippingThreshold, setFreeShippingThreshold] = useState(500);
-  const API_BASE = import.meta.env?.VITE_API_BASE || `${window.location.protocol}//${window.location.hostname}:5000`;
+  const API_BASE = "";
   const qp = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
   const supplierQuery = qp.get("supplier");
   const colorQuery = qp.get("color");
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/settings/financial`)
+    fetch(`/api/settings/financial`)
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (d?.settings?.free_shipping_threshold) {
@@ -64,13 +64,13 @@ export default function StoreProduct() {
     (async () => {
       setLoading(true);
       try {
-        const resolvedId = byId ? decodeId(slug) : slug;
-        const url = byId ? `${API_BASE}/api/listing/id/${encodeURIComponent(resolvedId)}` : `${API_BASE}/api/listing/${encodeURIComponent(slug)}`;
+        const resolvedId = byId ? (decodeId(slug) || slug) : slug;
+        const url = byId ? `/api/listing/id/${encodeURIComponent(resolvedId)}` : `/api/listing/${encodeURIComponent(slug)}`;
         const res = await fetch(url);
         if (!res.ok) {
           if (supplierQuery && byId) {
             const resolvedSupplier = decodeId(supplierQuery) || supplierQuery;
-            const r2 = await fetch(`${API_BASE}/api/store/${encodeURIComponent(resolvedSupplier)}`);
+            const r2 = await fetch(`/api/store/${encodeURIComponent(resolvedSupplier)}`);
             if (r2.ok) {
               const js2 = await r2.json();
               const found = (js2.listings || []).find((x) => String(x.id) === String(resolvedId));

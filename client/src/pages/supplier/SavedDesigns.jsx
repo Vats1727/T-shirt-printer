@@ -87,8 +87,10 @@ export default function SavedDesignsPage({ params }) {
   const normalizeImage = (img) => {
     if (!img) return null;
     img = String(img);
-    if (img.startsWith("data:") || img.startsWith("http") || img.startsWith("/")) return img;
-    return `/uploads/${img}`;
+    if (img.startsWith("data:") || img.startsWith("blob:")) return img;
+    if (img.startsWith("http://") || img.startsWith("https://")) return img;
+    if (img.startsWith("/")) return resolveApiUrl(img);
+    return resolveApiUrl(`/uploads/${img}`);
   };
 
   const openPreview = (design) => {
@@ -590,10 +592,10 @@ export default function SavedDesignsPage({ params }) {
                         onError={(e) => {
                           if (e.currentTarget.dataset.retried) return;
                           e.currentTarget.dataset.retried = "true";
-                          if (normalizedPreRendered.startsWith("/uploads/")) {
-                            e.currentTarget.src = normalizedPreRendered.replace("/uploads/", "/attached_assets/");
-                          } else if (normalizedPreRendered.startsWith("/attached_assets/")) {
-                            e.currentTarget.src = normalizedPreRendered.replace("/attached_assets/", "/uploads/");
+                          if (normalizedPreRendered.includes("/uploads/")) {
+                            e.currentTarget.src = resolveApiUrl(normalizedPreRendered.replace("/uploads/", "/attached_assets/"));
+                          } else if (normalizedPreRendered.includes("/attached_assets/")) {
+                            e.currentTarget.src = resolveApiUrl(normalizedPreRendered.replace("/attached_assets/", "/uploads/"));
                           }
                         }}
                       />

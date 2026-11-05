@@ -1,3 +1,4 @@
+import { resolveApiUrl } from "@/lib/apiUrl";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useLocation } from "wouter";
@@ -47,8 +48,10 @@ export default function CreateListing() {
   const normalizeImage = (img) => {
     if (!img) return null;
     img = String(img);
-    if (img.startsWith("data:") || img.startsWith("http") || img.startsWith("/")) return img;
-    return `/uploads/${img}`;
+    if (img.startsWith("data:") || img.startsWith("blob:")) return img;
+    if (img.startsWith("http://") || img.startsWith("https://")) return img;
+    if (img.startsWith("/")) return resolveApiUrl(img);
+    return resolveApiUrl(`/uploads/${img}`);
   };
 
   const extractDesignPrice = (d) => {
@@ -220,10 +223,13 @@ export default function CreateListing() {
 
   const getPreviewImage = (d, side) => {
     if (!d) return "/templates/tshirt.png";
+    let target = "/templates/tshirt.png";
     if (side === "front") {
-      return d.front?.url || d.any?.url || d.back?.url || "/templates/tshirt.png";
+      target = d.front?.url || d.any?.url || d.back?.url || "/templates/tshirt.png";
+    } else {
+      target = d.back?.url || d.front?.url || d.any?.url || "/templates/tshirt.png";
     }
-    return d.back?.url || d.front?.url || d.any?.url || "/templates/tshirt.png";
+    return resolveApiUrl(target);
   };
 
   return (

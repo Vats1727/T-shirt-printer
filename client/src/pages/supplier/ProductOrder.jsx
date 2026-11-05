@@ -1,3 +1,4 @@
+import { resolveApiUrl } from "@/lib/apiUrl";
 import { useEffect, useState, useRef } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useAuth } from "@/context/AuthContext";
@@ -97,12 +98,10 @@ export default function SupplierProductOrder() {
     if (!img && typeof raw === "string") img = raw;
     if (!img) return null;
     img = String(img).trim();
-    if (img.startsWith("data:") || img.startsWith("http://") || img.startsWith("https://")) return img;
-    if (img.startsWith("/uploads/") || img.startsWith("/attached_assets/")) return img;
-    if (img.startsWith("uploads/")) return `/${img}`;
-    if (img.startsWith("attached_assets/")) return `/${img}`;
-    if (img.startsWith("/")) return img;
-    return `/uploads/${img}`;
+    if (img.startsWith("data:") || img.startsWith("blob:")) return img;
+    if (img.startsWith("http://") || img.startsWith("https://")) return img;
+    if (img.startsWith("/")) return resolveApiUrl(img);
+    return resolveApiUrl(`/uploads/${img}`);
   }
   useEffect(() => {
     const load = async () => {
@@ -269,15 +268,48 @@ export default function SupplierProductOrder() {
 
         const fGarmentColor = meta.featured_color?.hex || savedD.template_color || firstColorHex || "#ffffff";
 
+        const parsePosition = (pos, fallback) => {
+          if (!pos) return fallback;
+          if (typeof pos === "string") {
+            try {
+              const parsed = JSON.parse(pos);
+              if (parsed && typeof parsed.x === "number" && typeof parsed.y === "number") {
+                return parsed;
+              }
+            } catch (e) {}
+            return fallback;
+          }
+          if (typeof pos === "object" && typeof pos.x === "number" && typeof pos.y === "number") {
+            return pos;
+          }
+          return fallback;
+        };
+
         const parseScale = (scaleVal, fallback = 25) => {
           if (scaleVal === undefined || scaleVal === null) return fallback;
           const num = Number(scaleVal);
           if (isNaN(num)) return fallback;
-          return num <= 1 && num > 0 ? Math.round(num * 100) : Math.round(num);
+          if (num > 0 && num <= 1) return Math.round(num * 100);
+          return Math.min(100, Math.max(1, Math.round(num)));
         };
 
-        const fArtwork = fImg?.asset?.dataUrl || fImg?.asset?.url || fImg?.url || (savedD.image ? normalizeImage(savedD.image) : null);
-        const bArtwork = bImg?.asset?.dataUrl || bImg?.asset?.url || bImg?.url || (savedD.back_image ? normalizeImage(savedD.back_image) : null);
+        const isPreviewUrl = (url) => {
+          if (!url) return false;
+          const s = String(url).toLowerCase();
+          return s.includes("preview_") || s.includes("mockup") || s.includes("pre-render");
+        };
+
+        const resolveArtwork = (layerImg, fallbackImg) => {
+          const layerUrl = layerImg?.asset?.dataUrl || layerImg?.asset?.url || layerImg?.url;
+          if (layerUrl && !isPreviewUrl(layerUrl)) return normalizeImage(layerUrl);
+          if (!layerImg && fallbackImg && !isPreviewUrl(fallbackImg)) {
+            return normalizeImage(fallbackImg);
+          }
+          return null;
+        };
+
+        const fArtwork = resolveArtwork(fImg, savedD.image);
+        const bArtwork = resolveArtwork(bImg, savedD.back_image);
 
         setFrontState((prev) => ({
           ...prev,
@@ -285,11 +317,26 @@ export default function SupplierProductOrder() {
           color: fText?.color || savedD.color || prev.color,
           textSize: fText?.size ? Number(fText.size) : (savedD.text_size ? Number(savedD.text_size) : prev.textSize),
           textRotation: fText?.rotation !== undefined ? Number(fText.rotation) : (savedD.text_rotation !== undefined ? Number(savedD.text_rotation) : prev.textRotation),
-          textPosition: fText?.position || savedD.text_position || prev.textPosition,
+          textPosition: parsePosition(fText?.position || savedD.text_position, prev.textPosition),
           image: fArtwork,
           imageScale: parseScale(fImg?.scale ?? savedD.image_scale, prev.imageScale),
           imageRotation: fImg?.rotation !== undefined ? Number(fImg.rotation) : (savedD.image_rotation !== undefined ? Number(savedD.image_rotation) : prev.imageRotation),
-          imagePosition: fImg?.position || savedD.image_position || prev.imagePosition,
+          imagePosition: parsePosition(fImg?.position || savedD.image_position, prev.imagePosition),
+          template: savedD.template || prod?.template || prev.template,
+          templateColor: fGarmentColor
+        }));
+
+        setBackState((prev) => ({
+          ...prev,
+          slogan: bText?.text !== undefined ? bText.text : (savedD.back_slogan || ""),
+          color: bText?.color || savedD.color || prev.color,
+          textSize: bText?.size ? Number(bText.size) : (savedD.back_text_size ? Number(savedD.back_text_size) : prev.textSize),
+          textRotation: bText?.rotation !== undefined ? Number(bText.rotation) : (savedD.back_text_rotation !== undefined ? Number(savedD.back_text_rotation) : prev.textRotation),
+          textPosition: parsePosition(bText?.position || savedD.back_text_position, prev.textPosition),
+          image: bArtwork,
+          imageScale: parseScale(bImg?.scale ?? savedD.back_image_scale, prev.imageScale),
+          imageRotation: bImg?.rotation !== undefined ? Number(bImg.rotation) : (savedD.back_image_rotation !== undefined ? Number(savedD.back_image_rotation) : prev.imageRotation),
+          imagePosition: parsePosition(bImg?.position || savedD.back_image_position, prev.imagePosition),
           template: savedD.template || prod?.template || prev.template,
           templateColor: fGarmentColor
         }));

@@ -103,12 +103,13 @@ function StoreCard({
 
   const pg = listing.preview_group;
   const colorPreviews = listing?.preview_by_color || [];
-  const matchedColorPreview = selectedColor ? colorPreviews.find((cp) => {
-    if (selectedColor.id && cp.id && String(selectedColor.id) === String(cp.id)) return true;
-    if (selectedColor.hex && cp.hex && selectedColor.hex.toLowerCase() === cp.hex.toLowerCase()) return true;
-    if (selectedColor.name && cp.name && selectedColor.name.toLowerCase() === cp.name.toLowerCase()) return true;
+  const activeColorObj = selectedColor || (colorPreviews.length > 0 ? colorPreviews[0] : null);
+  const matchedColorPreview = activeColorObj ? (colorPreviews.find((cp) => {
+    if (activeColorObj.id && cp.id && String(activeColorObj.id) === String(cp.id)) return true;
+    if (activeColorObj.hex && cp.hex && activeColorObj.hex.toLowerCase() === cp.hex.toLowerCase()) return true;
+    if (activeColorObj.name && cp.name && activeColorObj.name.toLowerCase() === cp.name.toLowerCase()) return true;
     return false;
-  }) : null;
+  }) || colorPreviews[0]) : null;
 
   const defaultFront = pg?.front?.url || (listing.preview_asset_id ? `/api/assets/${listing.preview_asset_id}` : null) || listing.preview_url || "/templates/tshirt.png";
   const defaultBack = pg?.back?.url || null;
@@ -134,7 +135,14 @@ function StoreCard({
     alt={listing.title}
     className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform duration-500 ease-out drop-shadow-sm"
     onError={(e) => {
-      e.currentTarget.src = "/templates/tshirt.png";
+      if (e.currentTarget.dataset.retried) return;
+      e.currentTarget.dataset.retried = "true";
+      const cur = String(currentImg || "");
+      if (cur.includes("/uploads/")) {
+        e.currentTarget.src = resolveApiUrl(cur.replace("/uploads/", "/attached_assets/"));
+      } else if (cur.includes("/attached_assets/")) {
+        e.currentTarget.src = resolveApiUrl(cur.replace("/attached_assets/", "/uploads/"));
+      }
     }}
   />
 

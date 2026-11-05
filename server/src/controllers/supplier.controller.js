@@ -43,7 +43,11 @@ export async function getCatalog(req, res, next) {
 
 export async function getProduct(req, res, next) {
   try {
-    const id = parseInt(req.params.id, 10);
+    const rawId = req.params.id;
+    let id = parseInt(rawId, 10);
+    if (isNaN(id) || id <= 0) {
+      id = decodeId(rawId);
+    }
     if (!id) return res.status(400).json({ message: 'Invalid product id' });
     const product = await productsStore.getProduct(id);
     if (!product) return res.status(404).json({ message: 'Product not found' });
@@ -647,7 +651,11 @@ export async function getListingBySlugJson(req, res, next) {
 
 export async function getListingByIdJson(req, res, next) {
   try {
-    const id = parseInt(req.params.id, 10);
+    const rawId = req.params.id;
+    let id = parseInt(rawId, 10);
+    if (isNaN(id) || id <= 0) {
+      id = decodeId(rawId);
+    }
     const listing = await listingModel.getListingById(id);
     if (!listing) return res.status(404).json({ message: 'Listing not found' });
 

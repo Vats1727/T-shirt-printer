@@ -203,8 +203,9 @@ export async function getDesign(id, userId) {
         row.price = (row.price_cents || 0) / 100;
         row.retail_price = row.price;
         row.currency = vRes.rows[0].currency || 'INR';
-        if (!row.image && p?.metadata?.preview_front) {
-          row.image = p.metadata.preview_front;
+        // Keep row.image strictly for isolated artwork layer, never pollute with composite preview_front
+        if (!row.preview_front && p?.metadata?.preview_front) {
+          row.preview_front = p.metadata.preview_front;
         }
       }
     }
