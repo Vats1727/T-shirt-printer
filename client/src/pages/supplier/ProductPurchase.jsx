@@ -1,3 +1,4 @@
+import { resolveApiUrl } from "@/lib/apiUrl";
 import { useEffect, useState, useMemo } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useAuth } from "@/context/AuthContext";
@@ -639,7 +640,7 @@ export default function SupplierProductPurchase() {
             <div className="relative aspect-square max-h-[380px] w-full rounded-2xl bg-radial from-slate-50 to-slate-100/80 flex items-center justify-center p-6 border border-slate-100 shadow-inner overflow-hidden">
               {activeGarmentImage ? (
                 <img
-                  src={activeGarmentImage}
+                  src={resolveApiUrl(activeGarmentImage)}
                   alt={product.name}
                   className="max-h-full max-w-full object-contain filter drop-shadow-md"
                 />

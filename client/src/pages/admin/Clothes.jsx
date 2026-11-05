@@ -33,6 +33,7 @@ import {
   AlertCircle,
   Lock
 } from "lucide-react";
+import { resolveApiUrl } from "@/lib/apiUrl";
 import { DesignCanvas } from "@/components/common/DesignCanvas";
 import { useToast } from "@/hooks/use-toast";
 import { decodeId } from "@/utils/idEncoder";
@@ -1212,7 +1213,7 @@ export default function AdminClothes() {
                           <div className="space-y-4">
                             <div className="relative aspect-square max-h-48 mx-auto bg-white rounded-xl border border-slate-200 p-2 flex items-center justify-center overflow-hidden">
                               <img
-                                src={designs.front.image}
+                                src={resolveApiUrl(designs.front.image)}
                                 alt="Front Mockup"
                                 className="max-h-full max-w-full object-contain"
                               />
@@ -1389,10 +1390,10 @@ export default function AdminClothes() {
                                         metadata: { type: "farmo", side: "front" }
                                       })
                                     });
-                                    if (res.ok) {
+                                                                        if (res.ok) {
                                       const js = await res.json();
-                                      const url =
-                                        js?.url || `/attached_assets/${js?.filename}`;
+                                      const rawUrl = js?.url || `/attached_assets/${js?.filename}`;
+                                      const url = resolveApiUrl(rawUrl);
                                       const img2 = new Image();
                                       img2.onload = () => {
                                         const aspectRatio = img2.height / img2.width;
@@ -1404,6 +1405,17 @@ export default function AdminClothes() {
                                             ...d.front,
                                             image: url,
                                             imageScale: scalePct,
+                                            imagePosition: { x: 200, y: 200 }
+                                          }
+                                        }));
+                                      };
+                                      img2.onerror = () => {
+                                        setDesigns((d) => ({
+                                          ...d,
+                                          front: {
+                                            ...d.front,
+                                            image: dataUrl,
+                                            imageScale: 85,
                                             imagePosition: { x: 200, y: 200 }
                                           }
                                         }));
@@ -1455,7 +1467,7 @@ export default function AdminClothes() {
                           <div className="space-y-4">
                             <div className="relative aspect-square max-h-48 mx-auto bg-white rounded-xl border border-slate-200 p-2 flex items-center justify-center overflow-hidden">
                               <img
-                                src={designs.back.image}
+                                src={resolveApiUrl(designs.back.image)}
                                 alt="Back Mockup"
                                 className="max-h-full max-w-full object-contain"
                               />
@@ -1632,10 +1644,10 @@ export default function AdminClothes() {
                                         metadata: { type: "farmo", side: "back" }
                                       })
                                     });
-                                    if (res.ok) {
+                                                                        if (res.ok) {
                                       const js = await res.json();
-                                      const url =
-                                        js?.url || `/attached_assets/${js?.filename}`;
+                                      const rawUrl = js?.url || `/attached_assets/${js?.filename}`;
+                                      const url = resolveApiUrl(rawUrl);
                                       const img2 = new Image();
                                       img2.onload = () => {
                                         const aspectRatio = img2.height / img2.width;
@@ -1647,6 +1659,17 @@ export default function AdminClothes() {
                                             ...d.back,
                                             image: url,
                                             imageScale: scalePct,
+                                            imagePosition: { x: 200, y: 200 }
+                                          }
+                                        }));
+                                      };
+                                      img2.onerror = () => {
+                                        setDesigns((d) => ({
+                                          ...d,
+                                          back: {
+                                            ...d.back,
+                                            image: dataUrl,
+                                            imageScale: 85,
                                             imagePosition: { x: 200, y: 200 }
                                           }
                                         }));

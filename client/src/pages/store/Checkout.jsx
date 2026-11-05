@@ -1,3 +1,4 @@
+import { resolveApiUrl } from "@/lib/apiUrl";
 import React, { useState, useEffect } from 'react';
 import { useLocation, Link } from 'wouter';
 import { useAuth } from '@/context/AuthContext';
@@ -357,7 +358,7 @@ export default function Checkout() {
                 <div key={idx} className="flex items-center justify-between text-xs py-1">
                   <div className="flex items-center gap-2">
                     <img
-                      src={it.preview_url || '/templates/tshirt.png'}
+                      src={resolveApiUrl(it.preview_url)}
                       alt={it.title}
                       className="size-9 rounded-lg bg-slate-50 object-contain p-0.5 border"
                     />

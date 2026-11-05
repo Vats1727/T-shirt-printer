@@ -1,3 +1,4 @@
+import { resolveApiUrl } from "@/lib/apiUrl";
 import React, { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/context/AuthContext";
@@ -326,7 +327,7 @@ export default function DesignerDesigns() {
                     {/* Preview Image / Fallback Canvas */}
                     {currentPreview ? (
                       <img
-                        src={currentPreview}
+                        src={resolveApiUrl(currentPreview)}
                         alt={d.product_name || "Design Preview"}
                         onError={(e) => {
                           if (e.currentTarget.dataset.retried) return;

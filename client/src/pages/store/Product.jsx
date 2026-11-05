@@ -1,3 +1,4 @@
+import { resolveApiUrl } from "@/lib/apiUrl";
 import { useEffect, useState } from "react";
 import { useLocation, Link } from "wouter";
 import Footer from "@/layouts/Footer";
@@ -366,7 +367,7 @@ export default function StoreProduct() {
 
                 return (
                   <img
-                    src={currentImg}
+                    src={resolveApiUrl(currentImg)}
                     alt={listing.title}
                     className="max-h-[480px] w-auto max-w-full object-contain drop-shadow-md group-hover:scale-105 transition-transform duration-500 ease-out"
                     onError={(e) => {
@@ -393,7 +394,7 @@ export default function StoreProduct() {
               onClick={() => setPreviewSide("front")}
               className={`flex items-center gap-3 p-2 rounded-2xl border transition-all ${previewSide === "front" ? "border-indigo-600 bg-white ring-2 ring-indigo-600/20 shadow-xs" : "border-slate-200 bg-slate-50 hover:bg-white text-slate-600"}`}
             >
-              <img src={frontImg} alt="Front Thumbnail" className="size-14 object-contain rounded-lg bg-slate-100/60 p-1" />
+              <img src={resolveApiUrl(frontImg)} alt="Front Thumbnail" className="size-14 object-contain rounded-lg bg-slate-100/60 p-1" />
               <div className="text-left pr-3">
                 <span className="block text-xs font-bold text-slate-900">Front Angle</span>
                 <span className="block text-[11px] text-slate-400">Primary Print</span>
@@ -404,7 +405,7 @@ export default function StoreProduct() {
               onClick={() => setPreviewSide("back")}
               className={`flex items-center gap-3 p-2 rounded-2xl border transition-all ${previewSide === "back" ? "border-indigo-600 bg-white ring-2 ring-indigo-600/20 shadow-xs" : "border-slate-200 bg-slate-50 hover:bg-white text-slate-600"}`}
             >
-              <img src={backImg || frontImg} alt="Back Thumbnail" className="size-14 object-contain rounded-lg bg-slate-100/60 p-1" />
+              <img src={resolveApiUrl(backImg || frontImg)} alt="Back Thumbnail" className="size-14 object-contain rounded-lg bg-slate-100/60 p-1" />
               <div className="text-left pr-3">
                 <span className="block text-xs font-bold text-slate-900">Back Angle</span>
                 <span className="block text-[11px] text-slate-400">Back Print</span>

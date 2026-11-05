@@ -1,3 +1,4 @@
+import { resolveApiUrl } from "@/lib/apiUrl";
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';

@@ -1,3 +1,4 @@
+import { resolveApiUrl } from "@/lib/apiUrl";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -516,7 +517,7 @@ export default function SupplierOrders() {
                         <div className="flex items-center gap-2.5">
                           {(firstItem.preview_url || firstItem.custom_mockup_url) ? (
                             <img
-                              src={firstItem.preview_url || firstItem.custom_mockup_url}
+                              src={resolveApiUrl(firstItem.preview_url || firstItem.custom_mockup_url)}
                               alt="Garment Preview"
                               className="w-10 h-10 object-contain rounded-lg border border-slate-200 bg-slate-50 shrink-0"
                               onError={(e) => {

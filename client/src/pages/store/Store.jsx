@@ -1,3 +1,4 @@
+import { resolveApiUrl } from "@/lib/apiUrl";
 import { useEffect, useState, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -129,7 +130,7 @@ function StoreCard({
   }
       <div className="aspect-[4/5] bg-gradient-to-b from-slate-50/80 via-white to-slate-100/50 p-6 flex items-center justify-center relative overflow-hidden">
         <img
-    src={currentImg}
+    src={resolveApiUrl(currentImg)}
     alt={listing.title}
     className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform duration-500 ease-out drop-shadow-sm"
     onError={(e) => {

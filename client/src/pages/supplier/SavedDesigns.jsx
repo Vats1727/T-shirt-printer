@@ -1,3 +1,4 @@
+import { resolveApiUrl } from "@/lib/apiUrl";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { Card, CardContent } from "@/components/ui/card";
@@ -336,7 +337,7 @@ export default function SavedDesignsPage({ params }) {
                     {/* Preview Image / Fallback Canvas */}
                     {currentPreview ? (
                       <img
-                        src={currentPreview}
+                        src={resolveApiUrl(currentPreview)}
                         alt={d.slogan || "Custom Design"}
                         onError={(e) => {
                           if (e.currentTarget.dataset.retried) return;

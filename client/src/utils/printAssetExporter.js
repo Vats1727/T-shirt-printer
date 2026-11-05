@@ -1,3 +1,4 @@
+import { resolveApiUrl } from "@/lib/apiUrl";
 /**
  * Utility to export isolated transparent artwork at 300 DPI for industrial RIP software.
  * Ensures NO garment background (t-shirt template silhouette) is included in the output.
@@ -9,7 +10,7 @@ function loadImage(src) {
     img.crossOrigin = 'anonymous';
     img.onload = () => resolve(img);
     img.onerror = (e) => reject(e);
-    img.src = src;
+    img.src = resolveApiUrl(src);
   });
 }
 

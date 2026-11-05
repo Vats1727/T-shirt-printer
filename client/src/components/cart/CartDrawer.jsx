@@ -1,3 +1,4 @@
+import { resolveApiUrl } from "@/lib/apiUrl";
 import React from 'react';
 import { useLocation } from 'wouter';
 import { useCart } from '@/context/CartContext';
@@ -112,7 +113,7 @@ export default function CartDrawer() {
                 {/* Thumbnail */}
                 <div className="size-20 rounded-xl bg-slate-50 border border-slate-100 p-1 flex items-center justify-center shrink-0 overflow-hidden">
                   <img
-                    src={item.preview_url || '/templates/tshirt.png'}
+                    src={resolveApiUrl(item.preview_url)}
                     alt={item.title}
                     className="size-full object-contain"
                     onError={(e) => {

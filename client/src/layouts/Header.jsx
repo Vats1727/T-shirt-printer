@@ -1,3 +1,4 @@
+import { resolveApiUrl } from "@/lib/apiUrl";
 import { useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
@@ -148,7 +149,7 @@ export default function Header({
             {logoUrl ? (
               <div className="flex items-center">
                 <img
-                  src={logoUrl}
+                  src={resolveApiUrl(logoUrl)}
                   alt={storeTitle}
                   className="h-9 sm:h-11 w-auto max-w-[160px] sm:max-w-[200px] object-contain rounded-lg border border-slate-700/60 shadow-xs bg-slate-950/40 p-1"
                 />

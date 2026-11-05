@@ -1,3 +1,4 @@
+import { resolveApiUrl } from "@/lib/apiUrl";
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/context/AuthContext';
@@ -428,7 +429,7 @@ export default function SupplierListings() {
                 {/* Mockup Preview Area */}
                 <div className="aspect-[4/5] bg-gradient-to-b from-slate-50 via-white to-slate-100/60 p-5 flex items-center justify-center relative overflow-hidden">
                   <img
-                    src={currentImg}
+                    src={resolveApiUrl(currentImg)}
                     alt={listing.title}
                     className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform duration-500 ease-out drop-shadow-sm"
                     onError={(e) => {

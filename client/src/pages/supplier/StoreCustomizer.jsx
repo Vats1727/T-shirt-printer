@@ -1,3 +1,4 @@
+import { resolveApiUrl } from "@/lib/apiUrl";
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -345,7 +346,7 @@ export default function StoreCustomizer() {
                 <div className="flex items-center gap-4 p-3 bg-slate-50/80 rounded-xl border border-slate-200">
                   {logoUrl ? <div className="size-14 rounded-lg bg-slate-900 border border-slate-800 p-1 flex items-center justify-center shrink-0">
                       <img
-    src={logoUrl}
+    src={resolveApiUrl(logoUrl)}
     alt="Store Logo"
     className="max-h-full max-w-full object-contain"
   />

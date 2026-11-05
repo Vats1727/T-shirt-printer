@@ -1,3 +1,4 @@
+import { resolveApiUrl } from "@/lib/apiUrl";
 import { useEffect, useRef, useState } from "react";
 
 function getBuiltinTemplateSrc(template, side) {
@@ -165,7 +166,7 @@ export function DesignCanvas({
     tshirtRef.current = null;
     maskRef.current = null;
 
-    const targetSrc = templateImage || getBuiltinTemplateSrc(template, side);
+    const targetSrc = resolveApiUrl(templateImage || getBuiltinTemplateSrc(template, side));
     if (!targetSrc) {
       scheduleRender();
       return;
@@ -204,7 +205,7 @@ export function DesignCanvas({
     if (image) {
       const img = new Image();
       img.crossOrigin = "anonymous";
-      img.src = image;
+      img.src = resolveApiUrl(image);
       img.onload = () => {
         userImageRef.current = img;
         scheduleRender();
@@ -232,7 +233,7 @@ export function DesignCanvas({
     }
     const img = new Image();
     img.crossOrigin = "anonymous";
-    img.src = backgroundImage;
+    img.src = resolveApiUrl(backgroundImage);
     img.onload = () => {
       backgroundRef.current = img;
       scheduleRender();
