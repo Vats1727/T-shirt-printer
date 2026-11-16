@@ -27,6 +27,51 @@ export async function createOrder({
   try {
     await client.query('BEGIN');
 
+    // Strict Apparel Marketplace Governance: Verify that all products are approved and mapped to active garments
+    for (const item of items) {
+      const prodId = item.product_id ? Number(item.product_id) : null;
+      const listingId = item.listing_id ? Number(item.listing_id) : null;
+      let checkProdId = prodId;
+
+      if (!checkProdId && listingId) {
+        const lRow = await client.query(
+          `SELECT d.product_id FROM listings l 
+           LEFT JOIN designs d ON d.id = CASE WHEN l.design_key ~ '^[0-9]+$' THEN l.design_key::int WHEN l.design_key ~ '^design-\\d+$' THEN substring(l.design_key from 8)::int ELSE NULL END
+           WHERE l.id = $1`,
+          [listingId]
+        );
+        if (lRow.rows[0]?.product_id) {
+          checkProdId = Number(lRow.rows[0].product_id);
+        }
+      }
+
+      if (checkProdId) {
+        const pCheck = await client.query(
+          `SELECT pf.id, pf.name, pf.is_approved, pf.garment_id, amg.is_active as garment_active
+           FROM products_full pf
+           LEFT JOIN apparel_master_garments amg ON amg.id = pf.garment_id
+           WHERE pf.id = $1`,
+          [checkProdId]
+        );
+        if (pCheck.rows.length === 0) {
+          const err = new Error(`Product #${checkProdId} not found in marketplace catalog`);
+          err.statusCode = 422;
+          throw err;
+        }
+        const p = pCheck.rows[0];
+        if (p.is_approved === false) {
+          const err = new Error(`Cannot purchase product "${p.name}" (ID #${p.id}) because it is pending administrative approval.`);
+          err.statusCode = 422;
+          throw err;
+        }
+        if (!p.garment_id || p.garment_active === false) {
+          const err = new Error(`Cannot purchase product "${p.name}": master garment is unmapped or inactive.`);
+          err.statusCode = 422;
+          throw err;
+        }
+      }
+    }
+
     // Calculate subtotal and line items
     let subtotalCents = 0;
     const validatedItems = [];
@@ -100,6 +145,8 @@ export async function createOrder({
         colorName: item.color_name || null,
         colorHex: item.color_hex || null,
         sizeLabel: item.size_label || item.size || 'M',
+        sizeId: item.sizeId || item.size_id || null,
+        reservationToken: item.reservation_token || item.reservationToken || null,
         quantity,
         unitPriceCents,
         totalPriceCents,
@@ -253,14 +300,59 @@ export async function createOrder({
         ]
       );
 
-      // Decrement cloth inventory if linked to provider & product
-      if (providerId && item.productId && item.colorId && item.sizeLabel) {
+      // Safely and atomically confirm reservation or decrement cloth inventory
+      const resToken = item.reservationToken || item.reservation_token;
+      const isPaid = paymentStatus === 'paid';
+
+      if (resToken) {
+        if (isPaid) {
+          // Backend-verified payment: permanently deduct physical quantity and release reservation hold
+          const rUpdate = await client.query(
+            `UPDATE inventory_reservations 
+             SET status = 'confirmed', order_id = $1, updated_at = NOW() 
+             WHERE reservation_token = $2 AND status = 'reserved'
+             RETURNING inventory_id, quantity`,
+            [createdOrder.id, resToken]
+          );
+          if (rUpdate.rows.length > 0) {
+            const { inventory_id, quantity: reservedQty } = rUpdate.rows[0];
+            await client.query(
+              `UPDATE cloth_inventory 
+               SET quantity = GREATEST(0, quantity - $1),
+                   reserved_quantity = GREATEST(0, reserved_quantity - $1)
+               WHERE id = $2`,
+              [Number(reservedQty), inventory_id]
+            );
+          }
+        } else {
+          // Payment pending / unverified: retain reservation in 'reserved' state, simply link order_id
+          await client.query(
+            `UPDATE inventory_reservations 
+             SET order_id = $1, updated_at = NOW() 
+             WHERE reservation_token = $2 AND status = 'reserved'`,
+            [createdOrder.id, resToken]
+          );
+        }
+      } else if (isPaid && (providerId || item.colorId || item.sizeLabel)) {
+        // Direct purchase without prior reservation token (e.g. instant checkout or API order)
         try {
+          const colorNum = Number(item.colorId) || 0;
+          const sizeNum = Number(item.sizeId) || 0;
+          const prodTitle = item.title || item.product || '';
           await client.query(
             `UPDATE cloth_inventory 
              SET quantity = GREATEST(0, quantity - $1)
-             WHERE owner_id = $2 AND color_id = $3 AND product ILIKE $4`,
-            [item.quantity, providerId, Number(item.colorId) || 0, `%${item.title}%`]
+             WHERE id = (
+               SELECT ci.id FROM cloth_inventory ci
+               LEFT JOIN sizes s ON s.id = ci.size_id
+               WHERE (ci.owner_id = $2 OR ci.owner_id IS NULL)
+                 AND (ci.color_id = $3 OR $3 = 0)
+                 AND (ci.size_id = $4 OR LOWER(COALESCE(s.label, '')) = LOWER($5))
+                 AND (ci.product ILIKE $6 OR ci.product ILIKE '%hoodie%' OR ci.product ILIKE '%tshirt%')
+               ORDER BY ci.owner_id DESC NULLS LAST
+               LIMIT 1
+             )`,
+            [item.quantity, providerId || null, colorNum, sizeNum, String(item.sizeLabel || ''), `%${prodTitle}%`]
           );
         } catch (e) {
           // ignore inventory decrement failures to prevent blocking order
@@ -566,39 +658,241 @@ export async function updateOrderStatus(orderId, status, trackingInfo = null) {
   return await getOrderById(orderId);
 }
 
+export async function confirmOrderPayment(orderId, {
+  paymentMethod = 'razorpay',
+  razorpayPaymentId = null,
+  razorpaySignature = null,
+  rawPayload = {}
+}) {
+  if (!pool) return null;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const orderRes = await client.query('SELECT * FROM orders WHERE id = $1 FOR UPDATE', [orderId]);
+    if (!orderRes.rows.length) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+    const order = orderRes.rows[0];
+
+    // Concurrency Protection: If already paid by another simultaneous transaction, fail-safe reject or idempotent match
+    if (order.payment_status === 'paid') {
+      if (razorpayPaymentId && order.razorpay_payment_id === razorpayPaymentId) {
+        await client.query('COMMIT');
+        return await getOrderById(orderId);
+      }
+      await client.query('ROLLBACK');
+      const err = new Error(`Order #${orderId} is already confirmed as paid (payment method: ${order.payment_method || 'unknown'})`);
+      err.statusCode = 409;
+      throw err;
+    }
+
+    // Verify that the transaction ID is unique to this order
+    const txId = razorpayPaymentId || `TX-${order.order_number}`;
+    const existingPay = await client.query('SELECT order_id FROM payments WHERE transaction_id = $1', [txId]);
+    if (existingPay.rows.length > 0 && Number(existingPay.rows[0].order_id) !== Number(orderId)) {
+      await client.query('ROLLBACK');
+      const err = new Error(`Transaction ID ${txId} has already been credited to Order #${existingPay.rows[0].order_id}`);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Update order status and payment status
+    await client.query(
+      `UPDATE orders 
+       SET payment_status = 'paid',
+           payment_method = COALESCE($2, payment_method),
+           razorpay_payment_id = COALESCE($3, razorpay_payment_id),
+           razorpay_signature = COALESCE($4, razorpay_signature),
+           status = CASE WHEN status = 'pending' THEN 'confirmed' ELSE status END,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [orderId, paymentMethod, razorpayPaymentId, razorpaySignature]
+    );
+
+    // Record in payments table if transaction ID is present
+    await client.query(
+      `INSERT INTO payments (
+        order_id, transaction_id, gateway, payment_method, amount_cents, currency, status, raw_payload, created_at
+      ) VALUES ($1,$2,'razorpay',$3,$4,$5,'captured',$6,NOW())
+      ON CONFLICT (transaction_id) DO NOTHING`,
+      [order.id, txId, paymentMethod, order.total_cents, order.currency, JSON.stringify(rawPayload)]
+    );
+
+    // Atomically confirm active inventory reservations linked to this order
+    const resUpdate = await client.query(
+      `UPDATE inventory_reservations 
+       SET status = 'confirmed', updated_at = NOW() 
+       WHERE order_id = $1 AND status = 'reserved'
+       RETURNING inventory_id, quantity`,
+      [orderId]
+    );
+
+    for (const rRow of resUpdate.rows) {
+      await client.query(
+        `UPDATE cloth_inventory 
+         SET quantity = GREATEST(0, quantity - $1),
+             reserved_quantity = GREATEST(0, reserved_quantity - $1)
+         WHERE id = $2`,
+        [Number(rRow.quantity), rRow.inventory_id]
+      );
+    }
+
+    await client.query('COMMIT');
+    return await getOrderById(orderId);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+export async function confirmManualPayment(orderId, {
+  paymentMethod,
+  transactionReference,
+  confirmationReason,
+  adminId,
+  adminName,
+  adminRole
+}) {
+  if (!pool) return null;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const orderRes = await client.query('SELECT * FROM orders WHERE id = $1 FOR UPDATE', [orderId]);
+    if (!orderRes.rows.length) {
+      await client.query('ROLLBACK');
+      const err = new Error(`Order #${orderId} not found`);
+      err.statusCode = 404;
+      throw err;
+    }
+    const order = orderRes.rows[0];
+
+    if (order.payment_status === 'paid') {
+      await client.query('ROLLBACK');
+      const err = new Error(`Order #${orderId} is already marked as paid (payment method: ${order.payment_method || 'unknown'})`);
+      err.statusCode = 409;
+      throw err;
+    }
+
+    if (order.status === 'cancelled') {
+      await client.query('ROLLBACK');
+      const err = new Error(`Cannot confirm payment for cancelled order #${orderId}`);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Append audit event to tracking_info timeline
+    let currentTracking = {};
+    try {
+      if (typeof order.tracking_info === 'string') {
+        currentTracking = JSON.parse(order.tracking_info || '{}');
+      } else if (order.tracking_info && typeof order.tracking_info === 'object') {
+        currentTracking = { ...order.tracking_info };
+      }
+    } catch (e) {
+      currentTracking = {};
+    }
+    const timeline = Array.isArray(currentTracking.timeline) ? [...currentTracking.timeline] : [];
+    timeline.push({
+      status: 'manual_payment_confirmed',
+      title: 'Manual Payment Confirmed',
+      description: `Manual payment (${paymentMethod}) confirmed by ${adminName || 'Admin Staff'} (Role: ${adminRole || 'admin'}): ${confirmationReason} [Ref: ${transactionReference}]`,
+      timestamp: new Date().toISOString()
+    });
+    currentTracking.timeline = timeline;
+
+    // Update order
+    await client.query(
+      `UPDATE orders 
+       SET payment_status = 'paid',
+           payment_method = $2,
+           status = CASE WHEN status = 'pending' THEN 'confirmed' ELSE status END,
+           tracking_info = $3::jsonb,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [orderId, paymentMethod, JSON.stringify(currentTracking)]
+    );
+
+    // Record in payments table with full audit payload
+    const safeRef = String(transactionReference || 'REF').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+    const txId = `MANUAL-${safeRef}-${order.id}`;
+    const auditPayload = {
+      confirmed_by_admin_id: adminId,
+      confirmed_by_admin_name: adminName,
+      confirmed_by_role: adminRole,
+      confirmation_reason: confirmationReason,
+      transaction_reference: transactionReference,
+      confirmed_at: new Date().toISOString()
+    };
+
+    await client.query(
+      `INSERT INTO payments (
+        order_id, transaction_id, gateway, payment_method, amount_cents, currency, status, raw_payload, created_at
+      ) VALUES ($1,$2,'manual',$3,$4,$5,'captured',$6,NOW())
+      ON CONFLICT (transaction_id) DO NOTHING`,
+      [order.id, txId, paymentMethod, order.total_cents, order.currency, JSON.stringify(auditPayload)]
+    );
+
+    // Atomically confirm active inventory reservations linked to this order
+    const resUpdate = await client.query(
+      `UPDATE inventory_reservations 
+       SET status = 'confirmed', updated_at = NOW() 
+       WHERE order_id = $1 AND status = 'reserved'
+       RETURNING inventory_id, quantity`,
+      [orderId]
+    );
+
+    for (const rRow of resUpdate.rows) {
+      await client.query(
+        `UPDATE cloth_inventory 
+         SET quantity = GREATEST(0, quantity - $1),
+             reserved_quantity = GREATEST(0, reserved_quantity - $1)
+         WHERE id = $2`,
+        [Number(rRow.quantity), rRow.inventory_id]
+      );
+    }
+
+    await client.query('COMMIT');
+    return await getOrderById(orderId);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 export async function updatePaymentStatus(orderId, {
   paymentStatus,
   razorpayPaymentId = null,
   razorpaySignature = null,
   rawPayload = {}
 }) {
+  if (paymentStatus === 'paid') {
+    return await confirmOrderPayment(orderId, {
+      paymentMethod: 'online',
+      razorpayPaymentId,
+      razorpaySignature,
+      rawPayload
+    });
+  }
+
   if (!pool) return null;
   const res = await pool.query(
     `UPDATE orders 
      SET payment_status = $2::varchar,
          razorpay_payment_id = COALESCE($3, razorpay_payment_id),
          razorpay_signature = COALESCE($4, razorpay_signature),
-         status = CASE WHEN $2::varchar = 'paid' AND status = 'pending' THEN 'confirmed' ELSE status END,
          updated_at = NOW()
      WHERE id = $1
      RETURNING *`,
     [orderId, paymentStatus, razorpayPaymentId, razorpaySignature]
   );
   if (!res.rows.length) return null;
-
-  const order = res.rows[0];
-
-  // Record payment in payments ledger if paid
-  if (paymentStatus === 'paid' && razorpayPaymentId) {
-    await pool.query(
-      `INSERT INTO payments (
-        order_id, transaction_id, gateway, payment_method, amount_cents, currency, status, raw_payload, created_at
-      ) VALUES ($1,$2,'razorpay','online',$3,$4,'captured',$5,NOW())
-      ON CONFLICT (transaction_id) DO NOTHING`,
-      [order.id, razorpayPaymentId, order.total_cents, order.currency, JSON.stringify(rawPayload)]
-    );
-  }
-
   return await getOrderById(orderId);
 }
 
@@ -770,6 +1064,8 @@ export default {
   listOrdersByProvider,
   listAllOrdersForAdmin,
   updateOrderStatus,
-  updatePaymentStatus
+  updatePaymentStatus,
+  confirmOrderPayment,
+  confirmManualPayment
 };
 

@@ -4,6 +4,7 @@ import userController from '../controllers/user.controller.js';
 import orderController from '../controllers/order.controller.js';
 import supplierController from '../controllers/supplier.controller.js';
 import { requireAuth, requireRole } from '../middleware/auth.middleware.js';
+import { validateApparelOnly } from '../middleware/apparelGuard.js';
 
 const router = Router();
 
@@ -32,9 +33,9 @@ router.delete('/size-chart', productController.deleteSizeChart);
 
 // Products
 router.get('/products', productController.listProducts);
-router.post('/products', productController.createProduct);
+router.post('/products', validateApparelOnly, productController.createProduct);
 router.get('/products/:id', productController.getProduct);
-router.put('/products/:id', productController.updateProduct);
+router.put('/products/:id', validateApparelOnly, productController.updateProduct);
 router.delete('/products/:id', productController.deleteProduct);
 
 // Designers & Profile

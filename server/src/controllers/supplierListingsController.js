@@ -1,5 +1,6 @@
 import * as listingsStore from '../services/listingsStore.js';
 import { fmtErr } from '../utils.js';
+import { resolveListingPreview } from './supplier.controller.js';
 export async function createListing(req, res) {
   const user = req.user;
   if (!user) return res.status(401).json({ message: "Not authenticated" });
@@ -93,7 +94,9 @@ export async function getPublicListing(req, res) {
       } catch (e) {
       }
     }
-    const clientBase = process.env.CLIENT_BASE_URL ? String(process.env.CLIENT_BASE_URL).replace(/\/$/, "") : `${req.protocol}://${req.hostname}:5173`;
+    const clientBase = process.env.CLIENT_BASE_URL
+      ? String(process.env.CLIENT_BASE_URL).replace(/\/$/, "")
+      : (process.env.CORS_ORIGIN || `${req.protocol}://${req.hostname}`);
     const supplierTemplate = process.env.SUPPLIER_STORE_URL_TEMPLATE ? String(process.env.SUPPLIER_STORE_URL_TEMPLATE) : null;
     const supplierUrl = supplierTemplate ? supplierTemplate.replace("{supplier_id}", String(row.supplier_id || "")).replace("{slug}", slug) : `${clientBase}/store/${encodeURIComponent(String(row.supplier_id || ""))}`;
     const redirectScript = clientBase ? `<script>window.location.replace('${clientBase}/listing/${encodeURIComponent(slug)}');<\/script>` : "";
@@ -183,8 +186,8 @@ export async function getListingJson(req, res) {
     if (!slug) return res.status(400).json({ message: "Missing slug" });
     const row = await listingsStore.getListingBySlug(slug);
     if (!row || !row.published) return res.status(404).json({ message: "Listing not found" });
-    const { preview_url, preview_asset_id, preview_group } = await resolveListingPreview(row);
-    return res.json({ listing: { ...row, preview_url, preview_asset_id, preview_group } });
+    const enhanced = await resolveListingPreview(row);
+    return res.json({ listing: enhanced });
   } catch (e) {
     console.error("getListingJson error", fmtErr(e));
     return res.status(500).json({ message: "Server error" });
@@ -275,8 +278,8 @@ export async function getListingByIdJson(req, res) {
     if (!id) return res.status(400).json({ message: "Missing id" });
     const row = await listingsStore.getListingById(id);
     if (!row) return res.status(404).json({ message: "Listing not found" });
-    const { preview_url, preview_asset_id, preview_group } = await resolveListingPreview(row);
-    return res.json({ listing: { ...row, preview_url, preview_asset_id, preview_group } });
+    const enhanced = await resolveListingPreview(row);
+    return res.json({ listing: enhanced });
   } catch (e) {
     console.error("getListingByIdJson error", fmtErr(e));
     return res.status(500).json({ message: "Server error" });

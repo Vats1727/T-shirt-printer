@@ -20,10 +20,12 @@ export async function createProduct(payload) {
     }
     const category = payload.category || "men";
     const status = payload.status || (payload.is_draft ? "draft" : "published");
+    const garment_id = payload.garment_id ? Number(payload.garment_id) : null;
+    const is_approved = payload.is_approved !== undefined ? Boolean(payload.is_approved) : false;
     const res = await pool.query(
-      `INSERT INTO products_full (name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory, category, owner_id, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id, name, slug, category, single_price, bulk_min, bulk_price, status, created_at`,
-      [safeName, slug, payload.single_price || 0, payload.bulk_min || 100, payload.bulk_price || 0, JSON.stringify(payload.sizes || []), JSON.stringify(payload.colors || []), JSON.stringify(payload.sizeChart || []), JSON.stringify(designsArray), JSON.stringify(payload.inventory || []), category, payload.owner_id || null, status]
+      `INSERT INTO products_full (name, slug, single_price, bulk_min, bulk_price, sizes, colors, size_chart, designs, inventory, category, owner_id, status, garment_id, is_approved)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id, name, slug, category, single_price, bulk_min, bulk_price, status, garment_id, is_approved, created_at`,
+      [safeName, slug, payload.single_price || 0, payload.bulk_min || 100, payload.bulk_price || 0, JSON.stringify(payload.sizes || []), JSON.stringify(payload.colors || []), JSON.stringify(payload.sizeChart || []), JSON.stringify(designsArray), JSON.stringify(payload.inventory || []), category, payload.owner_id || null, status, garment_id, is_approved]
     );
     return res.rows[0];
   }
@@ -32,8 +34,8 @@ export async function createProduct(payload) {
 export async function listProducts(ownerId) {
   if (pool) {
     const query = ownerId
-      ? `SELECT pf.id, pf.name, pf.slug, pf.single_price, pf.bulk_min, pf.bulk_price, pf.sizes, pf.colors, pf.size_chart, pf.created_at, pf.designs, pf.category, pf.status, pf.owner_id, u.name as provider_name, u.email as provider_email FROM products_full pf LEFT JOIN users u ON u.id = pf.owner_id WHERE pf.owner_id = $1 AND COALESCE(pf.is_deleted, false) = false ORDER BY pf.id`
-      : `SELECT pf.id, pf.name, pf.slug, pf.single_price, pf.bulk_min, pf.bulk_price, pf.sizes, pf.colors, pf.size_chart, pf.created_at, pf.designs, pf.category, pf.status, pf.owner_id, u.name as provider_name, u.email as provider_email FROM products_full pf LEFT JOIN users u ON u.id = pf.owner_id WHERE COALESCE(pf.is_deleted, false) = false ORDER BY pf.id`;
+      ? `SELECT pf.id, pf.name, pf.slug, pf.single_price, pf.bulk_min, pf.bulk_price, pf.sizes, pf.colors, pf.size_chart, pf.created_at, pf.designs, pf.category, pf.status, pf.owner_id, pf.garment_id, pf.is_approved, u.name as provider_name, u.email as provider_email, amg.name as master_garment_name, amg.knit_type, amg.gsm, amg.fabric_composition, amg.hsn_code, amg.gst_rate, amg.print_platen_specs FROM products_full pf LEFT JOIN users u ON u.id = pf.owner_id LEFT JOIN apparel_master_garments amg ON amg.id = pf.garment_id WHERE pf.owner_id = $1 AND COALESCE(pf.is_deleted, false) = false ORDER BY pf.id`
+      : `SELECT pf.id, pf.name, pf.slug, pf.single_price, pf.bulk_min, pf.bulk_price, pf.sizes, pf.colors, pf.size_chart, pf.created_at, pf.designs, pf.category, pf.status, pf.owner_id, pf.garment_id, pf.is_approved, u.name as provider_name, u.email as provider_email, amg.name as master_garment_name, amg.knit_type, amg.gsm, amg.fabric_composition, amg.hsn_code, amg.gst_rate, amg.print_platen_specs FROM products_full pf LEFT JOIN users u ON u.id = pf.owner_id LEFT JOIN apparel_master_garments amg ON amg.id = pf.garment_id WHERE COALESCE(pf.is_deleted, false) = false ORDER BY pf.id`;
     const r = await pool.query(query, ownerId ? [ownerId] : []);
     return r.rows.map((row) => {
       const single_price = row.single_price !== null ? Number(row.single_price) : 0;
@@ -81,14 +83,27 @@ export async function listProducts(ownerId) {
       const back_image = designs.back?.image || designs.back?.image_url || designs_list[1]?.image || null;
       const image = front_image || back_image || null;
 
-      return { ...row, single_price, bulk_price, category, sizes, colors, size_chart, designs, designs_list, front_image, back_image, image, provider_name: row.provider_name || null };
+      const master_garment = row.garment_id ? {
+        id: Number(row.garment_id),
+        name: row.master_garment_name,
+        knit_type: row.knit_type,
+        gsm: row.gsm,
+        fabric_composition: row.fabric_composition,
+        hsn_code: row.hsn_code,
+        gst_rate: row.gst_rate,
+        print_platen_specs: row.print_platen_specs
+      } : null;
+
+      return { ...row, single_price, bulk_price, category, sizes, colors, size_chart, designs, designs_list, front_image, back_image, image, master_garment, provider_name: row.provider_name || null };
     });
   }
   return [];
 }
 export async function getProduct(id, ownerId) {
   if (pool) {
-    const query = ownerId ? "SELECT pf.id, pf.name, pf.slug, pf.category, pf.single_price, pf.bulk_min, pf.bulk_price, pf.sizes, pf.colors, pf.size_chart, pf.designs, pf.inventory, pf.is_deleted, pf.deleted_at, pf.updated_at, pf.created_at, pf.status, pf.owner_id, u.name as provider_name, u.email as provider_email FROM products_full pf LEFT JOIN users u ON u.id = pf.owner_id WHERE pf.id=$1 AND pf.owner_id=$2" : "SELECT pf.id, pf.name, pf.slug, pf.category, pf.single_price, pf.bulk_min, pf.bulk_price, pf.sizes, pf.colors, pf.size_chart, pf.designs, pf.inventory, pf.is_deleted, pf.deleted_at, pf.updated_at, pf.created_at, pf.status, pf.owner_id, u.name as provider_name, u.email as provider_email FROM products_full pf LEFT JOIN users u ON u.id = pf.owner_id WHERE pf.id=$1";
+    const query = ownerId
+      ? "SELECT pf.id, pf.name, pf.slug, pf.category, pf.single_price, pf.bulk_min, pf.bulk_price, pf.sizes, pf.colors, pf.size_chart, pf.designs, pf.inventory, pf.is_deleted, pf.deleted_at, pf.updated_at, pf.created_at, pf.status, pf.owner_id, pf.garment_id, pf.is_approved, u.name as provider_name, u.email as provider_email, amg.name as master_garment_name, amg.knit_type, amg.gsm, amg.fabric_composition, amg.hsn_code, amg.gst_rate, amg.print_platen_specs FROM products_full pf LEFT JOIN users u ON u.id = pf.owner_id LEFT JOIN apparel_master_garments amg ON amg.id = pf.garment_id WHERE pf.id=$1 AND pf.owner_id=$2"
+      : "SELECT pf.id, pf.name, pf.slug, pf.category, pf.single_price, pf.bulk_min, pf.bulk_price, pf.sizes, pf.colors, pf.size_chart, pf.designs, pf.inventory, pf.is_deleted, pf.deleted_at, pf.updated_at, pf.created_at, pf.status, pf.owner_id, pf.garment_id, pf.is_approved, u.name as provider_name, u.email as provider_email, amg.name as master_garment_name, amg.knit_type, amg.gsm, amg.fabric_composition, amg.hsn_code, amg.gst_rate, amg.print_platen_specs FROM products_full pf LEFT JOIN users u ON u.id = pf.owner_id LEFT JOIN apparel_master_garments amg ON amg.id = pf.garment_id WHERE pf.id=$1";
     const params = ownerId ? [id, ownerId] : [id];
     const r = await pool.query(query, params);
     const prod = r.rows[0];
@@ -125,7 +140,18 @@ export async function getProduct(id, ownerId) {
     const back_image = designs.back?.image || designs.back?.image_url || designs_list[1]?.image || null;
     const image = front_image || back_image || null;
 
-    return { ...prod, sizes, colors, sizeChart, designs, designs_list, front_image, back_image, image, inventory, provider_name: prod.provider_name || null };
+    const master_garment = prod.garment_id ? {
+      id: Number(prod.garment_id),
+      name: prod.master_garment_name,
+      knit_type: prod.knit_type,
+      gsm: prod.gsm,
+      fabric_composition: prod.fabric_composition,
+      hsn_code: prod.hsn_code,
+      gst_rate: prod.gst_rate,
+      print_platen_specs: prod.print_platen_specs
+    } : null;
+
+    return { ...prod, sizes, colors, sizeChart, designs, designs_list, front_image, back_image, image, inventory, master_garment, provider_name: prod.provider_name || null };
   }
   return null;
 }
@@ -176,6 +202,12 @@ export async function updateProduct(id, payload, ownerId) {
   }
   if (payload.status !== undefined) {
     await pool.query("UPDATE products_full SET status=$1, updated_at=now() WHERE id=$2 AND owner_id=$3", [payload.status, id, ownerId]);
+  }
+  if (payload.garment_id !== undefined) {
+    await pool.query("UPDATE products_full SET garment_id=$1, updated_at=now() WHERE id=$2 AND owner_id=$3", [payload.garment_id ? Number(payload.garment_id) : null, id, ownerId]);
+  }
+  if (payload.is_approved !== undefined) {
+    await pool.query("UPDATE products_full SET is_approved=$1, updated_at=now() WHERE id=$2 AND owner_id=$3", [Boolean(payload.is_approved), id, ownerId]);
   }
   return getProduct(id, ownerId);
 }

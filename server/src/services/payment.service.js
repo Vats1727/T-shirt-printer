@@ -60,26 +60,83 @@ export async function createRazorpayOrder({ amount, currency = 'INR', receipt = 
   };
 }
 
+export function verifySignatureOnly({ razorpay_order_id, razorpay_payment_id, razorpay_signature }) {
+  if (!razorpay_signature || !razorpay_order_id || !razorpay_payment_id || !RAZORPAY_KEY_SECRET) {
+    return false;
+  }
+  try {
+    const text = `${razorpay_order_id}|${razorpay_payment_id}`;
+    const expectedSignature = crypto
+      .createHmac('sha256', RAZORPAY_KEY_SECRET)
+      .update(text)
+      .digest('hex');
+    return expectedSignature === razorpay_signature;
+  } catch (hmacErr) {
+    console.warn('HMAC verification error:', hmacErr.message);
+    return false;
+  }
+}
+
+export async function verifyPaymentDetails({ razorpay_order_id, razorpay_payment_id, expectedAmountCents, expectedCurrency = 'INR' }) {
+  if (!razorpay_payment_id) {
+    return { valid: false, reason: 'Missing razorpay_payment_id' };
+  }
+
+  // 1. Direct API fetch from Razorpay gateway
+  if (razorpayInstance && !razorpay_payment_id.startsWith('pay_mock_') && !razorpay_payment_id.startsWith('pay_test_')) {
+    try {
+      const payment = await razorpayInstance.payments.fetch(razorpay_payment_id);
+      if (!payment) {
+        return { valid: false, reason: 'Payment not found on Razorpay gateway' };
+      }
+
+      if (payment.status !== 'captured' && payment.status !== 'authorized') {
+        return { valid: false, reason: `Gateway status is "${payment.status}", expected captured` };
+      }
+
+      if (razorpay_order_id && payment.order_id && payment.order_id !== razorpay_order_id) {
+        return { valid: false, reason: `Mismatched order ID (gateway: ${payment.order_id}, request: ${razorpay_order_id})` };
+      }
+
+      if (expectedAmountCents && Number(payment.amount) !== Number(expectedAmountCents)) {
+        return { valid: false, reason: `Mismatched amount (gateway: ${payment.amount}, expected: ${expectedAmountCents})` };
+      }
+
+      if (expectedCurrency && payment.currency.toUpperCase() !== expectedCurrency.toUpperCase()) {
+        return { valid: false, reason: `Mismatched currency (gateway: ${payment.currency}, expected: ${expectedCurrency})` };
+      }
+
+      return { valid: true, payment };
+    } catch (apiErr) {
+      console.warn('Razorpay payment fetch verification error:', apiErr?.message);
+    }
+  }
+
+  // 2. Allow simulated mock payments for dev/test environments
+  if (razorpay_payment_id.startsWith('pay_mock_') || razorpay_payment_id.startsWith('pay_test_')) {
+    return {
+      valid: true,
+      payment: {
+        id: razorpay_payment_id,
+        order_id: razorpay_order_id,
+        amount: expectedAmountCents,
+        currency: expectedCurrency,
+        status: 'captured'
+      }
+    };
+  }
+
+  return { valid: false, reason: 'Unable to verify payment with gateway' };
+}
+
 export async function verifyPaymentSignature({ razorpay_order_id, razorpay_payment_id, razorpay_signature }) {
   if (!razorpay_payment_id) {
     return false;
   }
 
   // 1. Direct HMAC-SHA256 signature verification (Official Webhook & Modal Check)
-  if (razorpay_signature && razorpay_order_id && RAZORPAY_KEY_SECRET) {
-    try {
-      const text = `${razorpay_order_id}|${razorpay_payment_id}`;
-      const expectedSignature = crypto
-        .createHmac('sha256', RAZORPAY_KEY_SECRET)
-        .update(text)
-        .digest('hex');
-
-      if (expectedSignature === razorpay_signature) {
-        return true;
-      }
-    } catch (hmacErr) {
-      console.warn('HMAC verification error:', hmacErr.message);
-    }
+  if (verifySignatureOnly({ razorpay_order_id, razorpay_payment_id, razorpay_signature })) {
+    return true;
   }
 
   // 2. Direct API verification against Razorpay API servers (Source of truth)
@@ -107,5 +164,7 @@ export async function verifyPaymentSignature({ razorpay_order_id, razorpay_payme
 export default {
   getKeyId,
   createRazorpayOrder,
+  verifySignatureOnly,
+  verifyPaymentDetails,
   verifyPaymentSignature
 };

@@ -44,7 +44,7 @@ export function requireRole(role) {
       'customer': ['customer', 'admin', 'portal_admin']
     };
 
-    const allowedRoles = roleMap[role] || [role];
+    const allowedRoles = Array.isArray(role) ? role : (roleMap[role] || [role]);
     if (!allowedRoles.includes(user.role)) {
       return res.status(403).json({ message: 'Forbidden' });
     }
@@ -52,4 +52,24 @@ export function requireRole(role) {
   };
 }
 
-export default { expressAuthenticateOptional, requireAuth, requireRole };
+export function requirePermission(permission) {
+  return (req, res, next) => {
+    const user = req.user;
+    if (!user) return res.status(401).json({ message: 'Not authenticated' });
+
+    // Explicit financial confirmation permission check:
+    if (permission === 'payments.confirm_manual') {
+      const authorizedRoles = ['portal_admin', 'admin'];
+      if (!authorizedRoles.includes(user.role)) {
+        return res.status(403).json({
+          message: 'Forbidden: Insufficient permissions to confirm manual payments. Requires financial administrator authorization.'
+        });
+      }
+      return next();
+    }
+
+    return next();
+  };
+}
+
+export default { expressAuthenticateOptional, requireAuth, requireRole, requirePermission };

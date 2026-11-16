@@ -25,6 +25,10 @@ router.get('/b2b-financial-settings/public', portalController.getPublicB2BFinanc
 // Portal Admin Orders & Revenue Oversight
 router.get('/orders', requireAuth, requireRole('portal_admin'), orderController.listAdminOrders);
 
+// Portal Admin Product Moderation & Approval
+router.get('/products', requireAuth, requireRole('portal_admin'), portalController.listPortalProducts);
+router.patch('/products/:id/approval', requireAuth, requireRole('portal_admin'), portalController.updateProductApproval);
+
 // Partner Financial Ledger Reports (Print Providers & Designers)
 router.get('/ledger/providers', requireAuth, requireRole('portal_admin'), portalController.getProviderLedger);
 router.get('/ledger/designers', requireAuth, requireRole('portal_admin'), portalController.getDesignerLedger);

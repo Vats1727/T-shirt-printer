@@ -18,7 +18,9 @@ import {
   Heart,
   Share2,
   Star,
-  Info
+  Info,
+  CheckCircle2,
+  XCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -178,6 +180,22 @@ export default function StoreProduct() {
   const resolvedSupplierId = listing.supplier_id || decodeId(supplierQuery);
   const storeUrl = resolvedSupplierId ? `/store/${encodeId(resolvedSupplierId)}` : "/store";
 
+  // Real-time stock calculation based on stock_by_variant
+  const stockByVariant = listing?.stock_by_variant || [];
+  const currentVariantStock = stockByVariant.find((v) => {
+    const matchSize = v.size_label && selectedSize && v.size_label.toLowerCase() === selectedSize.toLowerCase();
+    const matchColor = selectedColor && (
+      (v.color_id && selectedColor.id && String(v.color_id) === String(selectedColor.id)) ||
+      (v.color_hex && selectedColor.hex && v.color_hex.toLowerCase() === selectedColor.hex.toLowerCase()) ||
+      (v.color_name && selectedColor.name && v.color_name.toLowerCase() === selectedColor.name.toLowerCase())
+    );
+    return matchSize && matchColor;
+  });
+
+  const hasInventoryData = stockByVariant.length > 0;
+  const isOutOfStock = hasInventoryData && currentVariantStock && Number(currentVariantStock.available_quantity) <= 0;
+  const availableQuantity = currentVariantStock ? Number(currentVariantStock.available_quantity) : null;
+
   const resolvedDesignId = listing.design_id || (
     listing.design_key && /^design-(\d+)$/i.test(listing.design_key)
       ? Number(listing.design_key.match(/^design-(\d+)$/i)[1])
@@ -185,6 +203,14 @@ export default function StoreProduct() {
   );
 
   const handleAddToCart = () => {
+    if (isOutOfStock) {
+      toast({
+        title: "Out of Stock",
+        description: `This size and color combination is currently unavailable.`,
+        variant: "destructive"
+      });
+      return;
+    }
     addToCart({
       listing_id: listing.id,
       design_id: resolvedDesignId,
@@ -208,6 +234,14 @@ export default function StoreProduct() {
   };
 
   const handleInstantCheckout = () => {
+    if (isOutOfStock) {
+      toast({
+        title: "Out of Stock",
+        description: `This size and color combination is currently unavailable.`,
+        variant: "destructive"
+      });
+      return;
+    }
     addToCart({
       listing_id: listing.id,
       design_id: resolvedDesignId,
@@ -545,6 +579,26 @@ export default function StoreProduct() {
                 );
               })}
             </div>
+
+            {/* Real-time Inventory Status Indicator */}
+            <div className="pt-1">
+              {isOutOfStock ? (
+                <div className="flex items-center gap-1.5 text-xs font-bold text-rose-600 bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-200">
+                  <XCircle className="size-4 shrink-0 text-rose-500" />
+                  <span>Out of Stock for {selectedSize} • {selectedColor?.name || 'this color'}</span>
+                </div>
+              ) : availableQuantity !== null && availableQuantity > 0 ? (
+                <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
+                  <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />
+                  <span>In Stock — {availableQuantity} units ready for immediate production</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-lg">
+                  <CheckCircle2 className="size-4 shrink-0 text-indigo-500" />
+                  <span>Print-on-Demand Garment • Custom Crafted</span>
+                </div>
+              )}
+            </div>
           </div>
 
           {
@@ -556,7 +610,8 @@ export default function StoreProduct() {
                 <button
                   type="button"
                   onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                  className="size-9 rounded-lg hover:bg-slate-100 font-bold text-slate-700 flex items-center justify-center transition-colors"
+                  disabled={isOutOfStock}
+                  className="size-9 rounded-lg hover:bg-slate-100 font-bold text-slate-700 flex items-center justify-center transition-colors disabled:opacity-40"
                 >
                   -
                 </button>
@@ -564,7 +619,8 @@ export default function StoreProduct() {
                 <button
                   type="button"
                   onClick={() => setQuantity(quantity + 1)}
-                  className="size-9 rounded-lg hover:bg-slate-100 font-bold text-slate-700 flex items-center justify-center transition-colors"
+                  disabled={isOutOfStock || (availableQuantity !== null && quantity >= availableQuantity)}
+                  className="size-9 rounded-lg hover:bg-slate-100 font-bold text-slate-700 flex items-center justify-center transition-colors disabled:opacity-40"
                 >
                   +
                 </button>
@@ -572,24 +628,32 @@ export default function StoreProduct() {
 
               <Button
                 onClick={handleAddToCart}
-                className={`flex-1 h-12 rounded-xl font-extrabold text-sm shadow-lg transition-all flex items-center justify-center gap-2 ${addedToCart ? "bg-emerald-600 hover:bg-emerald-600 text-white" : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/25 active:scale-[0.99]"}`}
+                disabled={isOutOfStock}
+                className={`flex-1 h-12 rounded-xl font-extrabold text-sm shadow-lg transition-all flex items-center justify-center gap-2 ${isOutOfStock ? "bg-slate-300 text-slate-500 cursor-not-allowed shadow-none" : addedToCart ? "bg-emerald-600 hover:bg-emerald-600 text-white" : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/25 active:scale-[0.99]"}`}
               >
-                {addedToCart ? <>
-                  <Check className="size-4 stroke-[3]" />
-                  Added to Cart!
-                </> : <>
-                  <ShoppingBag className="size-4" />
-                  Add to Cart • ₹{(priceValue * quantity).toFixed(2)}
-                </>}
+                {isOutOfStock ? (
+                  <>Out of Stock</>
+                ) : addedToCart ? (
+                  <>
+                    <Check className="size-4 stroke-[3]" />
+                    Added to Cart!
+                  </>
+                ) : (
+                  <>
+                    <ShoppingBag className="size-4" />
+                    Add to Cart • ₹{(priceValue * quantity).toFixed(2)}
+                  </>
+                )}
               </Button>
             </div>
 
             <button
               type="button"
               onClick={handleInstantCheckout}
-              className="w-full py-3.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs tracking-wider uppercase transition-all shadow-md active:scale-[0.99] cursor-pointer"
+              disabled={isOutOfStock}
+              className={`w-full py-3.5 px-4 rounded-xl font-extrabold text-xs tracking-wider uppercase transition-all shadow-md active:scale-[0.99] ${isOutOfStock ? "bg-slate-300 text-slate-500 cursor-not-allowed" : "bg-slate-900 hover:bg-slate-800 text-white cursor-pointer"}`}
             >
-              Instant Checkout with 1-Click
+              {isOutOfStock ? "Garment Unavailable" : "Instant Checkout with 1-Click"}
             </button>
           </div>
 
@@ -635,11 +699,14 @@ export default function StoreProduct() {
                 {activeTab === "specs" ? <ChevronUp className="size-4 text-slate-400" /> : <ChevronDown className="size-4 text-slate-400" />}
               </button>
               {activeTab === "specs" && <div className="px-4 pb-4 text-xs text-slate-600 space-y-2 leading-relaxed bg-slate-50/50">
-                <ul className="list-disc list-inside space-y-1 text-slate-600">
-                  <li><strong>Material:</strong> 100% premium ring-spun combed cotton (180 GSM).</li>
-                  <li><strong>Construction:</strong> Shoulder-to-shoulder taping with side-seamed unisex fit.</li>
-                  <li><strong>Printing Technique:</strong> State-of-the-art Direct-to-Garment (DTG) digital print.</li>
-                  <li><strong>Design Key:</strong> {listing.design_key || "Custom designer print"}</li>
+                <ul className="space-y-1.5 list-none text-slate-600">
+                  <li><strong>Garment Model:</strong> {listing.master_garment?.name || listing.product_name || "Premium Standard Garment"}</li>
+                  <li><strong>Fabric Composition:</strong> {listing.master_garment?.fabric_composition || "100% Combed Ring-Spun Cotton"}</li>
+                  <li><strong>Knit & Fabric Weight:</strong> {listing.master_garment ? `${listing.master_garment.knit_type} • ${listing.master_garment.gsm} GSM` : "Single Jersey • 180 GSM"}</li>
+                  <li><strong>Tax & HS Code:</strong> {listing.master_garment ? `HSN ${listing.master_garment.hsn_code} (${listing.master_garment.gst_rate}% GST included)` : "HSN 6109 (5% GST)"}</li>
+                  <li><strong>Print Execution:</strong> Industrial Direct-to-Garment / Film digital print with cured underbase.</li>
+                  <li><strong>Print Area:</strong> {listing.master_garment?.print_platen_specs ? `${listing.master_garment.print_platen_specs.front?.width_in}x${listing.master_garment.print_platen_specs.front?.height_in} in (Front) • ${listing.master_garment.print_platen_specs.back?.width_in}x${listing.master_garment.print_platen_specs.back?.height_in} in (Back)` : "Standard Adult Platen"}</li>
+                  <li><strong>Design Identifier:</strong> {listing.design_key || "Custom exclusive print"}</li>
                 </ul>
               </div>}
             </div>

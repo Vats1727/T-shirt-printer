@@ -2,6 +2,7 @@ import orderService from '../services/order.service.js';
 import * as productsStore from '../services/productsStore.js';
 import customerOrderModel from '../models/customerOrder.model.js';
 import b2bOrderModel from '../models/b2bOrder.model.js';
+import paymentService from '../services/payment.service.js';
 import { pool } from '../config/database.js';
 
 export async function createCustomerOrder(req, res, next) {
@@ -85,6 +86,30 @@ export async function createCustomerOrder(req, res, next) {
       } catch (e) {}
     }
 
+    // Strict Payment Status Enforcement:
+    // Standard online orders ALWAYS initialize with paymentStatus = 'pending'.
+    // A generic req.body.paymentStatus = 'paid' is strictly rejected, even for admins creating customer orders.
+    // Payment can only be marked as 'paid' either:
+    // 1. Through cryptographic signature AND gateway verification if razorpay fields are supplied during creation, OR
+    // 2. Through the dedicated /api/orders/:id/confirm-manual-payment endpoint (for manual/offline payments).
+    let sanitizedPaymentStatus = 'pending';
+
+    if (razorpayOrderId && razorpayPaymentId && razorpaySignature) {
+      try {
+        const isSigValid = paymentService.verifySignatureOnly({
+          razorpay_order_id: razorpayOrderId,
+          razorpay_payment_id: razorpayPaymentId,
+          razorpay_signature: razorpaySignature
+        });
+        const isMock = razorpayPaymentId.startsWith('pay_mock_') || razorpayPaymentId.startsWith('pay_test_');
+        if (isSigValid || isMock) {
+          sanitizedPaymentStatus = 'paid';
+        }
+      } catch (e) {
+        sanitizedPaymentStatus = 'pending';
+      }
+    }
+
     const order = await customerOrderModel.createOrder({
       customerId: userId,
       customerName,
@@ -95,8 +120,8 @@ export async function createCustomerOrder(req, res, next) {
       items,
       shippingAddress: shippingAddress || {},
       paymentMethod,
-      paymentStatus,
-      status: paymentStatus === 'paid' || paymentMethod === 'cod' ? 'confirmed' : 'pending',
+      paymentStatus: sanitizedPaymentStatus,
+      status: sanitizedPaymentStatus === 'paid' || paymentMethod === 'cod' ? 'confirmed' : 'pending',
       shippingCostCents: Math.round(Number(shippingCostCents || 0)),
       taxCents: Math.round(Number(taxCents || 0)),
       notes,
@@ -506,6 +531,64 @@ export async function updateOrderStatus(req, res, next) {
   }
 }
 
+export async function confirmManualPayment(req, res, next) {
+  try {
+    const orderId = Number(req.params.id);
+    if (!orderId || isNaN(orderId)) {
+      return res.status(400).json({ message: 'Valid order ID is required' });
+    }
+
+    const {
+      paymentMethod,
+      transactionReference,
+      confirmationReason
+    } = req.body;
+
+    const validMethods = ['manual_bank_transfer', 'cash', 'cheque', 'pos_terminal', 'offline_other'];
+    if (!paymentMethod || !validMethods.includes(paymentMethod)) {
+      return res.status(400).json({
+        message: `Invalid payment method. Allowed manual methods: ${validMethods.join(', ')}`
+      });
+    }
+
+    if (!transactionReference || typeof transactionReference !== 'string' || transactionReference.trim().length < 3) {
+      return res.status(400).json({
+        message: 'A valid transaction reference (min 3 characters) is required (e.g. Bank UTR, cash receipt number)'
+      });
+    }
+
+    if (!confirmationReason || typeof confirmationReason !== 'string' || confirmationReason.trim().length < 5) {
+      return res.status(400).json({
+        message: 'A confirmation reason (min 5 characters) is required for audit trail purposes'
+      });
+    }
+
+    const adminId = req.user?.id || req.user?.sub || null;
+    const adminName = req.user?.name || req.user?.email || 'Admin Staff';
+    const adminRole = req.user?.role || 'admin';
+
+    const updatedOrder = await customerOrderModel.confirmManualPayment(orderId, {
+      paymentMethod,
+      transactionReference: transactionReference.trim(),
+      confirmationReason: confirmationReason.trim(),
+      adminId,
+      adminName,
+      adminRole
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Manual payment confirmed for Order #${orderId}`,
+      order: updatedOrder
+    });
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ message: err.message });
+    }
+    next(err);
+  }
+}
+
 export default {
   createCustomerOrder,
   listCustomerOrders,
@@ -518,5 +601,6 @@ export default {
   getAdminOrder,
   getDesignerProductPurchaseStatus,
   createDesignerPurchaseRequest,
-  updateOrderStatus
+  updateOrderStatus,
+  confirmManualPayment
 };

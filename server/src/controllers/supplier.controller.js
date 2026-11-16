@@ -109,6 +109,40 @@ export async function createListing(req, res, next) {
 
     if (!title) return res.status(400).json({ message: 'title is required' });
 
+    // Enforce Product Approval: verify that design's underlying product is approved & mapped
+    if (design_key && pool) {
+      let designNum = null;
+      const m = String(design_key).match(/design-(\d+)/i);
+      if (m) designNum = Number(m[1]);
+      else if (/^\d+$/.test(String(design_key))) designNum = Number(design_key);
+
+      if (designNum) {
+        const dCheck = await pool.query(
+          `SELECT d.id, d.product_id, pf.name as product_name, pf.is_approved, pf.garment_id, amg.is_active as garment_active
+           FROM designs d
+           LEFT JOIN products_full pf ON pf.id = d.product_id
+           LEFT JOIN apparel_master_garments amg ON amg.id = pf.garment_id
+           WHERE d.id = $1`,
+          [designNum]
+        );
+        if (dCheck.rows.length > 0) {
+          const row = dCheck.rows[0];
+          if (row.is_approved === false) {
+            return res.status(422).json({
+              error: 'UnapprovedProduct',
+              message: `Cannot publish listing for "${row.product_name || 'garment'}": underlying product is pending administrative approval.`
+            });
+          }
+          if (!row.garment_id || row.garment_active === false) {
+            return res.status(422).json({
+              error: 'UnmappedGarment',
+              message: 'Cannot publish listing: underlying product is not mapped to an active master garment.'
+            });
+          }
+        }
+      }
+    }
+
     const listing = await listingModel.createListing(userId, title, description, slug, design_key, visibility, price);
     return res.status(201).json(listing);
   } catch (err) {
@@ -135,6 +169,34 @@ export async function updateListingStatus(req, res, next) {
     const isAdmin = user?.role === 'admin' || user?.role === 'print_provider' || user?.role === 'portal_admin';
     const id = parseInt(req.params.id, 10);
     const { published, visibility } = req.body;
+
+    // Enforce Product Approval on publish
+    if ((published === true || visibility === 'public') && pool) {
+      const lCheck = await pool.query(
+        `SELECT l.id, l.design_key, pf.name as product_name, pf.is_approved, pf.garment_id, amg.is_active as garment_active
+         FROM listings l
+         LEFT JOIN designs d ON d.id = CASE WHEN l.design_key ~ '^[0-9]+$' THEN l.design_key::int WHEN l.design_key ~ '^design-\\d+$' THEN substring(l.design_key from 8)::int ELSE NULL END
+         LEFT JOIN products_full pf ON pf.id = d.product_id
+         LEFT JOIN apparel_master_garments amg ON amg.id = pf.garment_id
+         WHERE l.id = $1`,
+        [id]
+      );
+      if (lCheck.rows.length > 0) {
+        const row = lCheck.rows[0];
+        if (row.is_approved === false) {
+          return res.status(422).json({
+            error: 'UnapprovedProduct',
+            message: `Cannot publish listing for "${row.product_name || 'garment'}": underlying product is pending administrative approval.`
+          });
+        }
+        if (!row.garment_id || row.garment_active === false) {
+          return res.status(422).json({
+            error: 'UnmappedGarment',
+            message: 'Cannot publish listing: underlying product is not mapped to an active master garment.'
+          });
+        }
+      }
+    }
 
     const updated = await listingModel.updateListingStatus(
       id,
@@ -166,7 +228,7 @@ export async function deleteListing(req, res, next) {
   }
 }
 
-async function resolveListingPreview(l) {
+export async function resolveListingPreview(l) {
   let preview_url = null;
   let preview_asset_id = null;
   let preview_group = null;
@@ -180,6 +242,7 @@ async function resolveListingPreview(l) {
   let vPayload = null;
   let meta = {};
   let d = null;
+  let stock_by_variant = [];
   const designKey = String(l.design_key || '');
 
   const normalize = (img) => {
@@ -198,13 +261,16 @@ async function resolveListingPreview(l) {
   if (numericId && pool) {
     try {
       const dRes = await pool.query(
-        `SELECT d.id, d.owner_id, d.image, d.back_image, d.product, d.product_id, d.slogan,
+        `SELECT d.id, d.owner_id, d.image, d.back_image, d.product, d.product_id, d.provider_id, d.slogan,
                 d.color as design_color, d.template_color,
                 u.name as designer_name, u.email as designer_email,
-                pf.id as pf_id, pf.name as product_name, pf.colors as pf_colors, pf.sizes as pf_sizes, pf.size_chart as pf_size_chart
+                pf.id as pf_id, pf.name as product_name, pf.colors as pf_colors, pf.sizes as pf_sizes, pf.size_chart as pf_size_chart,
+                pf.owner_id as pf_owner_id, pf.garment_id,
+                amg.name as master_garment_name, amg.knit_type, amg.gsm, amg.fabric_composition, amg.hsn_code, amg.gst_rate, amg.print_platen_specs
          FROM designs d
          LEFT JOIN users u ON u.id = d.owner_id
          LEFT JOIN products_full pf ON pf.id = d.product_id
+         LEFT JOIN apparel_master_garments amg ON amg.id = pf.garment_id
          WHERE d.id = $1`,
         [numericId]
       );
@@ -222,16 +288,49 @@ async function resolveListingPreview(l) {
         if ((!pfColors || !pfSizes) && d.product) {
           try {
             const pMatch = await pool.query(
-              `SELECT id, name, colors, sizes, size_chart FROM products_full WHERE slug = $1 OR lower(name) = lower($1) OR category = $1 LIMIT 1`,
+              `SELECT pf.id, pf.name, pf.colors, pf.sizes, pf.size_chart, pf.owner_id, pf.garment_id,
+                      amg.name as master_garment_name, amg.knit_type, amg.gsm, amg.fabric_composition, amg.hsn_code, amg.gst_rate, amg.print_platen_specs
+               FROM products_full pf
+               LEFT JOIN apparel_master_garments amg ON amg.id = pf.garment_id
+               WHERE pf.slug = $1 OR lower(pf.name) = lower($1) OR pf.category = $1 
+               LIMIT 1`,
               [d.product]
             );
             if (pMatch?.rows?.length) {
-              if (!pfColors) pfColors = pMatch.rows[0].colors;
-              if (!pfSizes) pfSizes = pMatch.rows[0].sizes;
-              if (!product_name) product_name = pMatch.rows[0].name;
+              const matchedRow = pMatch.rows[0];
+              if (!pfColors) pfColors = matchedRow.colors;
+              if (!pfSizes) pfSizes = matchedRow.sizes;
+              if (!product_name) product_name = matchedRow.name;
+              d.pf_owner_id = d.pf_owner_id || matchedRow.owner_id;
+              d.garment_id = d.garment_id || matchedRow.garment_id;
+              d.master_garment_name = d.master_garment_name || matchedRow.master_garment_name;
+              d.knit_type = d.knit_type || matchedRow.knit_type;
+              d.gsm = d.gsm || matchedRow.gsm;
+              d.fabric_composition = d.fabric_composition || matchedRow.fabric_composition;
+              d.hsn_code = d.hsn_code || matchedRow.hsn_code;
+              d.gst_rate = d.gst_rate || matchedRow.gst_rate;
+              d.print_platen_specs = d.print_platen_specs || matchedRow.print_platen_specs;
             }
           } catch (e) {}
         }
+
+        // Fetch real-time stock for variants
+        try {
+          const prodSlug = d.product || (d.product_name || '').toLowerCase();
+          const providerId = d.pf_owner_id || d.provider_id || null;
+          const invRes = await pool.query(
+            `SELECT ci.id, ci.color_id, ci.size_id, ci.quantity, ci.reserved_quantity,
+                    GREATEST(0, ci.quantity - ci.reserved_quantity) as available_quantity,
+                    c.name as color_name, c.hex as color_hex, s.label as size_label
+             FROM cloth_inventory ci
+             LEFT JOIN colors c ON c.id = ci.color_id
+             LEFT JOIN sizes s ON s.id = ci.size_id
+             WHERE (ci.owner_id = $1 OR $1::int IS NULL)
+               AND (ci.product ILIKE $2 OR ci.product ILIKE $3)`,
+            [providerId, `%${prodSlug}%`, `%${d.product_name || ''}%`]
+          );
+          stock_by_variant = invRes.rows || [];
+        } catch (e) {}
 
         const vRes = await pool.query('SELECT payload FROM design_versions WHERE design_id = $1 ORDER BY id DESC LIMIT 1', [numericId]);
         meta = {};
@@ -519,8 +618,20 @@ async function resolveListingPreview(l) {
     }
   }
 
+  const master_garment = d?.garment_id ? {
+    id: Number(d.garment_id),
+    name: d.master_garment_name,
+    knit_type: d.knit_type,
+    gsm: d.gsm,
+    fabric_composition: d.fabric_composition,
+    hsn_code: d.hsn_code,
+    gst_rate: d.gst_rate,
+    print_platen_specs: d.print_platen_specs
+  } : null;
+
   return {
     ...l,
+    product_id: d ? (d.product_id || d.pf_id || null) : (l.product_id || null),
     preview_url,
     preview_asset_id,
     preview_group,
@@ -542,7 +653,9 @@ async function resolveListingPreview(l) {
     product_name,
     design_color: meta?.featured_color?.hex || d?.template_color || available_colors[0]?.hex || design_color || null,
     available_colors,
-    available_sizes
+    available_sizes,
+    master_garment,
+    stock_by_variant
   };
 }
 

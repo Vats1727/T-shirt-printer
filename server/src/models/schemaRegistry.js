@@ -90,6 +90,49 @@ export const TABLES = [
     ]
   },
 
+  // 4a. Apparel Categories (Strict apparel-only marketplace taxonomy)
+  {
+    name: 'apparel_categories',
+    columns: `
+      id BIGSERIAL PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      slug TEXT NOT NULL UNIQUE,
+      description TEXT,
+      hsn_code TEXT NOT NULL DEFAULT '6109',
+      gst_rate NUMERIC(5,2) NOT NULL DEFAULT 5.00,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    `,
+    indexes: [
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_apparel_categories_slug ON apparel_categories(slug);`
+    ]
+  },
+
+  // 4b. Apparel Master Garments (Standardized apparel specifications)
+  {
+    name: 'apparel_master_garments',
+    columns: `
+      id BIGSERIAL PRIMARY KEY,
+      category_id BIGINT NOT NULL REFERENCES apparel_categories(id) ON DELETE RESTRICT,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL UNIQUE,
+      description TEXT,
+      fabric_composition TEXT NOT NULL,
+      knit_type TEXT NOT NULL,
+      gsm INTEGER NOT NULL,
+      hsn_code TEXT NOT NULL DEFAULT '6109',
+      gst_rate NUMERIC(5,2) NOT NULL DEFAULT 5.00,
+      print_platen_specs JSONB NOT NULL DEFAULT '{"front": {"width_in": 12, "height_in": 16}, "back": {"width_in": 12, "height_in": 16}}'::jsonb,
+      size_chart JSONB NOT NULL DEFAULT '[]'::jsonb,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    `,
+    indexes: [
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_master_garments_slug ON apparel_master_garments(slug);`,
+      `CREATE INDEX IF NOT EXISTS idx_master_garments_cat ON apparel_master_garments(category_id);`
+    ]
+  },
+
   // 5. Cloth Inventory
   {
     name: 'cloth_inventory',
@@ -98,12 +141,14 @@ export const TABLES = [
       color_id BIGINT NOT NULL REFERENCES colors(id) ON DELETE CASCADE,
       size_id BIGINT NOT NULL REFERENCES sizes(id) ON DELETE CASCADE,
       quantity INTEGER NOT NULL DEFAULT 0,
+      reserved_quantity INTEGER NOT NULL DEFAULT 0,
       price NUMERIC(10,2) NOT NULL DEFAULT 0,
       product TEXT NOT NULL DEFAULT 'tshirt',
       owner_id INTEGER
     `,
     indexes: [
-      `CREATE UNIQUE INDEX IF NOT EXISTS cloth_inventory_unique_product_color_size_owner ON cloth_inventory(product, color_id, size_id, owner_id);`
+      `CREATE UNIQUE INDEX IF NOT EXISTS cloth_inventory_unique_product_color_size_owner ON cloth_inventory(product, color_id, size_id, owner_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_cloth_inventory_owner_product ON cloth_inventory(owner_id, product);`
     ]
   },
 
@@ -159,6 +204,8 @@ export const TABLES = [
       id BIGSERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       slug TEXT NOT NULL,
+      garment_id BIGINT REFERENCES apparel_master_garments(id) ON DELETE RESTRICT,
+      is_approved BOOLEAN NOT NULL DEFAULT FALSE,
       single_price NUMERIC NOT NULL DEFAULT 0,
       bulk_min INTEGER NOT NULL DEFAULT 100,
       bulk_price NUMERIC NOT NULL DEFAULT 0,
@@ -179,7 +226,8 @@ export const TABLES = [
       `CREATE INDEX IF NOT EXISTS idx_products_full_slug ON products_full(slug);`,
       `CREATE INDEX IF NOT EXISTS idx_products_full_owner_id ON products_full(owner_id);`,
       `CREATE INDEX IF NOT EXISTS idx_products_full_status ON products_full(status);`,
-      `CREATE INDEX IF NOT EXISTS idx_products_full_category ON products_full(category);`
+      `CREATE INDEX IF NOT EXISTS idx_products_full_category ON products_full(category);`,
+      `CREATE INDEX IF NOT EXISTS idx_products_full_garment_id ON products_full(garment_id);`
     ]
   },
 
@@ -596,6 +644,34 @@ export const TABLES = [
       `CREATE INDEX IF NOT EXISTS idx_password_reset_otps_email ON password_reset_otps(LOWER(email));`,
       `CREATE INDEX IF NOT EXISTS idx_password_reset_otps_expiry ON password_reset_otps(expires_at);`
     ]
+  },
+
+  // 16. Inventory Reservations (Atomic reservation locks for checkout concurrency)
+  {
+    name: 'inventory_reservations',
+    columns: `
+      id BIGSERIAL PRIMARY KEY,
+      inventory_id BIGINT NOT NULL REFERENCES cloth_inventory(id) ON DELETE CASCADE,
+      order_id INTEGER REFERENCES orders(id) ON DELETE SET NULL,
+      reservation_token UUID NOT NULL UNIQUE,
+      quantity INTEGER NOT NULL CHECK (quantity > 0),
+      status TEXT NOT NULL CHECK (status IN ('reserved', 'confirmed', 'released', 'expired')) DEFAULT 'reserved',
+      customer_session_id TEXT,
+      payment_attempt_id TEXT,
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    `,
+    indexes: [
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_reservations_token ON inventory_reservations(reservation_token);`,
+      `CREATE INDEX IF NOT EXISTS idx_inventory_reservations_inventory_id ON inventory_reservations(inventory_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_inventory_reservations_status_expires ON inventory_reservations(status, expires_at);`,
+      `CREATE INDEX IF NOT EXISTS idx_inventory_reservations_payment_attempt ON inventory_reservations(payment_attempt_id) WHERE payment_attempt_id IS NOT NULL;`
+    ],
+    triggers: [
+      `DROP TRIGGER IF EXISTS trg_inventory_reservations_updated_at ON inventory_reservations;
+       CREATE TRIGGER trg_inventory_reservations_updated_at BEFORE UPDATE ON inventory_reservations FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();`
+    ]
   }
 ];
 
@@ -639,6 +715,82 @@ export const INITIAL_SEEDS = [
      50, 10.00,
      100, 15.00,
      'Global B2B wholesale rules configured by Portal Superadmin'
-   ) ON CONFLICT (id) DO NOTHING;`
+   ) ON CONFLICT (id) DO NOTHING;`,
+
+  // Default Apparel Categories (Strict apparel-only marketplace governance)
+  `INSERT INTO apparel_categories (id, name, slug, description, hsn_code, gst_rate, is_active) VALUES
+     (1, 'T-Shirts', 't-shirts', 'Short and long sleeve casual knit t-shirts', '6109', 5.00, TRUE),
+     (2, 'Hoodies & Sweatshirts', 'hoodies-sweatshirts', 'Fleece pullovers, zip hoodies and crewneck sweatshirts', '6110', 5.00, TRUE),
+     (3, 'Polos', 'polos', 'Collared pique and jersey polo shirts', '6105', 5.00, TRUE),
+     (4, 'Tank Tops', 'tank-tops', 'Sleeveless athletic and lifestyle tops', '6109', 5.00, TRUE)
+   ON CONFLICT (id) DO UPDATE SET
+     name = EXCLUDED.name,
+     slug = EXCLUDED.slug,
+     hsn_code = EXCLUDED.hsn_code,
+     gst_rate = EXCLUDED.gst_rate;`,
+
+  // Sequence advance for apparel_categories
+  `SELECT setval('apparel_categories_id_seq', (SELECT COALESCE(MAX(id), 1) FROM apparel_categories));`,
+
+  // Standardized Master Garments with exact fabric, knit, GSM, and platen specs
+  `INSERT INTO apparel_master_garments (
+     id, category_id, name, slug, description, fabric_composition, knit_type, gsm, hsn_code, gst_rate, print_platen_specs, size_chart, is_active
+   ) VALUES
+     (1, 1, 'Classic Crewneck T-Shirt', 'classic-crewneck-tshirt', 'Premium standard fit ring-spun cotton tee', '100% Combed Cotton', 'Single Jersey', 180, '6109', 5.00,
+      '{"front": {"width_in": 12, "height_in": 16}, "back": {"width_in": 12, "height_in": 16}}'::jsonb,
+      '[{"size": "S", "chest": 38, "length": 27}, {"size": "M", "chest": 40, "length": 28}, {"size": "L", "chest": 42, "length": 29}, {"size": "XL", "chest": 44, "length": 30}]'::jsonb, TRUE),
+     (2, 1, 'Heavyweight Oversized T-Shirt', 'heavyweight-oversized-tshirt', 'Boxy drop-shoulder streetwear tee', '100% Cotton', 'Heavy Jersey', 240, '6109', 5.00,
+      '{"front": {"width_in": 14, "height_in": 18}, "back": {"width_in": 14, "height_in": 18}}'::jsonb,
+      '[{"size": "S", "chest": 42, "length": 28}, {"size": "M", "chest": 44, "length": 29}, {"size": "L", "chest": 46, "length": 30}, {"size": "XL", "chest": 48, "length": 31}]'::jsonb, TRUE),
+     (3, 2, 'French Terry Pullover Hoodie', 'french-terry-pullover-hoodie', 'Heavyweight plush pullover hoodie with kangaroo pocket', '100% Cotton French Terry', '3-Thread Fleece', 380, '6110', 5.00,
+      '{"front": {"width_in": 11, "height_in": 14}, "back": {"width_in": 12, "height_in": 16}}'::jsonb,
+      '[{"size": "S", "chest": 40, "length": 27}, {"size": "M", "chest": 42, "length": 28}, {"size": "L", "chest": 44, "length": 29}, {"size": "XL", "chest": 46, "length": 30}]'::jsonb, TRUE),
+     (4, 3, 'Classic Pique Polo Shirt', 'classic-pique-polo', 'Collared 2-button knit polo shirt', '100% Ring-Spun Cotton', 'Honeycomb Pique', 220, '6105', 5.00,
+      '{"front": {"width_in": 10, "height_in": 12}, "back": {"width_in": 12, "height_in": 15}}'::jsonb,
+      '[{"size": "S", "chest": 38, "length": 27}, {"size": "M", "chest": 40, "length": 28}, {"size": "L", "chest": 42, "length": 29}, {"size": "XL", "chest": 44, "length": 30}]'::jsonb, TRUE),
+     (5, 2, 'Classic Crewneck Sweatshirt', 'classic-crewneck-sweatshirt', 'Brushed fleece crewneck pullover sweatshirt', '80% Cotton 20% Polyester', 'Brushed Fleece', 320, '6110', 5.00,
+      '{"front": {"width_in": 12, "height_in": 15}, "back": {"width_in": 12, "height_in": 16}}'::jsonb,
+      '[{"size": "S", "chest": 40, "length": 27}, {"size": "M", "chest": 42, "length": 28}, {"size": "L", "chest": 44, "length": 29}, {"size": "XL", "chest": 46, "length": 30}]'::jsonb, TRUE),
+     (6, 1, 'Classic V-Neck T-Shirt', 'classic-v-neck-tshirt', 'Premium standard fit ring-spun cotton v-neck tee', '100% Combed Cotton', 'Single Jersey', 180, '6109', 5.00,
+      '{"front": {"width_in": 12, "height_in": 16}, "back": {"width_in": 12, "height_in": 16}}'::jsonb,
+      '[{"size": "S", "chest": 38, "length": 27}, {"size": "M", "chest": 40, "length": 28}, {"size": "L", "chest": 42, "length": 29}, {"size": "XL", "chest": 44, "length": 30}]'::jsonb, TRUE)
+   ON CONFLICT (id) DO UPDATE SET
+     name = EXCLUDED.name,
+     slug = EXCLUDED.slug,
+     fabric_composition = EXCLUDED.fabric_composition,
+     knit_type = EXCLUDED.knit_type,
+     gsm = EXCLUDED.gsm,
+     hsn_code = EXCLUDED.hsn_code,
+     gst_rate = EXCLUDED.gst_rate,
+     print_platen_specs = EXCLUDED.print_platen_specs,
+     size_chart = EXCLUDED.size_chart;`,
+
+  // Sequence advance for apparel_master_garments
+  `SELECT setval('apparel_master_garments_id_seq', (SELECT COALESCE(MAX(id), 1) FROM apparel_master_garments));`,
+
+  // Invariant check constraint for cloth_inventory reserved_quantity
+  `DO $$ 
+   BEGIN 
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_cloth_inventory_reservations') THEN 
+       ALTER TABLE cloth_inventory ADD CONSTRAINT chk_cloth_inventory_reservations CHECK (reserved_quantity <= quantity AND quantity >= 0 AND reserved_quantity >= 0); 
+     END IF; 
+   END $$;`,
+
+  // Ensure is_approved column defaults to FALSE for new products
+  `ALTER TABLE products_full ALTER COLUMN is_approved SET DEFAULT FALSE;`,
+
+  // Safe legacy catalog backfill mapping
+  `UPDATE products_full SET garment_id = 3, is_approved = TRUE WHERE id = 1 AND (garment_id IS NULL OR garment_id <> 3);`,
+  `UPDATE products_full SET garment_id = 5, is_approved = TRUE WHERE id IN (2, 3, 4, 5) AND (garment_id IS NULL OR garment_id <> 5);`,
+  `UPDATE products_full SET garment_id = 6, is_approved = TRUE WHERE id = 6 AND (garment_id IS NULL OR garment_id <> 6);`,
+  `UPDATE products_full SET is_approved = TRUE WHERE id IN (1, 2, 3, 4, 5, 6) AND is_approved IS NULL;`,
+
+  // Seed inventory for Hoodie (#1) so it has stock ready for sizes & colors
+  `INSERT INTO cloth_inventory (color_id, size_id, quantity, price, owner_id, product)
+   VALUES (1, 1, 150, 25.00, 3, 'hoodie')
+   ON CONFLICT (product, color_id, size_id, owner_id) DO NOTHING;`,
+  `INSERT INTO cloth_inventory (color_id, size_id, quantity, price, owner_id, product)
+   VALUES (2, 2, 120, 25.00, 3, 'hoodie')
+   ON CONFLICT (product, color_id, size_id, owner_id) DO NOTHING;`
 ];
 

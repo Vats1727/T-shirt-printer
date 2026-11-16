@@ -706,6 +706,137 @@ export async function getPublicB2BFinancialSettings(_req, res, next) {
   }
 }
 
+/**
+ * Portal Admin Product Moderation: Lists all products with provider and master garment details.
+ * Supports filtering by approval status: 'pending' (default), 'approved', 'all'.
+ */
+export async function listPortalProducts(req, res, next) {
+  try {
+    if (!pool) return res.json({ products: [] });
+
+    const statusFilter = String(req.query.status || 'all').toLowerCase();
+    let q = `
+      SELECT 
+        pf.id, pf.name, pf.slug, pf.category, pf.single_price, pf.bulk_min, pf.bulk_price,
+        pf.sizes, pf.colors, pf.created_at, pf.updated_at, pf.status, pf.owner_id,
+        pf.garment_id, pf.is_approved,
+        u.name as provider_name, u.email as provider_email,
+        amg.name as master_garment_name, amg.knit_type, amg.gsm, amg.fabric_composition,
+        amg.hsn_code, amg.gst_rate, amg.is_active as garment_active
+      FROM products_full pf
+      LEFT JOIN users u ON u.id = pf.owner_id
+      LEFT JOIN apparel_master_garments amg ON amg.id = pf.garment_id
+      WHERE COALESCE(pf.is_deleted, false) = false
+    `;
+
+    const params = [];
+    if (statusFilter === 'pending') {
+      q += ` AND (pf.is_approved = FALSE OR pf.is_approved IS NULL)`;
+    } else if (statusFilter === 'approved') {
+      q += ` AND pf.is_approved = TRUE`;
+    }
+
+    q += ` ORDER BY pf.id DESC`;
+
+    const result = await pool.query(q, params);
+    return res.json({
+      success: true,
+      products: result.rows
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Portal Admin Product Approval/Rejection Action.
+ * Approves product after master garment validation or rejects/unpublishes it.
+ */
+export async function updateProductApproval(req, res, next) {
+  try {
+    if (!pool) throw new Error('Database pool not available');
+
+    const productId = parseInt(req.params.id, 10);
+    const { is_approved, rejection_reason } = req.body;
+
+    if (isNaN(productId) || productId <= 0) {
+      return res.status(400).json({ message: 'Invalid product ID' });
+    }
+
+    // 1. Fetch current product state
+    const pCheck = await pool.query(
+      `SELECT pf.id, pf.name, pf.is_approved, pf.garment_id, amg.name as garment_name, amg.is_active as garment_active
+       FROM products_full pf
+       LEFT JOIN apparel_master_garments amg ON amg.id = pf.garment_id
+       WHERE pf.id = $1`,
+      [productId]
+    );
+
+    if (pCheck.rows.length === 0) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    const prod = pCheck.rows[0];
+
+    // 2. If approving: guarantee that master garment is assigned and active
+    if (is_approved === true) {
+      if (!prod.garment_id) {
+        return res.status(422).json({
+          error: 'UnmappedGarment',
+          message: 'Cannot approve product without a mapped master garment in the catalog.'
+        });
+      }
+      if (prod.garment_active === false) {
+        return res.status(422).json({
+          error: 'InactiveMasterGarment',
+          message: `Cannot approve product: master garment "${prod.garment_name}" is currently inactive.`
+        });
+      }
+
+      await pool.query(
+        `UPDATE products_full 
+         SET is_approved = TRUE, status = 'published', updated_at = NOW() 
+         WHERE id = $1`,
+        [productId]
+      );
+    } else {
+      // 3. If rejecting: set is_approved = FALSE, set status = 'draft', and unpublish associated listings
+      await pool.query(
+        `UPDATE products_full 
+         SET is_approved = FALSE, status = 'draft', updated_at = NOW() 
+         WHERE id = $1`,
+        [productId]
+      );
+
+      // Unpublish active listings pointing to this rejected product
+      await pool.query(
+        `UPDATE listings l
+         SET published = FALSE, visibility = 'unlisted'
+         FROM designs d
+         WHERE d.id = CASE WHEN l.design_key ~ '^[0-9]+$' THEN l.design_key::int WHEN l.design_key ~ '^design-\\d+$' THEN substring(l.design_key from 8)::int ELSE NULL END
+           AND d.product_id = $1`,
+        [productId]
+      );
+    }
+
+    const updatedRes = await pool.query(
+      `SELECT pf.id, pf.name, pf.is_approved, pf.status, pf.garment_id, amg.name as garment_name 
+       FROM products_full pf
+       LEFT JOIN apparel_master_garments amg ON amg.id = pf.garment_id
+       WHERE pf.id = $1`,
+      [productId]
+    );
+
+    return res.json({
+      success: true,
+      message: is_approved ? `Product #${productId} successfully approved and enabled for marketplace publication.` : `Product #${productId} rejected and moved to draft.`,
+      product: updatedRes.rows[0]
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export default {
   listProviders,
   updateProviderStatus,
@@ -719,5 +850,7 @@ export default {
   getDesignerLedger,
   getPartnerStatement,
   exportLedgerPdf,
-  exportLedgerExcel
+  exportLedgerExcel,
+  listPortalProducts,
+  updateProductApproval
 };
