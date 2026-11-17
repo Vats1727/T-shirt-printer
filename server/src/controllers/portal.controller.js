@@ -27,8 +27,35 @@ export async function listProviders(_req, res, next) {
             ON pgc.gateway_account_id = pga.id AND pgc.status = 'active'
         `);
         const gwMap = Object.fromEntries(gwRes.rows.map((r) => [Number(r.provider_id), r]));
+
+        const subRes = await pool.query(`
+          SELECT 
+            s.user_id,
+            s.id AS subscription_id,
+            s.status AS subscription_status,
+            s.starts_at AS subscription_starts_at,
+            s.expires_at AS subscription_expires_at,
+            s.billing_interval AS subscription_billing_interval,
+            s.grant_type AS subscription_grant_type,
+            p.id AS plan_id,
+            p.name AS plan_name,
+            p.plan_code,
+            p.tier AS plan_tier,
+            p.price_paise AS plan_price_paise
+          FROM user_subscriptions s
+          JOIN subscription_plans p ON p.id = s.plan_id
+          WHERE s.status = 'active'
+        `);
+        const subMap = Object.fromEntries(subRes.rows.map((r) => [Number(r.user_id), r]));
+
         const enriched = providers.map((p) => {
           const gw = gwMap[Number(p.id)];
+          const sub = subMap[Number(p.id)];
+          const tier = sub?.plan_tier || p.subscription_tier || 'starter';
+          const planName = sub?.plan_name || (tier === 'pro' ? 'Pro Provider' : (tier === 'enterprise' ? 'Enterprise' : 'Starter (Trial)'));
+          const expiry = sub?.subscription_expires_at || p.subscription_expiry || null;
+          const isPaid = (sub && Number(sub.plan_price_paise) > 0) || tier === 'pro' || tier === 'enterprise';
+
           return {
             ...p,
             gateway_status: gw ? gw.gateway_status : (p.role === 'print_provider' ? 'unconfigured' : null),
@@ -38,12 +65,18 @@ export async function listProviders(_req, res, next) {
             gateway_ping_status: gw?.gateway_ping_status || null,
             gateway_key_masked: gw?.gateway_key_id
               ? `${gw.gateway_key_id.slice(0, 9)}••••${gw.gateway_key_id.slice(-4)}`
-              : null
+              : null,
+            subscription_tier: tier,
+            subscription_plan_name: planName,
+            subscription_status: sub?.subscription_status || 'active',
+            subscription_expiry: expiry,
+            is_paid_subscription: isPaid,
+            subscription_price_rupees: sub ? Number(sub.plan_price_paise) / 100 : 0
           };
         });
         return res.json(enriched);
       } catch (err) {
-        console.warn('[PortalController] Gateway enrichment warning:', err.message);
+        console.warn('[PortalController] Gateway & Subscription enrichment warning:', err.message);
       }
     }
 

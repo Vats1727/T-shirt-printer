@@ -365,6 +365,180 @@ export const SubscriptionService = {
     }
 
     return grantedSub;
+  },
+
+  /**
+   * Suspends a user's subscription administratively (Portal Admin).
+   */
+  async suspendSubscription({ superadminId, targetUserId, reason }) {
+    const numTargetId = Number(targetUserId);
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const suspensionNote = reason ? `Suspended: ${reason}` : 'Suspended by Portal Administrator';
+
+      // 1. Mark active subscriptions as suspended
+      const updateSubRes = await client.query(
+        `UPDATE user_subscriptions 
+         SET status = 'suspended', 
+             grant_reason = $2,
+             updated_at = NOW() 
+         WHERE user_id = $1 AND status = 'active'
+         RETURNING *`,
+        [numTargetId, suspensionNote]
+      );
+
+      // 2. Set user subscription_tier to 'none' / 'starter' and record suspension reason
+      await client.query(
+        `UPDATE users 
+         SET subscription_tier = 'starter',
+             store_settings = jsonb_set(COALESCE(store_settings, '{}'::jsonb), '{suspension_reason}', $2::jsonb),
+             updated_at = NOW() 
+         WHERE id = $1`,
+        [numTargetId, JSON.stringify(suspensionNote)]
+      );
+
+      await client.query('COMMIT');
+
+      return {
+        success: true,
+        suspendedSubscription: updateSubRes.rows[0] || null,
+        message: `Subscription for user #${numTargetId} has been suspended.`
+      };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  /**
+   * Resumes/reactivates a suspended subscription.
+   */
+  async resumeSubscription({ superadminId, targetUserId }) {
+    const numTargetId = Number(targetUserId);
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Find the most recent suspended subscription
+      const subRes = await client.query(
+        `SELECT s.*, p.tier as plan_tier, p.name as plan_name
+         FROM user_subscriptions s
+         JOIN subscription_plans p ON p.id = s.plan_id
+         WHERE s.user_id = $1 AND s.status = 'suspended'
+         ORDER BY s.id DESC LIMIT 1`,
+        [numTargetId]
+      );
+
+      if (!subRes.rows.length) {
+        throw new Error(`No suspended subscription found for user #${numTargetId}.`);
+      }
+
+      const suspendedSub = subRes.rows[0];
+
+      // If already expired, extend validity by 30 days from now
+      let expiresAt = suspendedSub.expires_at;
+      if (expiresAt && new Date(expiresAt) <= new Date()) {
+        expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      }
+
+      // Mark subscription active again
+      const restoredSubRes = await client.query(
+        `UPDATE user_subscriptions 
+         SET status = 'active', 
+             expires_at = $2,
+             grant_reason = 'Reactivated by Portal Superadmin',
+             updated_at = NOW() 
+         WHERE id = $1
+         RETURNING *`,
+        [suspendedSub.id, expiresAt]
+      );
+
+      // Restore user subscription_tier and clear suspension_reason
+      await client.query(
+        `UPDATE users 
+         SET subscription_tier = $2,
+             subscription_expiry = $3,
+             store_settings = jsonb_set(COALESCE(store_settings, '{}'::jsonb), '{suspension_reason}', 'null'::jsonb),
+             updated_at = NOW() 
+         WHERE id = $1`,
+        [numTargetId, suspendedSub.plan_tier || 'pro', expiresAt]
+      );
+
+      await client.query('COMMIT');
+
+      return {
+        success: true,
+        subscription: restoredSubRes.rows[0],
+        message: `Subscription for user #${numTargetId} has been reactivated.`
+      };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  /**
+   * Extends or updates subscription expiry date.
+   */
+  async updateSubscriptionExpiry({ targetUserId, newExpiryDate, extendDays, reason }) {
+    const numTargetId = Number(targetUserId);
+
+    let finalExpiry;
+    if (newExpiryDate) {
+      finalExpiry = new Date(newExpiryDate);
+    } else if (extendDays) {
+      const curRes = await pool.query(
+        `SELECT expires_at FROM user_subscriptions WHERE user_id = $1 AND status = 'active' ORDER BY id DESC LIMIT 1`,
+        [numTargetId]
+      );
+      const curExpiry = curRes.rows[0]?.expires_at;
+      const baseDate = curExpiry && new Date(curExpiry) > new Date() ? new Date(curExpiry) : new Date();
+      finalExpiry = new Date(baseDate.getTime() + Number(extendDays) * 24 * 60 * 60 * 1000);
+    } else {
+      throw new Error('Either newExpiryDate or extendDays is required.');
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      await client.query(
+        `UPDATE user_subscriptions 
+         SET expires_at = $2, 
+             grant_reason = COALESCE($3, grant_reason),
+             updated_at = NOW() 
+         WHERE user_id = $1 AND status = 'active'`,
+        [numTargetId, finalExpiry, reason || 'Validity extended by Portal Administrator']
+      );
+
+      await client.query(
+        `UPDATE users 
+         SET subscription_expiry = $2, updated_at = NOW() 
+         WHERE id = $1`,
+        [numTargetId, finalExpiry]
+      );
+
+      await client.query('COMMIT');
+
+      return {
+        success: true,
+        expiresAt: finalExpiry,
+        message: `Subscription validity updated to ${finalExpiry.toISOString().split('T')[0]}.`
+      };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 };
 

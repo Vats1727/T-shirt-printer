@@ -6,7 +6,6 @@ import { useCart } from '@/context/CartContext';
 import {
   ShieldCheck,
   CreditCard,
-  Banknote,
   CheckCircle2,
   ArrowLeft,
   ShoppingBag,
@@ -131,51 +130,7 @@ export default function Checkout() {
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       };
 
-      // Case 1: Cash on Delivery (COD)
-      if (paymentMethod === 'cod') {
-        const orderRes = await fetch('/api/orders', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            items: cart.map((item) => ({
-              listing_id: item.listing_id,
-              design_id: item.design_id,
-              product_id: item.product_id,
-              title: item.title,
-              price: item.price,
-              quantity: item.quantity,
-              color_id: item.color?.id,
-              color_name: item.color?.name,
-              color_hex: item.color?.hex,
-              size_label: item.size,
-              preview_url: item.preview_url,
-              back_preview_url: item.back_preview_url || item.preview_back_url || null
-            })),
-            customerName: shippingAddress.name,
-            customerEmail: shippingAddress.email,
-            customerPhone: shippingAddress.phone,
-            shippingAddress,
-            paymentMethod: 'cod',
-            paymentStatus: 'cod',
-            shippingCostCents: Math.round(shippingCost * 100),
-            taxCents: Math.round(taxAmount * 100)
-          })
-        });
-
-        if (!orderRes.ok) {
-          const err = await orderRes.json().catch(() => ({}));
-          throw new Error(err.message || 'Failed to place order');
-        }
-
-        const orderData = await orderRes.json();
-        clearCart();
-        setCompletedOrder(orderData.order);
-        setSubmitting(false);
-        return;
-      }
-
-      // Case 2: Razorpay Payment
-      // Step A: Create order in platform database
+      // Create order in platform database and initialize Razorpay payment
       const orderRes = await fetch('/api/orders', {
         method: 'POST',
         headers,
@@ -604,20 +559,13 @@ export default function Checkout() {
               </div>
 
               <div className="space-y-3 pt-1">
-                {/* Razorpay Option */}
+                {/* Razorpay Online Payment Option */}
                 <div
-                  onClick={() => setPaymentMethod('razorpay')}
-                  className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex items-start justify-between gap-3 ${paymentMethod === 'razorpay'
-                      ? 'border-indigo-600 bg-indigo-50/30 ring-2 ring-indigo-600/15'
-                      : 'border-slate-200 hover:border-slate-300 bg-white'
-                    }`}
+                  className="p-4 rounded-2xl border-2 border-indigo-600 bg-indigo-50/30 ring-2 ring-indigo-600/15 flex items-start justify-between gap-3"
                 >
                   <div className="flex items-start gap-3">
-                    <div
-                      className={`size-5 rounded-full border-2 mt-0.5 flex items-center justify-center ${paymentMethod === 'razorpay' ? 'border-indigo-600' : 'border-slate-300'
-                        }`}
-                    >
-                      {paymentMethod === 'razorpay' && <div className="size-2.5 rounded-full bg-indigo-600" />}
+                    <div className="size-5 rounded-full border-2 border-indigo-600 mt-0.5 flex items-center justify-center">
+                      <div className="size-2.5 rounded-full bg-indigo-600" />
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
@@ -630,31 +578,6 @@ export default function Checkout() {
                     </div>
                   </div>
                   <CreditCard className="size-5 text-indigo-600 shrink-0" />
-                </div>
-
-                {/* Cash on Delivery Option */}
-                <div
-                  onClick={() => setPaymentMethod('cod')}
-                  className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex items-start justify-between gap-3 ${paymentMethod === 'cod'
-                      ? 'border-indigo-600 bg-indigo-50/30 ring-2 ring-indigo-600/15'
-                      : 'border-slate-200 hover:border-slate-300 bg-white'
-                    }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={`size-5 rounded-full border-2 mt-0.5 flex items-center justify-center ${paymentMethod === 'cod' ? 'border-indigo-600' : 'border-slate-300'
-                        }`}
-                    >
-                      {paymentMethod === 'cod' && <div className="size-2.5 rounded-full bg-indigo-600" />}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-extrabold text-slate-900">Cash on Delivery (COD)</span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 mt-0.5">Pay in cash when your printed parcel arrives</p>
-                    </div>
-                  </div>
-                  <Banknote className="size-5 text-emerald-600 shrink-0" />
                 </div>
               </div>
             </div>
@@ -729,15 +652,10 @@ export default function Checkout() {
               >
                 {submitting ? (
                   <span>Processing Checkout...</span>
-                ) : paymentMethod === 'razorpay' ? (
+                ) : (
                   <>
                     <CreditCard className="size-4" />
                     <span>Pay with Razorpay • ₹{totalAmount.toFixed(2)}</span>
-                  </>
-                ) : (
-                  <>
-                    <Banknote className="size-4" />
-                    <span>Place Order (COD) • ₹{totalAmount.toFixed(2)}</span>
                   </>
                 )}
               </Button>

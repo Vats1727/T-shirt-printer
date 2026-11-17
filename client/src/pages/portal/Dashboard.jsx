@@ -31,8 +31,11 @@ import {
   Mail,
   DollarSign,
   FileText,
-  CreditCard
+  CreditCard,
+  Receipt,
+  Sparkles
 } from "lucide-react";
+import ManageSubscriptionDialog from "@/components/portal/ManageSubscriptionDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -65,7 +68,22 @@ export default function PortalAdminDashboard() {
   const [currentPage, setCurrentPage] = useState(1);
   const [actionConfirm, setActionConfirm] = useState(null); // { provider, targetStatus, title, description }
   const [viewingProvider, setViewingProvider] = useState(null);
+  const [managingSubUser, setManagingSubUser] = useState(null);
   const [updatingId, setUpdatingId] = useState(null);
+
+  // Fetch subscription plans for management dropdown
+  const { data: plansData } = useQuery({
+    queryKey: ["/api/portal/subscriptions/plans"],
+    queryFn: async () => {
+      const res = await fetch("/api/portal/subscriptions/plans", {
+        headers: { Authorization: token ? `Bearer ${token}` : "" }
+      });
+      if (!res.ok) return { plans: [] };
+      return res.json();
+    },
+    enabled: !!token
+  });
+  const plans = plansData?.plans || [];
 
   const { data: providersRaw, isLoading, isFetching, refetch } = useQuery({
     queryKey: ["/api/portal/providers"],
@@ -94,8 +112,51 @@ export default function PortalAdminDashboard() {
     refetchInterval: 10000
   });
 
+  // Query unified revenue stats (SaaS Subscriptions + Retail Commissions)
+  const { data: unifiedRevenueData, refetch: refetchRevenue } = useQuery({
+    queryKey: ["/api/portal/subscriptions/revenue-stats"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/portal/subscriptions/revenue-stats", {
+          headers: { Authorization: token ? `Bearer ${token}` : "" }
+        });
+        if (res.ok) {
+          const js = await res.json();
+          if (js.stats) return js;
+        }
+      } catch {}
+
+      // Fallback to /api/portal/subscriptions/stats
+      try {
+        const fallbackRes = await fetch("/api/portal/subscriptions/stats", {
+          headers: { Authorization: token ? `Bearer ${token}` : "" }
+        });
+        if (fallbackRes.ok) {
+          const js = await fallbackRes.json();
+          const mrr = js.stats?.mrrRupees || Number(js.stats?.mrr_paise || 0) / 100 || 0;
+          return {
+            stats: {
+              ...js.stats,
+              subscription_revenue_rupees: mrr,
+              total_platform_revenue_rupees: mrr
+            }
+          };
+        }
+      } catch {}
+
+      return null;
+    },
+    enabled: !!token,
+    refetchInterval: 10000
+  });
+
   const portalOrders = Array.isArray(portalOrdersRaw?.orders) ? portalOrdersRaw.orders : [];
-  const totalPlatformRevenue = portalOrders.reduce((acc, o) => acc + (Number(o.platform_fee_cents || 0) / 100), 0);
+  const revenueStats = unifiedRevenueData?.stats || {};
+  const subscriptionRevenue = Number(revenueStats.subscription_revenue_rupees || 0);
+  const retailRevenue = Number(revenueStats.retail_commission_rupees || 0);
+  const totalPlatformRevenue = revenueStats.total_platform_revenue_rupees !== undefined
+    ? Number(revenueStats.total_platform_revenue_rupees)
+    : (subscriptionRevenue + portalOrders.reduce((acc, o) => acc + (Number(o.platform_fee_cents || 0) / 100), 0));
   const totalCustomerOrdersCount = portalOrders.filter((o) => o.is_customer_order || o.order_type === 'production_fulfillment').length;
 
   // Include both print_providers and designers
@@ -224,20 +285,29 @@ export default function PortalAdminDashboard() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setLocation("/portal/ledger")}
+            onClick={() => setLocation("/portal/subscription-ledger")}
             className="h-8 gap-1.5 border-indigo-200 text-indigo-700 hover:bg-indigo-50 shadow-2xs rounded-lg text-xs font-semibold cursor-pointer"
           >
-            <FileText className="w-3.5 h-3.5 text-indigo-600" />
+            <Receipt className="w-3.5 h-3.5 text-indigo-600" />
+            Subscription Billing
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setLocation("/portal/ledger")}
+            className="h-8 gap-1.5 border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs rounded-lg text-xs font-semibold cursor-pointer"
+          >
+            <FileText className="w-3.5 h-3.5 text-slate-600" />
             Partner Ledger
           </Button>
           <Button
             variant="outline"
             size="sm"
             onClick={() => setLocation("/portal/subscriptions")}
-            className="h-8 gap-1.5 border-indigo-200 text-indigo-700 hover:bg-indigo-50 shadow-2xs rounded-lg text-xs font-semibold cursor-pointer"
+            className="h-8 gap-1.5 border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs rounded-lg text-xs font-semibold cursor-pointer"
           >
-            <CreditCard className="w-3.5 h-3.5 text-indigo-600" />
-            Subscription Plans
+            <CreditCard className="w-3.5 h-3.5 text-slate-600" />
+            Plans & Pricing
           </Button>
           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-full text-xs font-semibold">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -246,7 +316,10 @@ export default function PortalAdminDashboard() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => refetch()}
+            onClick={() => {
+              refetch();
+              refetchRevenue?.();
+            }}
             disabled={isFetching}
             className="h-8 gap-1.5 border-slate-200 shadow-2xs hover:bg-slate-50 rounded-lg text-xs"
           >
@@ -258,9 +331,9 @@ export default function PortalAdminDashboard() {
 
       {/* KPI Overview Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-        {/* Platform Commission Revenue Card */}
+        {/* Platform Unified Revenue Card */}
         <Card
-          onClick={() => setLocation("/portal/ledger")}
+          onClick={() => setLocation("/portal/subscription-ledger")}
           className="cursor-pointer transition-all duration-200 rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50/70 via-white to-white hover:shadow-md hover:border-indigo-400 group"
         >
           <CardHeader className="p-4 pb-1.5 flex flex-row items-center justify-between space-y-0">
@@ -274,8 +347,8 @@ export default function PortalAdminDashboard() {
           <CardContent className="p-4 pt-0">
             <div className="text-2xl font-black text-indigo-950">₹{totalPlatformRevenue.toFixed(2)}</div>
             <p className="text-[11px] text-indigo-700 mt-0.5 font-medium flex items-center justify-between">
-              <span>{totalCustomerOrdersCount} orders</span>
-              <span className="text-[10px] bg-indigo-100 px-1.5 py-0.5 rounded font-bold">Partner Ledger &rarr;</span>
+              <span>SaaS Subscriptions: ₹{subscriptionRevenue.toFixed(2)}</span>
+              <span className="text-[10px] bg-indigo-100 px-1.5 py-0.5 rounded font-bold group-hover:bg-indigo-200 transition-colors">Ledger &rarr;</span>
             </p>
           </CardContent>
         </Card>
@@ -492,6 +565,9 @@ export default function PortalAdminDashboard() {
                     Approval Status
                   </TableHead>
                   <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600">
+                    Subscription / Plan
+                  </TableHead>
+                  <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600">
                     Affiliation / Capacity
                   </TableHead>
                   <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600">
@@ -565,6 +641,46 @@ export default function PortalAdminDashboard() {
                         )}
                       </TableCell>
 
+                      {/* Subscription / Plan Column */}
+                      <TableCell>
+                        {p.subscription_tier === 'pro' || p.is_paid_subscription ? (
+                          <div className="space-y-0.5">
+                            <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 font-bold gap-1 px-2.5 py-0.5 text-xs">
+                              <Sparkles className="w-3 h-3 text-indigo-600" /> {p.subscription_plan_name || 'Pro Provider'}
+                            </Badge>
+                            {p.subscription_expiry && (
+                              <div className="text-[10px] text-indigo-700 font-semibold flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                Valid till {format(new Date(p.subscription_expiry), "dd-MMM-yyyy")}
+                              </div>
+                            )}
+                          </div>
+                        ) : p.subscription_tier === 'enterprise' ? (
+                          <div className="space-y-0.5">
+                            <Badge className="bg-purple-50 text-purple-700 border-purple-200 font-bold gap-1 px-2.5 py-0.5 text-xs">
+                              <ShieldCheck className="w-3 h-3 text-purple-600" /> {p.subscription_plan_name || 'Enterprise'}
+                            </Badge>
+                            {p.subscription_expiry && (
+                              <div className="text-[10px] text-purple-700 font-semibold flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                Valid till {format(new Date(p.subscription_expiry), "dd-MMM-yyyy")}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-0.5">
+                            <Badge className="bg-slate-100 text-slate-600 border-slate-200 font-medium px-2 py-0.5 text-xs">
+                              {p.subscription_plan_name || 'Starter (Trial)'}
+                            </Badge>
+                            {p.subscription_expiry && (
+                              <div className="text-[10px] text-slate-500">
+                                Trial: {format(new Date(p.subscription_expiry), "dd-MMM")}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </TableCell>
+
                       {/* Capacity / Affiliation */}
                       <TableCell>
                         {isDesigner ? (
@@ -612,6 +728,18 @@ export default function PortalAdminDashboard() {
                             title="View Details"
                           >
                             <Eye className="w-4 h-4" />
+                          </Button>
+
+                          {/* Manage / Suspend Subscription Button */}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setManagingSubUser(p)}
+                            className="h-8 px-2 text-xs border-indigo-200 text-indigo-700 hover:bg-indigo-50 rounded-lg font-semibold gap-1"
+                            title="Manage, Extend, or Suspend Subscription"
+                          >
+                            <CreditCard className="w-3.5 h-3.5" />
+                            Plan
                           </Button>
 
                           {status === "active" ? (
@@ -850,6 +978,18 @@ export default function PortalAdminDashboard() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Comprehensive Manage / Suspend Subscription Dialog */}
+      <ManageSubscriptionDialog
+        open={Boolean(managingSubUser)}
+        onOpenChange={(open) => !open && setManagingSubUser(null)}
+        user={managingSubUser}
+        plans={plans}
+        onSuccess={() => {
+          refetch();
+          refetchRevenue();
+        }}
+      />
     </div>
   );
 }

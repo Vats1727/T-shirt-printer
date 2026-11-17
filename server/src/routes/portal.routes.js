@@ -44,6 +44,11 @@ router.put('/subscriptions/plans/:id', requireAuth, requireRole('portal_admin'),
 router.delete('/subscriptions/plans/:id', requireAuth, requireRole('portal_admin'), subController.portalDeactivatePlan);
 router.get('/subscriptions/subscribers', requireAuth, requireRole('portal_admin'), subController.portalGetSubscribers);
 router.get('/subscriptions/stats', requireAuth, requireRole('portal_admin'), subController.portalGetStats);
+router.get('/subscriptions/revenue-stats', requireAuth, requireRole('portal_admin'), subController.portalGetUnifiedRevenueStats);
+router.get('/subscriptions/invoices', requireAuth, requireRole('portal_admin'), subController.portalGetInvoices);
 router.post('/subscriptions/grant', requireAuth, requireRole('portal_admin'), subController.portalGrantTier);
+router.post('/subscriptions/suspend', requireAuth, requireRole('portal_admin'), subController.portalSuspendSubscription);
+router.post('/subscriptions/resume', requireAuth, requireRole('portal_admin'), subController.portalResumeSubscription);
+router.post('/subscriptions/extend', requireAuth, requireRole('portal_admin'), subController.portalUpdateSubscriptionExpiry);
 
 export default router;

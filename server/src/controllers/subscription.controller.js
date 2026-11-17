@@ -204,6 +204,43 @@ export async function portalGetStats(req, res, next) {
   }
 }
 
+export async function portalGetInvoices(req, res, next) {
+  try {
+    const { search = '', status = '', role = '', page = 1, limit = 20 } = req.query;
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const offset = (pageNum - 1) * limitNum;
+
+    const data = await SubscriptionModel.getAllInvoices({
+      search,
+      status,
+      role,
+      limit: limitNum,
+      offset
+    });
+
+    return res.json({
+      success: true,
+      invoices: data.invoices,
+      totalCount: data.totalCount,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(data.totalCount / limitNum) || 1
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function portalGetUnifiedRevenueStats(req, res, next) {
+  try {
+    const stats = await SubscriptionModel.getUnifiedRevenueStats();
+    return res.json({ success: true, stats });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function portalGrantTier(req, res, next) {
   try {
     const superadminId = req.user.id || req.user.sub;
@@ -227,6 +264,68 @@ export async function portalGrantTier(req, res, next) {
       message: `Tier "${tier}" successfully granted to user #${userId}`,
       subscription: granted
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function portalSuspendSubscription(req, res, next) {
+  try {
+    const superadminId = req.user.id || req.user.sub;
+    const { userId, reason } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'userId is required' });
+    }
+
+    const result = await SubscriptionService.suspendSubscription({
+      superadminId,
+      targetUserId: userId,
+      reason
+    });
+
+    return res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function portalResumeSubscription(req, res, next) {
+  try {
+    const superadminId = req.user.id || req.user.sub;
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'userId is required' });
+    }
+
+    const result = await SubscriptionService.resumeSubscription({
+      superadminId,
+      targetUserId: userId
+    });
+
+    return res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function portalUpdateSubscriptionExpiry(req, res, next) {
+  try {
+    const { userId, newExpiryDate, extendDays, reason } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'userId is required' });
+    }
+
+    const result = await SubscriptionService.updateSubscriptionExpiry({
+      targetUserId: userId,
+      newExpiryDate,
+      extendDays,
+      reason
+    });
+
+    return res.json(result);
   } catch (err) {
     next(err);
   }

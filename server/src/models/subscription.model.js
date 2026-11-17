@@ -267,13 +267,20 @@ export const SubscriptionModel = {
   async getAllSubscribers() {
     const query = `
       SELECT u.id as user_id, u.name, u.email, u.role, u.status as user_status,
-             s.id as subscription_id, s.status as subscription_status,
+             s.id as subscription_id, COALESCE(s.status, 'active') as subscription_status,
              s.price_paise, s.billing_interval, s.starts_at, s.expires_at,
              s.grant_type, s.grant_reason,
-             p.name as plan_name, p.plan_code, p.tier as plan_tier
+             pl.name as plan_name, pl.plan_code, pl.tier as plan_tier, pl.id as plan_id
       FROM users u
-      LEFT JOIN user_subscriptions s ON s.user_id = u.id AND s.status = 'active'
-      LEFT JOIN subscription_plans p ON p.id = s.plan_id
+      LEFT JOIN LATERAL (
+        SELECT sub.id, sub.status, sub.price_paise, sub.billing_interval, sub.starts_at, sub.expires_at,
+               sub.grant_type, sub.grant_reason, sub.plan_id
+        FROM user_subscriptions sub
+        WHERE sub.user_id = u.id
+        ORDER BY sub.id DESC
+        LIMIT 1
+      ) s ON true
+      LEFT JOIN subscription_plans pl ON pl.id = s.plan_id
       WHERE u.role IN ('print_provider', 'designer')
       ORDER BY u.id ASC;
     `;
@@ -312,6 +319,140 @@ export const SubscriptionModel = {
       totalDesigners: Number(row.total_designers || 0),
       activePaidProviders: Number(row.active_paid_providers || 0),
       activePaidDesigners: Number(row.active_paid_designers || 0)
+    };
+  },
+
+  /**
+   * Fetches all subscription invoices joined with user, plan, and payment attempt details.
+   */
+  async getAllInvoices({ search = '', status = '', role = '', limit = 50, offset = 0 } = {}) {
+    const whereClauses = [];
+    const values = [];
+    let i = 1;
+
+    if (status && status !== 'all') {
+      whereClauses.push(`i.status = $${i++}`);
+      values.push(status);
+    }
+
+    if (role && role !== 'all') {
+      whereClauses.push(`u.role = $${i++}`);
+      values.push(role);
+    }
+
+    if (search && search.trim()) {
+      whereClauses.push(`(
+        u.name ILIKE $${i} OR
+        u.email ILIKE $${i} OR
+        i.invoice_number ILIKE $${i} OR
+        pa.razorpay_payment_id ILIKE $${i} OR
+        p.name ILIKE $${i}
+      )`);
+      values.push(`%${search.trim()}%`);
+      i++;
+    }
+
+    const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    const query = `
+      SELECT 
+        i.id,
+        i.invoice_number,
+        i.amount_paise,
+        i.currency,
+        i.period_start,
+        i.period_end,
+        i.status,
+        i.created_at,
+        i.updated_at,
+        u.id AS user_id,
+        u.name AS user_name,
+        u.email AS user_email,
+        u.role AS user_role,
+        p.id AS plan_id,
+        p.name AS plan_name,
+        p.plan_code,
+        p.tier AS plan_tier,
+        COALESCE(s.billing_interval, p.billing_interval, 'monthly') AS billing_interval,
+        s.starts_at AS subscription_starts_at,
+        s.expires_at AS subscription_expires_at,
+        pa.razorpay_order_id,
+        pa.razorpay_payment_id,
+        pa.status AS payment_status,
+        pa.updated_at AS paid_at
+      FROM subscription_invoices i
+      JOIN users u ON u.id = i.user_id
+      LEFT JOIN user_subscriptions s ON s.id = i.user_subscription_id
+      LEFT JOIN subscription_plans p ON p.id = COALESCE(s.plan_id, (
+        SELECT plan_id FROM subscription_payment_attempts WHERE invoice_id = i.id LIMIT 1
+      ))
+      LEFT JOIN subscription_payment_attempts pa ON pa.invoice_id = i.id
+      ${whereStr}
+      ORDER BY i.id DESC
+      LIMIT $${i++} OFFSET $${i++};
+    `;
+    values.push(limit, offset);
+
+    const countQuery = `
+      SELECT COUNT(DISTINCT i.id) as total_count
+      FROM subscription_invoices i
+      JOIN users u ON u.id = i.user_id
+      LEFT JOIN user_subscriptions s ON s.id = i.user_subscription_id
+      LEFT JOIN subscription_plans p ON p.id = COALESCE(s.plan_id, (
+        SELECT plan_id FROM subscription_payment_attempts WHERE invoice_id = i.id LIMIT 1
+      ))
+      LEFT JOIN subscription_payment_attempts pa ON pa.invoice_id = i.id
+      ${whereStr};
+    `;
+
+    const [rowsRes, countRes] = await Promise.all([
+      pool.query(query, values),
+      pool.query(countQuery, values.slice(0, values.length - 2))
+    ]);
+
+    return {
+      invoices: rowsRes.rows.map(r => ({
+        ...r,
+        amount_paise: Number(r.amount_paise || 0),
+        amount_rupees: Number(r.amount_paise || 0) / 100
+      })),
+      totalCount: Number(countRes.rows[0]?.total_count || 0)
+    };
+  },
+
+  /**
+   * Fetches unified revenue metrics combining SaaS subscriptions and retail order commissions.
+   */
+  async getUnifiedRevenueStats() {
+    const subRes = await pool.query(`
+      SELECT 
+        COALESCE(SUM(amount_paise), 0) as total_subscription_paise,
+        COUNT(id) as total_paid_invoices
+      FROM subscription_invoices
+      WHERE status = 'paid'
+    `);
+    const totalSubPaise = Number(subRes.rows[0]?.total_subscription_paise || 0);
+
+    const orderRes = await pool.query(`
+      SELECT 
+        COALESCE(SUM(platform_fee_cents), 0) as total_retail_commission_cents,
+        COUNT(id) as total_orders
+      FROM orders
+      WHERE payment_status = 'paid' OR status IN ('paid', 'shipped', 'delivered', 'processing', 'in_production')
+    `);
+    const totalOrderCents = Number(orderRes.rows[0]?.total_retail_commission_cents || 0);
+
+    const stats = await this.getSubscriberStats();
+
+    return {
+      subscription_revenue_paise: totalSubPaise,
+      subscription_revenue_rupees: totalSubPaise / 100,
+      retail_commission_cents: totalOrderCents,
+      retail_commission_rupees: totalOrderCents / 100,
+      total_platform_revenue_rupees: (totalSubPaise + totalOrderCents) / 100,
+      total_paid_invoices: Number(subRes.rows[0]?.total_paid_invoices || 0),
+      total_retail_orders: Number(orderRes.rows[0]?.total_orders || 0),
+      ...stats
     };
   }
 };

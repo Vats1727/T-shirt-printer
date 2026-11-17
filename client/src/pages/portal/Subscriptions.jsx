@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
@@ -11,8 +12,10 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { cn } from "@/utils/cn";
+import ManageSubscriptionDialog from "@/components/portal/ManageSubscriptionDialog";
 import {
   CreditCard,
+  Receipt,
   Sparkles,
   Users,
   IndianRupee,
@@ -30,7 +33,8 @@ import {
   Package,
   Layers,
   ArrowRight,
-  ShieldAlert
+  ShieldAlert,
+  Settings
 } from "lucide-react";
 import {
   Dialog,
@@ -51,6 +55,7 @@ function formatQuota(val, unit = "") {
 
 export default function PortalSubscriptions() {
   const { token } = useAuth();
+  const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -58,6 +63,7 @@ export default function PortalSubscriptions() {
   const [searchTerm, setSearchTerm] = useState("");
   const [editingPlan, setEditingPlan] = useState(null);
   const [grantingUser, setGrantingUser] = useState(null);
+  const [managingUser, setManagingUser] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   // Form states for Plan Editing
@@ -258,6 +264,15 @@ export default function PortalSubscriptions() {
         </div>
 
         <div className="flex items-center gap-2.5">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setLocation("/portal/subscription-ledger")}
+            className="h-8 gap-1.5 border-indigo-200 text-indigo-700 hover:bg-indigo-50 shadow-2xs rounded-lg text-xs font-semibold cursor-pointer"
+          >
+            <Receipt className="w-3.5 h-3.5 text-indigo-600" />
+            Billing & Invoices Ledger
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -597,12 +612,14 @@ export default function PortalSubscriptions() {
                             <Badge
                               className={cn(
                                 "text-[10px] font-bold py-0.5 px-2",
-                                subStatus === "active"
-                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                  : "bg-amber-50 text-amber-700 border-amber-200"
+                                subStatus === "suspended"
+                                  ? "bg-rose-50 text-rose-700 border-rose-200"
+                                  : subStatus === "active"
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    : "bg-amber-50 text-amber-700 border-amber-200"
                               )}
                             >
-                              {subStatus === "active" ? "Active" : "Starter"}
+                              {subStatus === "suspended" ? "Suspended" : subStatus === "active" ? "Active" : "Starter"}
                             </Badge>
                           </TableCell>
                           <TableCell>
@@ -614,13 +631,11 @@ export default function PortalSubscriptions() {
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => {
-                                setGrantingUser({ ...sub, user_name: pName });
-                                setGrantPlanId(String(plans[0]?.id || ""));
-                              }}
-                              className="h-7 px-2.5 text-xs text-indigo-700 border-indigo-200 hover:bg-indigo-50 rounded-lg shadow-2xs font-semibold"
+                              onClick={() => setManagingUser({ ...sub, user_name: pName })}
+                              className="h-7 px-2.5 text-xs text-indigo-700 border-indigo-200 hover:bg-indigo-50 rounded-lg shadow-2xs font-semibold gap-1"
                             >
-                              Grant Tier
+                              <Settings className="w-3.5 h-3.5" />
+                              Manage
                             </Button>
                           </TableCell>
                         </TableRow>
@@ -835,6 +850,18 @@ export default function PortalSubscriptions() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Comprehensive Manage Subscription Dialog */}
+      <ManageSubscriptionDialog
+        open={Boolean(managingUser)}
+        onOpenChange={(open) => !open && setManagingUser(null)}
+        user={managingUser}
+        plans={plans}
+        onSuccess={() => {
+          refetchSubs();
+          refetchStats();
+        }}
+      />
     </div>
   );
 }

@@ -44,6 +44,7 @@ import PortalAdminFinancials from '@/pages/Portal/FinancialSettings.jsx';
 import PortalAdminLedger from '@/pages/Portal/PartnerLedger.jsx';
 import PortalAdminProfile from '@/pages/Portal/Profile.jsx';
 import PortalSubscriptions from '@/pages/Portal/Subscriptions.jsx';
+import PortalSubscriptionLedger from '@/pages/Portal/SubscriptionLedger.jsx';
 import PortalAdminRoute from '@/routes/PortalAdminRoute.jsx';
 
 import CustomerDashboard from '@/pages/Customer/Dashboard.jsx';
@@ -134,6 +135,7 @@ export function AppRoutes() {
       <PortalAdminRoute path="/portal/dashboard" component={PortalAdminDashboard} />
       <PortalAdminRoute path="/portal/requests" component={PortalAdminRequests} />
       <PortalAdminRoute path="/portal/subscriptions" component={PortalSubscriptions} />
+      <PortalAdminRoute path="/portal/subscription-ledger" component={PortalSubscriptionLedger} />
       <PortalAdminRoute path="/portal/financials" component={PortalAdminFinancials} />
       <PortalAdminRoute path="/portal/ledger" component={PortalAdminLedger} />
       <PortalAdminRoute path="/portal/profile" component={PortalAdminProfile} />

@@ -20,7 +20,8 @@ import {
   Users,
   DollarSign,
   FileText,
-  CreditCard
+  CreditCard,
+  Receipt
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { Button } from '@/components/ui/button';
@@ -104,7 +105,14 @@ export function AppSidebar() {
       title: 'Subscription Plans',
       icon: CreditCard,
       url: '/portal/subscriptions',
-      active: location.startsWith('/portal/subscriptions'),
+      active: location === '/portal/subscriptions',
+      hidden: !isPortalAdmin
+    },
+    {
+      title: 'Subscription Ledger',
+      icon: Receipt,
+      url: '/portal/subscription-ledger',
+      active: location.startsWith('/portal/subscription-ledger'),
       hidden: !isPortalAdmin
     },
     {
