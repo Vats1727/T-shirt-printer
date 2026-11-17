@@ -59,6 +59,9 @@ venv/
 *.pem
 *.local
 
+server/tests/
+server/tmp/
+
 # Project-specific: ignore generated or backup artifacts
 server/designs.json.corrupt-*
 
