@@ -20,7 +20,9 @@ import {
   Sparkles,
   PlusCircle,
   Factory,
-  Lock
+  Lock,
+  CreditCard,
+  FileText
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -108,6 +110,12 @@ export function DesignerNavbar({ onRefresh, isRefreshing, onChangeProvider }) {
       icon: ShoppingBag
     },
     {
+      title: 'Earnings Ledger',
+      url: '/supplier/ledger',
+      active: location === '/supplier/ledger',
+      icon: FileText
+    },
+    {
       title: 'Store Product Listings',
       url: '/supplier/listings',
       active: location === '/supplier/listings',
@@ -124,6 +132,12 @@ export function DesignerNavbar({ onRefresh, isRefreshing, onChangeProvider }) {
       url: '/supplier/listings/create',
       active: location.includes('/supplier/listings/create'),
       icon: PlusCircle
+    },
+    {
+      title: 'Subscription',
+      url: '/supplier/subscription',
+      active: location.startsWith('/supplier/subscription'),
+      icon: CreditCard
     }
   ];
 
@@ -243,6 +257,22 @@ export function DesignerNavbar({ onRefresh, isRefreshing, onChangeProvider }) {
                 >
                   <User className="w-3.5 h-3.5 mr-2 text-violet-600" />
                   Studio Profile & Credentials
+                </DropdownMenuItem>
+
+                <DropdownMenuItem
+                  onClick={() => setLocation('/supplier/ledger')}
+                  className="cursor-pointer text-xs font-medium py-2 rounded-lg hover:bg-slate-100 text-slate-700"
+                >
+                  <FileText className="w-3.5 h-3.5 mr-2 text-violet-600" />
+                  Earnings Ledger
+                </DropdownMenuItem>
+
+                <DropdownMenuItem
+                  onClick={() => setLocation('/supplier/subscription')}
+                  className="cursor-pointer text-xs font-medium py-2 rounded-lg hover:bg-slate-100 text-slate-700"
+                >
+                  <CreditCard className="w-3.5 h-3.5 mr-2 text-violet-600" />
+                  Subscription & Plan Tier
                 </DropdownMenuItem>
 
                 <DropdownMenuItem

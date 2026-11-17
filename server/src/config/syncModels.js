@@ -20,7 +20,9 @@ function parseColumns(columnsSql) {
       upper.startsWith('PRIMARY KEY') ||
       upper.startsWith('FOREIGN KEY') ||
       upper.startsWith('UNIQUE') ||
-      upper.startsWith('CHECK')
+      upper.startsWith('CHECK') ||
+      upper.startsWith('REFERENCES') ||
+      upper.startsWith('ON ')
     ) {
       continue;
     }

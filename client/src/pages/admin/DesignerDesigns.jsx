@@ -186,6 +186,25 @@ export default function DesignerDesigns() {
 
   return (
     <div className="w-full space-y-4 pb-12 animate-in fade-in duration-300">
+      {/* Quick link to Designers & Royalty Margins */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-2xs">
+        <div className="flex items-center gap-2.5">
+          <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-bold uppercase tracking-wider">
+            Royalty Controls
+          </Badge>
+          <span className="text-xs text-slate-600 font-medium">
+            Configure your facility's custom designer royalty margins and settle payout requests.
+          </span>
+        </div>
+        <Button
+          size="sm"
+          onClick={() => setLocation("/admin/designers")}
+          className="h-7 px-3 text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-2xs shrink-0 cursor-pointer"
+        >
+          Open Designers & Royalties Hub →
+        </Button>
+      </div>
+
       {/* Creations Catalog Section */}
       <div className="space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500 font-medium px-1">

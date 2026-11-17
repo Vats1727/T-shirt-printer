@@ -2,6 +2,7 @@ import { Router } from 'express';
 import portalController from '../controllers/portal.controller.js';
 import orderController from '../controllers/order.controller.js';
 import userController from '../controllers/user.controller.js';
+import * as subController from '../controllers/subscription.controller.js';
 import { requireAuth, requireRole } from '../middleware/auth.middleware.js';
 
 const router = Router();
@@ -35,5 +36,14 @@ router.get('/ledger/designers', requireAuth, requireRole('portal_admin'), portal
 router.get('/ledger/statement/:id', requireAuth, requireRole('portal_admin'), portalController.getPartnerStatement);
 router.get('/ledger/export/pdf', requireAuth, requireRole('portal_admin'), portalController.exportLedgerPdf);
 router.get('/ledger/export/excel', requireAuth, requireRole('portal_admin'), portalController.exportLedgerExcel);
+
+// Portal Admin SaaS Subscription Governance
+router.get('/subscriptions/plans', requireAuth, requireRole('portal_admin'), subController.portalGetPlans);
+router.post('/subscriptions/plans', requireAuth, requireRole('portal_admin'), subController.portalCreatePlan);
+router.put('/subscriptions/plans/:id', requireAuth, requireRole('portal_admin'), subController.portalUpdatePlan);
+router.delete('/subscriptions/plans/:id', requireAuth, requireRole('portal_admin'), subController.portalDeactivatePlan);
+router.get('/subscriptions/subscribers', requireAuth, requireRole('portal_admin'), subController.portalGetSubscribers);
+router.get('/subscriptions/stats', requireAuth, requireRole('portal_admin'), subController.portalGetStats);
+router.post('/subscriptions/grant', requireAuth, requireRole('portal_admin'), subController.portalGrantTier);
 
 export default router;

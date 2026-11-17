@@ -17,6 +17,7 @@ import AdminDesignerDesigns from '@/pages/Admin/DesignerDesigns.jsx';
 import AdminListings from '@/pages/Admin/Listings.jsx';
 import AdminCreateListing from '@/pages/Admin/CreateListing.jsx';
 import AdminStoreCustomizer from '@/pages/Admin/StoreCustomizer.jsx';
+import AdminLedger from '@/pages/Admin/ProviderLedger.jsx';
 import AdminRoute from '@/routes/AdminRoute.jsx';
 
 import SupplierDashboard from '@/pages/Supplier/Dashboard.jsx';
@@ -29,6 +30,8 @@ import SupplierListings from '@/pages/Supplier/Listings.jsx';
 import SupplierCreateListing from '@/pages/Supplier/CreateListing.jsx';
 import SupplierStoreCustomizer from '@/pages/Supplier/StoreCustomizer.jsx';
 import SupplierProfile from '@/pages/Supplier/Profile.jsx';
+import PartnerSubscriptionPlans from '@/pages/Supplier/SubscriptionPlans.jsx';
+import DesignerLedger from '@/pages/Supplier/DesignerLedger.jsx';
 import SupplierRoute from '@/routes/SupplierRoute.jsx';
 
 import StorePage from '@/pages/Store/Store.jsx';
@@ -40,6 +43,7 @@ import PortalAdminRequests from '@/pages/Portal/Requests.jsx';
 import PortalAdminFinancials from '@/pages/Portal/FinancialSettings.jsx';
 import PortalAdminLedger from '@/pages/Portal/PartnerLedger.jsx';
 import PortalAdminProfile from '@/pages/Portal/Profile.jsx';
+import PortalSubscriptions from '@/pages/Portal/Subscriptions.jsx';
 import PortalAdminRoute from '@/routes/PortalAdminRoute.jsx';
 
 import CustomerDashboard from '@/pages/Customer/Dashboard.jsx';
@@ -61,12 +65,14 @@ export function AppRoutes() {
       <AdminRoute path="/admin/clothes" component={AdminClothes} />
       <AdminRoute path="/admin/orders" component={AdminOrders} />
       <AdminRoute path="/admin/profile" component={AdminProfile} />
-      <AdminRoute path="/admin/designers" component={() => <Redirect to="/admin/dashboard" />} />
+      <AdminRoute path="/admin/designers" component={AdminDesigners} />
       <AdminRoute path="/admin/designer-designs" component={AdminDesignerDesigns} />
       <AdminRoute path="/admin/listings/create" component={AdminCreateListing} />
       <AdminRoute path="/admin/listings" component={AdminListings} />
       <AdminRoute path="/admin/customize-store" component={AdminStoreCustomizer} />
       <AdminRoute path="/admin/store-settings" component={AdminStoreCustomizer} />
+      <AdminRoute path="/admin/ledger" component={AdminLedger} />
+      <AdminRoute path="/admin/subscription" component={PartnerSubscriptionPlans} />
 
       {/* Universal /orders and /order routes */}
       <Route path="/orders">
@@ -106,10 +112,12 @@ export function AppRoutes() {
       <SupplierRoute path="/supplier/store-settings" component={SupplierStoreCustomizer} />
       <SupplierRoute path="/supplier/orders" component={SupplierOrders} />
       <SupplierRoute path="/supplier/order" component={SupplierOrders} />
+      <SupplierRoute path="/supplier/ledger" component={DesignerLedger} />
       <SupplierRoute path="/supplier/product/:id/order" component={SupplierProductPurchase} />
       <SupplierRoute path="/supplier/order-product/:id" component={SupplierProductPurchase} />
       <SupplierRoute path="/supplier/product/:id" component={SupplierProductOrder} />
       <SupplierRoute path="/supplier/profile" component={SupplierProfile} />
+      <SupplierRoute path="/supplier/subscription" component={PartnerSubscriptionPlans} />
 
       {/* Public Storefront Routes */}
       <Route path="/store/:supplierId" component={StorePage} />
@@ -125,6 +133,7 @@ export function AppRoutes() {
       {/* Portal Admin Protected Routes */}
       <PortalAdminRoute path="/portal/dashboard" component={PortalAdminDashboard} />
       <PortalAdminRoute path="/portal/requests" component={PortalAdminRequests} />
+      <PortalAdminRoute path="/portal/subscriptions" component={PortalSubscriptions} />
       <PortalAdminRoute path="/portal/financials" component={PortalAdminFinancials} />
       <PortalAdminRoute path="/portal/ledger" component={PortalAdminLedger} />
       <PortalAdminRoute path="/portal/profile" component={PortalAdminProfile} />

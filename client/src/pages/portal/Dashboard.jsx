@@ -30,7 +30,8 @@ import {
   Palette,
   Mail,
   DollarSign,
-  FileText
+  FileText,
+  CreditCard
 } from "lucide-react";
 import {
   AlertDialog,
@@ -232,11 +233,11 @@ export default function PortalAdminDashboard() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setLocation("/portal/financials")}
-            className="h-8 gap-1.5 border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs rounded-lg text-xs font-semibold cursor-pointer"
+            onClick={() => setLocation("/portal/subscriptions")}
+            className="h-8 gap-1.5 border-indigo-200 text-indigo-700 hover:bg-indigo-50 shadow-2xs rounded-lg text-xs font-semibold cursor-pointer"
           >
-            <DollarSign className="w-3.5 h-3.5 text-indigo-600" />
-            Commissions & Margins
+            <CreditCard className="w-3.5 h-3.5 text-indigo-600" />
+            Subscription Plans
           </Button>
           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-full text-xs font-semibold">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />

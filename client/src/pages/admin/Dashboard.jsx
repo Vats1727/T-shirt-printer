@@ -29,8 +29,11 @@ import {
   Store,
   ChevronRight,
   Check,
-  ShieldCheck
+  ShieldCheck,
+  CreditCard
 } from "lucide-react";
+import GatewaySetupModal from "@/components/admin/GatewaySetupModal";
+import TrialExpiredModal from "@/components/admin/TrialExpiredModal";
 import { useToast } from "@/hooks/use-toast";
 import { encodeId } from "@/utils/idEncoder";
 import { cn } from "@/utils/cn";
@@ -68,11 +71,88 @@ export default function AdminDashboard() {
   const blocked = !!(userData && userData.status && userData.status !== "active");
   const [showBlockedDialog, setShowBlockedDialog] = useState(false);
 
+  const [gatewayData, setGatewayData] = useState(null);
+  const [showGatewayModal, setShowGatewayModal] = useState(false);
+  const [testingPing, setTestingPing] = useState(false);
+  const [subData, setSubData] = useState(null);
+
+  const isTrialExpired = Boolean(
+    (userData?.status === "suspended" && userData?.store_settings?.suspension_reason === "trial_expired") ||
+    subData?.subscription?.status === "expired" ||
+    (subData?.subscription?.expires_at && new Date(subData.subscription.expires_at) < new Date())
+  );
+
+  async function fetchSubscription() {
+    if (!token) return;
+    try {
+      const res = await fetch("/api/subscriptions/me", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const js = await res.json();
+        if (js.success) {
+          setSubData(js);
+        }
+      }
+    } catch (e) {
+      console.warn("fetchSubscription error", e);
+    }
+  }
+
+  async function fetchGatewayStatus() {
+    if (!token) return;
+    try {
+      const res = await fetch("/api/provider/gateway/status", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const js = await res.json();
+        if (js.success) {
+          setGatewayData(js.gateway);
+        }
+      }
+    } catch (e) {
+      console.warn("fetchGatewayStatus error", e);
+    }
+  }
+
+  async function handleTestPing() {
+    setTestingPing(true);
+    try {
+      const res = await fetch("/api/provider/gateway/test-ping", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast({
+          title: "Gateway Connection Active",
+          description: data.message
+        });
+        fetchGatewayStatus();
+      } else {
+        toast({
+          title: "Gateway Ping Failed",
+          description: data.message,
+          variant: "destructive"
+        });
+      }
+    } catch (e) {
+      toast({
+        title: "Test Connection Error",
+        description: e.message || "Failed to reach Razorpay",
+        variant: "destructive"
+      });
+    } finally {
+      setTestingPing(false);
+    }
+  }
+
   useEffect(() => {
-    if (userData && userData.status && userData.status !== "active") {
+    if (userData && userData.status && userData.status !== "active" && !isTrialExpired) {
       setShowBlockedDialog(true);
     }
-  }, [userData]);
+  }, [userData, isTrialExpired]);
 
   async function fetchUserStatus() {
     if (!user?.id && !user?.sub) return;
@@ -147,6 +227,8 @@ export default function AdminDashboard() {
     fetchOrders();
     fetchDesigners();
     fetchUserStatus();
+    fetchGatewayStatus();
+    fetchSubscription();
   }
 
   useEffect(() => {
@@ -154,6 +236,8 @@ export default function AdminDashboard() {
     fetchOrders();
     fetchDesigners();
     fetchUserStatus();
+    fetchGatewayStatus();
+    fetchSubscription();
   }, [token]);
 
   async function executeDeleteProduct(id) {
@@ -293,6 +377,78 @@ export default function AdminDashboard() {
             </p>
           </div>
         </div>
+      )}
+
+      {/* Payment Gateway Configuration Notice (Only for approved/active providers) */}
+      {userData?.status !== "pending" && userData?.status !== "suspended" && (
+        <>
+          {/* Case 1: Unconfigured / Incomplete Setup Banner */}
+          {(!gatewayData || gatewayData.status === "unconfigured" || !gatewayData.isConfigured) && (
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3.5 shadow-sm animate-in slide-in-from-top-2">
+              <div className="flex items-start gap-3">
+                <div className="bg-blue-600 p-2.5 rounded-xl text-white shrink-0 shadow-xs">
+                  <CreditCard className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-blue-950 font-bold text-sm">Action Required: Connect Your Razorpay Merchant Gateway</h3>
+                    <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[10px] font-bold py-0 px-2">
+                      Setup Required
+                    </Badge>
+                  </div>
+                  <p className="text-blue-800 text-xs mt-0.5">
+                    Customer payments for your garment orders route directly to your Razorpay account. Please connect your Razorpay Key ID and Secret to activate storefront checkout.
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={() => setShowGatewayModal(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl shadow-xs shrink-0"
+              >
+                <CreditCard className="w-3.5 h-3.5 mr-1.5" />
+                Connect Razorpay
+              </Button>
+            </div>
+          )}
+
+          {/* Case 2: Configured & Verified Status Bar */}
+          {gatewayData && gatewayData.isConfigured && (
+            <div className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs shadow-2xs">
+              <div className="flex items-center gap-2.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="font-semibold text-slate-800">Razorpay Merchant Gateway Active</span>
+                <span className="font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded text-[11px] border border-slate-200">
+                  {gatewayData.keyIdMasked || "rzp_••••"} ({gatewayData.environmentMode === "live" ? "Live" : "Test Mode"})
+                </span>
+                {gatewayData.lastTestPingStatus === "success" && (
+                  <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-medium py-0 px-1.5">
+                    Live Verified
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={testingPing}
+                  onClick={handleTestPing}
+                  className="h-7 px-2 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                >
+                  <RefreshCw className={cn("w-3 h-3 mr-1", testingPing && "animate-spin")} />
+                  {testingPing ? "Pinging..." : "Test Ping"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowGatewayModal(true)}
+                  className="h-7 px-2.5 text-xs text-slate-700 hover:bg-slate-50 border-slate-200 rounded-lg"
+                >
+                  Manage Gateway
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Executive Metric Cards (4 KPIs, Clean & Non-Duplicative) */}
@@ -744,6 +900,24 @@ export default function AdminDashboard() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Razorpay Merchant Gateway Configuration Modal */}
+      <GatewaySetupModal
+        isOpen={showGatewayModal}
+        onClose={() => setShowGatewayModal(false)}
+        onSuccess={() => fetchGatewayStatus()}
+        currentGateway={gatewayData}
+        token={token}
+      />
+
+      {/* 7-Day Trial Expiration Paywall Modal */}
+      <TrialExpiredModal
+        isOpen={isTrialExpired}
+        onSuccess={() => {
+          fetchSubscription();
+          fetchUserStatus();
+        }}
+      />
     </div>
   );
 }

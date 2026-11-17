@@ -3,6 +3,7 @@ import productController from '../controllers/product.controller.js';
 import userController from '../controllers/user.controller.js';
 import orderController from '../controllers/order.controller.js';
 import supplierController from '../controllers/supplier.controller.js';
+import { PayoutController } from '../controllers/payout.controller.js';
 import { requireAuth, requireRole } from '../middleware/auth.middleware.js';
 import { validateApparelOnly } from '../middleware/apparelGuard.js';
 
@@ -43,6 +44,14 @@ router.get('/designers', userController.listDesigners);
 router.get('/designer-designs', productController.listProviderDesigns);
 router.get('/profile', userController.getProfile);
 router.patch('/profile', userController.updateProfile);
+
+// Financial Ledger & Margin Governance
+router.get('/ledger', PayoutController.getProviderLedger);
+router.get('/margins', PayoutController.getProviderMargins);
+router.put('/margins', PayoutController.updateProviderMargins);
+router.get('/payout-requests', PayoutController.getProviderPayoutRequests);
+router.post('/payout-requests/:id/settle', PayoutController.settlePayoutRequest);
+router.post('/payout-requests/:id/reject', PayoutController.rejectPayoutRequest);
 
 // Admin Orders
 router.get('/orders', orderController.listAdminOrders);

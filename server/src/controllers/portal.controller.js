@@ -2,12 +2,51 @@ import userModel from '../models/user.model.js';
 import userService from '../services/user.service.js';
 import financialSettingsModel from '../models/financialSettings.model.js';
 import b2bFinancialSettingsModel from '../models/b2bFinancialSettings.model.js';
+import { ProviderGatewayModel } from '../models/providerGateway.model.js';
 import { pool } from '../config/database.js';
 import PDFDocument from 'pdfkit';
 
 export async function listProviders(_req, res, next) {
   try {
     const providers = await userService.getAllProviders();
+
+    if (pool) {
+      try {
+        const gwRes = await pool.query(`
+          SELECT 
+            pga.provider_id,
+            pga.status AS gateway_status,
+            pga.environment_mode AS gateway_env,
+            pga.webhook_url_slug AS gateway_slug,
+            pga.last_test_ping_at AS gateway_last_ping,
+            pga.last_test_ping_status AS gateway_ping_status,
+            pga.last_error_message AS gateway_error,
+            pgc.key_id AS gateway_key_id
+          FROM provider_gateway_accounts pga
+          LEFT JOIN provider_gateway_credentials pgc 
+            ON pgc.gateway_account_id = pga.id AND pgc.status = 'active'
+        `);
+        const gwMap = Object.fromEntries(gwRes.rows.map((r) => [Number(r.provider_id), r]));
+        const enriched = providers.map((p) => {
+          const gw = gwMap[Number(p.id)];
+          return {
+            ...p,
+            gateway_status: gw ? gw.gateway_status : (p.role === 'print_provider' ? 'unconfigured' : null),
+            gateway_env: gw?.gateway_env || null,
+            gateway_slug: gw?.gateway_slug || null,
+            gateway_last_ping: gw?.gateway_last_ping || null,
+            gateway_ping_status: gw?.gateway_ping_status || null,
+            gateway_key_masked: gw?.gateway_key_id
+              ? `${gw.gateway_key_id.slice(0, 9)}••••${gw.gateway_key_id.slice(-4)}`
+              : null
+          };
+        });
+        return res.json(enriched);
+      } catch (err) {
+        console.warn('[PortalController] Gateway enrichment warning:', err.message);
+      }
+    }
+
     return res.json(providers);
   } catch (err) {
     next(err);
@@ -24,6 +63,77 @@ export async function updateProviderStatus(req, res, next) {
     }
 
     await userModel.updateUser(id, data);
+
+    // Auto-provision unconfigured gateway account when approved
+    if (data.status === 'active') {
+      try {
+        const user = await userModel.findById(id);
+        if (user && (user.role === 'print_provider' || user.role === 'admin')) {
+          const envMode = process.env.APP_PAYMENT_ENV || 'test';
+          await ProviderGatewayModel.ensureAccountExists({
+            providerId: id,
+            gatewayName: 'razorpay',
+            environmentMode: envMode
+          });
+        }
+      } catch (gwErr) {
+        console.warn(`[PortalAdmin] Auto-provision gateway warning for user #${id}:`, gwErr.message);
+      }
+
+      // Activate 7-Day Starter Trial from the exact moment of Portal Admin approval
+      if (pool) {
+        try {
+          const user = await userModel.findById(id);
+          if (user && (user.role === 'print_provider' || user.role === 'designer' || user.role === 'admin')) {
+            const trialExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
+            await pool.query(
+              `UPDATE users 
+               SET subscription_tier = 'starter', 
+                   subscription_expiry = $1,
+                   store_settings = jsonb_set(COALESCE(store_settings, '{}'::jsonb), '{suspension_reason}', 'null'::jsonb)
+               WHERE id = $2`,
+              [trialExpiry, id]
+            );
+
+            // Fetch starter plan limits snapshot
+            const starterRes = await pool.query(`SELECT limits FROM subscription_plans WHERE id = 1`);
+            const planSnapshot = starterRes.rows[0]?.limits || { max_products: 10, max_designs: 10 };
+
+            // Check if active subscription already exists
+            const existingSub = await pool.query(
+              `SELECT id FROM user_subscriptions WHERE user_id = $1 AND status = 'active'`,
+              [id]
+            );
+
+            if (existingSub.rows.length > 0) {
+              await pool.query(
+                `UPDATE user_subscriptions
+                 SET billing_interval = 'trial',
+                     starts_at = NOW(),
+                     expires_at = $1,
+                     grant_reason = '7-day introductory free trial from admin approval',
+                     updated_at = NOW()
+                 WHERE id = $2`,
+                [trialExpiry, existingSub.rows[0].id]
+              );
+            } else {
+              await pool.query(
+                `INSERT INTO user_subscriptions (
+                   user_id, plan_id, status, billing_interval, price_paise, currency, plan_snapshot, starts_at, expires_at, grant_type, grant_reason
+                 ) VALUES (
+                   $1, 1, 'active', 'trial', 0, 'INR', $2, NOW(), $3, 'system_default', '7-day introductory free trial from admin approval'
+                 )`,
+                [id, JSON.stringify(planSnapshot), trialExpiry]
+              );
+            }
+            console.log(`[PortalAdmin] Activated 7-day Starter Trial for user #${id} expiring at:`, trialExpiry.toISOString());
+          }
+        } catch (subErr) {
+          console.warn(`[PortalAdmin] Trial activation note for user #${id}:`, subErr.message);
+        }
+      }
+    }
+
     return res.json({ ok: true, status: data.status });
   } catch (err) {
     next(err);

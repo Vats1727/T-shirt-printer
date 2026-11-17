@@ -2,6 +2,7 @@ import { Router } from 'express';
 import supplierController from '../controllers/supplier.controller.js';
 import userController from '../controllers/user.controller.js';
 import orderController from '../controllers/order.controller.js';
+import { PayoutController } from '../controllers/payout.controller.js';
 import { requireAuth, requireRole } from '../middleware/auth.middleware.js';
 
 const router = Router();
@@ -42,5 +43,12 @@ router.delete('/listings/:id', supplierController.deleteListing);
 // Store Settings
 router.get('/store-settings', userController.getStoreSettings);
 router.patch('/store-settings', userController.updateStoreSettings);
+
+// Royalty Ledger & Payouts
+router.get('/ledger', PayoutController.getDesignerLedger);
+router.get('/payout-profile', PayoutController.getDesignerPayoutProfile);
+router.put('/payout-profile', PayoutController.updateDesignerPayoutProfile);
+router.get('/payout-summary', PayoutController.getDesignerPayoutSummary);
+router.post('/request-payout', PayoutController.requestPayout);
 
 export default router;

@@ -213,36 +213,63 @@ export default function Checkout() {
       const orderData = await orderRes.json();
       const platformOrder = orderData.order;
 
-      // Step B: Create Razorpay Checkout Order
-      const rzpRes = await fetch('/api/payments/razorpay/create-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: totalAmount,
-          currency: 'INR',
-          receipt: platformOrder.order_number,
-          notes: { orderId: platformOrder.id, customerEmail: shippingAddress.email }
-        })
-      });
+      // Step B: Create Provider Payment Attempt (Phase 2 Multi-Provider Gateway)
+      let rzpOrderId = null;
+      let activeKeyId = null;
+      let activeAmount = null;
+      let activeCurrency = 'INR';
 
-      if (!rzpRes.ok) {
-        throw new Error('Failed to create Razorpay checkout session');
+      try {
+        const attemptRes = await fetch('/api/payments/razorpay/create-attempt', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            orderId: platformOrder.id,
+            idempotencyKey: `checkout-${platformOrder.id}-${Date.now()}`
+          })
+        });
+
+        if (attemptRes.ok) {
+          const attemptData = await attemptRes.json();
+          rzpOrderId = attemptData.razorpayOrderId;
+          activeKeyId = attemptData.keyId;
+          activeAmount = attemptData.amount;
+          activeCurrency = attemptData.currency || 'INR';
+        } else {
+          // If provider gateway not yet configured, attempt fallback to legacy endpoint
+          const attemptErr = await attemptRes.json().catch(() => ({}));
+          console.warn('[Checkout] create-attempt fallback:', attemptErr.message);
+
+          const legacyRes = await fetch('/api/payments/razorpay/create-order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              amount: totalAmount,
+              currency: 'INR',
+              receipt: platformOrder.order_number,
+              notes: { orderId: platformOrder.id, customerEmail: shippingAddress.email }
+            })
+          });
+          if (!legacyRes.ok) throw new Error(attemptErr.message || 'Failed to initialize payment gateway');
+          const legacyData = await legacyRes.json();
+          rzpOrderId = legacyData.order?.id || legacyData.orderId;
+          activeKeyId = import.meta.env?.VITE_RAZORPAY_KEY_ID || legacyData.order?.key_id || legacyData.key_id;
+          activeAmount = legacyData.order?.amount;
+          activeCurrency = legacyData.order?.currency || 'INR';
+        }
+      } catch (gateErr) {
+        throw new Error(gateErr.message || 'Payment session could not be established');
       }
-
-      const rzpData = await rzpRes.json();
-      const rzpOrder = rzpData.order;
-
-      const keyId = import.meta.env?.VITE_RAZORPAY_KEY_ID || rzpOrder.key_id || 'rzp_test_SgRf2CKVk35fBy';
 
       // Step C: Trigger Razorpay Modal
       const options = {
-        key: keyId,
-        amount: rzpOrder.amount,
-        currency: rzpOrder.currency || 'INR',
+        key: activeKeyId,
+        amount: activeAmount,
+        currency: activeCurrency,
         name: 'Tshirt-Printer Marketplace',
         description: `Order ${platformOrder.order_number}`,
         ...(typeof window !== 'undefined' && window.location.protocol === 'https:' ? { image: `${window.location.origin}/templates/tshirt.png` } : {}),
-        order_id: rzpOrder.id,
+        order_id: rzpOrderId,
         prefill: {
           name: shippingAddress.name,
           email: shippingAddress.email,
@@ -258,7 +285,7 @@ export default function Checkout() {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                razorpay_order_id: response.razorpay_order_id || rzpOrder?.id || rzpData?.orderId,
+                razorpay_order_id: response.razorpay_order_id || rzpOrderId,
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_signature: response.razorpay_signature,
                 order_id: platformOrder.id

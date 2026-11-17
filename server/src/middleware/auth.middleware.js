@@ -30,7 +30,7 @@ export function requireAuth(req, res, next) {
 export const authenticateToken = requireAuth;
 export const authenticateOptional = expressAuthenticateOptional;
 
-export function requireRole(role) {
+export function requireRole(...roles) {
   return (req, res, next) => {
     const user = req.user;
     if (!user) return res.status(401).json({ message: 'Not authenticated' });
@@ -44,7 +44,8 @@ export function requireRole(role) {
       'customer': ['customer', 'admin', 'portal_admin']
     };
 
-    const allowedRoles = Array.isArray(role) ? role : (roleMap[role] || [role]);
+    const flatRoles = roles.flat();
+    const allowedRoles = [...new Set(flatRoles.flatMap(r => roleMap[r] || [r]))];
     if (!allowedRoles.includes(user.role)) {
       return res.status(403).json({ message: 'Forbidden' });
     }

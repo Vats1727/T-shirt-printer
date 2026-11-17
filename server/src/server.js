@@ -4,6 +4,7 @@ import env from './config/env.js';
 import { pool } from './config/database.js';
 import { log } from './utils/logger.js';
 import { syncModelsToDb } from './config/syncModels.js';
+import { SubscriptionExpiryWorker } from './services/subscriptionExpiryWorker.service.js';
 
 const httpServer = http.createServer(app);
 const connections = new Set();
@@ -35,6 +36,7 @@ httpServer.listen(listenOptions, async () => {
   if (pool) {
     try {
       await syncModelsToDb();
+      SubscriptionExpiryWorker.start();
     } catch (err) {
       console.error('[DB Startup Error] Failed to synchronize models with database:', err);
     }
@@ -47,6 +49,7 @@ async function shutdown(signal = 'SIGTERM') {
   isShuttingDown = true;
 
   log(`Received ${signal}, gracefully shutting down...`);
+  SubscriptionExpiryWorker.stop();
 
   httpServer.close((err) => {
     if (err) console.error('Error during HTTP server close:', err);

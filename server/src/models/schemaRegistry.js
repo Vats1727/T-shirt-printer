@@ -205,7 +205,7 @@ export const TABLES = [
       name TEXT NOT NULL,
       slug TEXT NOT NULL,
       garment_id BIGINT REFERENCES apparel_master_garments(id) ON DELETE RESTRICT,
-      is_approved BOOLEAN NOT NULL DEFAULT FALSE,
+      is_approved BOOLEAN NOT NULL DEFAULT TRUE,
       single_price NUMERIC NOT NULL DEFAULT 0,
       bulk_min INTEGER NOT NULL DEFAULT 100,
       bulk_price NUMERIC NOT NULL DEFAULT 0,
@@ -431,6 +431,17 @@ export const TABLES = [
       designer_earnings_cents INTEGER NOT NULL DEFAULT 0,
       provider_earnings_cents INTEGER NOT NULL DEFAULT 0,
       platform_fee_cents INTEGER NOT NULL DEFAULT 0,
+      gateway_account_id INTEGER,
+      active_payment_attempt_id INTEGER,
+      gateway_fee_paise BIGINT NOT NULL DEFAULT 0,
+      subtotal_paise BIGINT NOT NULL DEFAULT 0,
+      tax_paise BIGINT NOT NULL DEFAULT 0,
+      shipping_cost_paise BIGINT NOT NULL DEFAULT 0,
+      total_paise BIGINT NOT NULL DEFAULT 0,
+      designer_royalty_payable_paise BIGINT NOT NULL DEFAULT 0,
+      provider_earnings_paise BIGINT NOT NULL DEFAULT 0,
+      invoice_number VARCHAR(64),
+      invoice_url TEXT,
       shipping_address JSONB NOT NULL DEFAULT '{}'::jsonb,
       tracking_info JSONB DEFAULT NULL,
       notes TEXT,
@@ -442,7 +453,10 @@ export const TABLES = [
       `CREATE INDEX IF NOT EXISTS idx_orders_designer_id ON orders(designer_id);`,
       `CREATE INDEX IF NOT EXISTS idx_orders_provider_id ON orders(provider_id);`,
       `CREATE INDEX IF NOT EXISTS idx_orders_order_number ON orders(order_number);`,
-      `CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);`
+      `CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);`,
+      `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uq_orders_id_provider') THEN ALTER TABLE orders ADD CONSTRAINT uq_orders_id_provider UNIQUE (id, provider_id); END IF; END $$;`,
+      `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uq_orders_id_gateway') THEN ALTER TABLE orders ADD CONSTRAINT uq_orders_id_gateway UNIQUE (id, gateway_account_id); END IF; END $$;`,
+      `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uq_orders_id_prov_gateway') THEN ALTER TABLE orders ADD CONSTRAINT uq_orders_id_prov_gateway UNIQUE (id, provider_id, gateway_account_id); END IF; END $$;`
     ],
     triggers: [
       `DROP TRIGGER IF EXISTS trg_orders_updated_at ON orders;
@@ -672,6 +686,536 @@ export const TABLES = [
       `DROP TRIGGER IF EXISTS trg_inventory_reservations_updated_at ON inventory_reservations;
        CREATE TRIGGER trg_inventory_reservations_updated_at BEFORE UPDATE ON inventory_reservations FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();`
     ]
+  },
+
+  // 17. Provider Gateway Accounts (Multi-Provider Merchant-of-Record Gateway Routing)
+  {
+    name: 'provider_gateway_accounts',
+    columns: `
+      id SERIAL PRIMARY KEY,
+      provider_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      gateway_name VARCHAR(32) NOT NULL DEFAULT 'razorpay',
+      environment_mode VARCHAR(16) NOT NULL CHECK (environment_mode IN ('test', 'live')),
+      webhook_url_slug VARCHAR(64) UNIQUE NOT NULL,
+      status VARCHAR(32) NOT NULL DEFAULT 'unconfigured' 
+        CHECK (status IN ('unconfigured', 'testing', 'active', 'suspended', 'deactivated')),
+      business_verified BOOLEAN NOT NULL DEFAULT FALSE,
+      verified_gstin VARCHAR(32) NULL,
+      verified_legal_name VARCHAR(255) NULL,
+      custody_terms_accepted_at TIMESTAMPTZ NULL,
+      last_test_ping_at TIMESTAMPTZ NULL,
+      last_test_ping_status VARCHAR(32) NULL,
+      last_error_message TEXT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT uq_provider_gateway_env UNIQUE (provider_id, gateway_name, environment_mode),
+      CONSTRAINT uq_provider_gateway_composite UNIQUE (provider_id, id),
+      CONSTRAINT uq_provider_gateway_acc_id UNIQUE (id)
+    `,
+    indexes: [
+      `CREATE INDEX IF NOT EXISTS idx_provider_gateway_slug ON provider_gateway_accounts(webhook_url_slug);`,
+      `CREATE INDEX IF NOT EXISTS idx_provider_gateway_provider ON provider_gateway_accounts(provider_id);`
+    ],
+    triggers: [
+      `DROP TRIGGER IF EXISTS trg_provider_gateway_accounts_updated_at ON provider_gateway_accounts;
+       CREATE TRIGGER trg_provider_gateway_accounts_updated_at BEFORE UPDATE ON provider_gateway_accounts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();`
+    ]
+  },
+
+  // 18. Provider Gateway Credentials (Independently Versioned Gateway API Credentials)
+  {
+    name: 'provider_gateway_credentials',
+    columns: `
+      id SERIAL PRIMARY KEY,
+      gateway_account_id INTEGER NOT NULL REFERENCES provider_gateway_accounts(id) ON DELETE RESTRICT,
+      version_number INTEGER NOT NULL DEFAULT 1,
+      key_id VARCHAR(128) NOT NULL,
+      key_secret_encrypted TEXT NOT NULL,
+      key_secret_iv VARCHAR(32) NOT NULL,
+      key_secret_auth_tag VARCHAR(32) NOT NULL,
+      encryption_key_version VARCHAR(32) NOT NULL DEFAULT 'v1',
+      status VARCHAR(32) NOT NULL DEFAULT 'pending' 
+        CHECK (status IN ('pending', 'active', 'retired')),
+      activated_at TIMESTAMPTZ NULL,
+      retired_at TIMESTAMPTZ NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT uq_gateway_account_version UNIQUE (gateway_account_id, version_number),
+      CONSTRAINT uq_gateway_account_cred_composite UNIQUE (gateway_account_id, id)
+    `,
+    indexes: [
+      `CREATE UNIQUE INDEX IF NOT EXISTS uq_active_gateway_credential ON provider_gateway_credentials(gateway_account_id) WHERE status = 'active';`,
+      `CREATE INDEX IF NOT EXISTS idx_gateway_credentials_acc ON provider_gateway_credentials(gateway_account_id);`
+    ]
+  },
+
+  // 19. Provider Webhook Secrets (Independently Versioned Webhook Credentials)
+  {
+    name: 'provider_webhook_secrets',
+    columns: `
+      id SERIAL PRIMARY KEY,
+      gateway_account_id INTEGER NOT NULL REFERENCES provider_gateway_accounts(id) ON DELETE RESTRICT,
+      version_number INTEGER NOT NULL DEFAULT 1,
+      webhook_secret_encrypted TEXT NOT NULL,
+      webhook_secret_iv VARCHAR(32) NOT NULL,
+      webhook_secret_auth_tag VARCHAR(32) NOT NULL,
+      encryption_key_version VARCHAR(32) NOT NULL DEFAULT 'v1',
+      status VARCHAR(32) NOT NULL DEFAULT 'pending' 
+        CHECK (status IN ('pending', 'active', 'rotating', 'retired')),
+      activated_at TIMESTAMPTZ NULL,
+      expires_at TIMESTAMPTZ NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT uq_gateway_webhook_version UNIQUE (gateway_account_id, version_number),
+      CONSTRAINT uq_gateway_webhook_sec_composite UNIQUE (gateway_account_id, id)
+    `,
+    indexes: [
+      `CREATE UNIQUE INDEX IF NOT EXISTS uq_active_webhook_secret ON provider_webhook_secrets(gateway_account_id) WHERE status = 'active';`,
+      `CREATE INDEX IF NOT EXISTS idx_webhook_secrets_acc ON provider_webhook_secrets(gateway_account_id);`
+    ]
+  },
+
+  // 20. Payment Attempts (Parent Checkout Attempt & Receipt Tracking)
+  {
+    name: 'payment_attempts',
+    columns: `
+      id SERIAL PRIMARY KEY,
+      order_id INTEGER NOT NULL,
+      gateway_account_id INTEGER NOT NULL,
+      credential_id INTEGER NOT NULL,
+      idempotency_key VARCHAR(128) NOT NULL,
+      receipt VARCHAR(40) UNIQUE NOT NULL,
+      attempt_number INTEGER NOT NULL DEFAULT 1,
+      amount_paise BIGINT NOT NULL CHECK (amount_paise > 0),
+      currency VARCHAR(8) NOT NULL DEFAULT 'INR',
+      razorpay_order_id VARCHAR(128) NULL,
+      status VARCHAR(32) NOT NULL DEFAULT 'creating' 
+        CHECK (status IN (
+          'creating',
+          'created',
+          'processing',
+          'partially_failed',
+          'reconciliation_required',
+          'fulfilled',
+          'failed',
+          'superseded',
+          'expired'
+        )),
+      failure_reason TEXT NULL,
+      raw_response JSONB DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT uq_payment_attempts_idempotency UNIQUE (order_id, idempotency_key),
+      CONSTRAINT uq_payment_attempts_order_attempt UNIQUE (order_id, attempt_number),
+      CONSTRAINT uq_payment_attempts_gateway_rzp_order UNIQUE (gateway_account_id, razorpay_order_id),
+      CONSTRAINT uq_payment_attempts_id_order UNIQUE (id, order_id),
+      CONSTRAINT uq_payment_attempts_id_gateway UNIQUE (id, gateway_account_id),
+      CONSTRAINT uq_payment_attempts_composite UNIQUE (id, order_id, gateway_account_id),
+      CONSTRAINT uq_payment_attempts_id_rzp_order_gateway UNIQUE (id, razorpay_order_id, gateway_account_id),
+      CONSTRAINT fk_payment_attempts_gateway_credential FOREIGN KEY (gateway_account_id, credential_id) REFERENCES provider_gateway_credentials(gateway_account_id, id) ON DELETE RESTRICT
+    `,
+    indexes: [
+      `CREATE INDEX IF NOT EXISTS idx_payment_attempts_order ON payment_attempts(order_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_payment_attempts_rzp_order ON payment_attempts(razorpay_order_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_payment_attempts_receipt ON payment_attempts(receipt);`
+    ],
+    triggers: [
+      `DROP TRIGGER IF EXISTS trg_payment_attempts_updated_at ON payment_attempts;
+       CREATE TRIGGER trg_payment_attempts_updated_at BEFORE UPDATE ON payment_attempts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();`
+    ]
+  },
+
+  // 21. Gateway Payment Transactions (Multi-Transaction Support per Order)
+  {
+    name: 'gateway_payment_transactions',
+    columns: `
+      id SERIAL PRIMARY KEY,
+      payment_attempt_id INTEGER NOT NULL,
+      gateway_account_id INTEGER NOT NULL,
+      razorpay_order_id VARCHAR(128) NOT NULL,
+      razorpay_payment_id VARCHAR(128) UNIQUE NOT NULL,
+      amount_paise BIGINT NOT NULL CHECK (amount_paise > 0),
+      currency VARCHAR(8) NOT NULL DEFAULT 'INR',
+      status VARCHAR(32) NOT NULL DEFAULT 'created'
+        CHECK (status IN (
+          'created',
+          'authorized',
+          'captured',
+          'late_captured',
+          'reconciliation_required',
+          'failed',
+          'superseded',
+          'refund_pending',
+          'refunded',
+          'voided'
+        )),
+      payment_method VARCHAR(32) NULL,
+      fee_paise BIGINT NOT NULL DEFAULT 0,
+      tax_paise BIGINT NOT NULL DEFAULT 0,
+      failure_reason TEXT NULL,
+      capture_in_progress BOOLEAN NOT NULL DEFAULT FALSE,
+      capture_operation_id UUID NULL,
+      capture_claimed_at TIMESTAMPTZ NULL,
+      capture_lease_until TIMESTAMPTZ NULL,
+      authorized_at TIMESTAMPTZ NULL,
+      captured_at TIMESTAMPTZ NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT uq_gateway_payment_tx_composite UNIQUE (id, payment_attempt_id, gateway_account_id, razorpay_payment_id),
+      CONSTRAINT fk_payment_tx_attempt_gateway FOREIGN KEY (payment_attempt_id, gateway_account_id) REFERENCES payment_attempts(id, gateway_account_id) ON DELETE RESTRICT,
+      CONSTRAINT fk_payment_tx_attempt_rzp_order FOREIGN KEY (payment_attempt_id, razorpay_order_id, gateway_account_id) REFERENCES payment_attempts(id, razorpay_order_id, gateway_account_id) ON DELETE RESTRICT
+    `,
+    indexes: [
+      `CREATE INDEX IF NOT EXISTS idx_payment_tx_rzp_pay ON gateway_payment_transactions(razorpay_payment_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_payment_tx_rzp_ord ON gateway_payment_transactions(razorpay_order_id);`
+    ],
+    triggers: [
+      `DROP TRIGGER IF EXISTS trg_gateway_payment_tx_updated_at ON gateway_payment_transactions;
+       CREATE TRIGGER trg_gateway_payment_tx_updated_at BEFORE UPDATE ON gateway_payment_transactions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();`
+    ]
+  },
+
+  // 22. Webhook Events Ledger (Durable Ingest with Fencing Lease Tokens)
+  {
+    name: 'webhook_events',
+    columns: `
+      id SERIAL PRIMARY KEY,
+      gateway_account_id INTEGER NOT NULL REFERENCES provider_gateway_accounts(id) ON DELETE RESTRICT,
+      event_id VARCHAR(128) NOT NULL,
+      webhook_secret_id INTEGER NOT NULL,
+      provider_id INTEGER NULL,
+      gateway VARCHAR(32) NOT NULL DEFAULT 'razorpay',
+      event_name VARCHAR(64) NOT NULL,
+      payload JSONB NOT NULL,
+      processing_status VARCHAR(32) NOT NULL DEFAULT 'received' 
+        CHECK (processing_status IN ('received', 'processing', 'processed', 'retry_wait', 'dead_letter', 'ignored')),
+      lease_token UUID NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      max_attempts INTEGER NOT NULL DEFAULT 5,
+      last_error TEXT NULL,
+      locked_at TIMESTAMPTZ NULL,
+      locked_until TIMESTAMPTZ NULL,
+      next_retry_at TIMESTAMPTZ NULL,
+      processed_at TIMESTAMPTZ NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT uq_webhook_events_gateway_event UNIQUE (gateway_account_id, event_id),
+      CONSTRAINT fk_webhook_events_gateway_secret FOREIGN KEY (gateway_account_id, webhook_secret_id) REFERENCES provider_webhook_secrets(gateway_account_id, id) ON DELETE RESTRICT,
+      CONSTRAINT fk_webhook_events_provider_gateway FOREIGN KEY (provider_id, gateway_account_id) REFERENCES provider_gateway_accounts(provider_id, id) ON DELETE RESTRICT
+    `,
+    indexes: [
+      `CREATE INDEX IF NOT EXISTS idx_webhook_events_queue ON webhook_events(processing_status, next_retry_at, locked_until);`
+    ]
+  },
+
+  // 23. Transactional Outbox (External Side-Effects Engine with Distributed Leases)
+  {
+    name: 'outbox_events',
+    columns: `
+      id SERIAL PRIMARY KEY,
+      aggregate_type VARCHAR(64) NOT NULL,
+      aggregate_id INTEGER NOT NULL,
+      event_type VARCHAR(64) NOT NULL,
+      idempotency_key VARCHAR(128) UNIQUE NOT NULL,
+      payload JSONB NOT NULL,
+      status VARCHAR(32) NOT NULL DEFAULT 'pending' 
+        CHECK (status IN ('pending', 'processing', 'completed', 'retry_wait', 'dead_letter', 'failed')),
+      lease_token UUID NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      max_attempts INTEGER NOT NULL DEFAULT 5,
+      last_error TEXT NULL,
+      locked_at TIMESTAMPTZ NULL,
+      locked_until TIMESTAMPTZ NULL,
+      next_retry_at TIMESTAMPTZ NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    `,
+    indexes: [
+      `CREATE INDEX IF NOT EXISTS idx_outbox_queue ON outbox_events(status, next_retry_at, locked_until);`
+    ],
+    triggers: [
+      `DROP TRIGGER IF EXISTS trg_outbox_events_updated_at ON outbox_events;
+       CREATE TRIGGER trg_outbox_events_updated_at BEFORE UPDATE ON outbox_events FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();`
+    ]
+  },
+
+  // 24. Payment Exceptions (Deduplicated Exception Audit Ledger)
+  {
+    name: 'payment_exceptions',
+    columns: `
+      id SERIAL PRIMARY KEY,
+      dedupe_key VARCHAR(255) UNIQUE NOT NULL,
+      order_id INTEGER NOT NULL,
+      payment_attempt_id INTEGER NULL,
+      provider_id INTEGER NOT NULL,
+      gateway_account_id INTEGER NOT NULL,
+      razorpay_payment_id VARCHAR(128) NULL,
+      exception_type VARCHAR(64) NOT NULL 
+        CHECK (exception_type IN (
+          'duplicate_capture',
+          'amount_mismatch',
+          'currency_mismatch',
+          'unlinked_webhook',
+          'orphaned_payment',
+          'dead_letter_webhook',
+          'late_capture_out_of_stock',
+          'refund_idempotency_payload_conflict'
+        )),
+      severity VARCHAR(16) NOT NULL DEFAULT 'high' CHECK (severity IN ('low', 'medium', 'high', 'critical')),
+      resolution_status VARCHAR(32) NOT NULL DEFAULT 'open' 
+        CHECK (resolution_status IN ('open', 'investigating', 'refund_queued', 'resolved', 'dismissed')),
+      details JSONB NOT NULL DEFAULT '{}'::jsonb,
+      resolved_by INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
+      resolved_at TIMESTAMPTZ NULL,
+      resolution_notes TEXT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT fk_payment_exceptions_order_attempt FOREIGN KEY (order_id, payment_attempt_id) REFERENCES payment_attempts(order_id, id) ON DELETE RESTRICT,
+      CONSTRAINT fk_payment_exceptions_provider_gateway FOREIGN KEY (provider_id, gateway_account_id) REFERENCES provider_gateway_accounts(provider_id, id) ON DELETE RESTRICT
+    `,
+    indexes: [
+      `CREATE INDEX IF NOT EXISTS idx_payment_exceptions_status ON payment_exceptions(resolution_status);`
+    ],
+    triggers: [
+      `DROP TRIGGER IF EXISTS trg_payment_exceptions_updated_at ON payment_exceptions;
+       CREATE TRIGGER trg_payment_exceptions_updated_at BEFORE UPDATE ON payment_exceptions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();`
+    ]
+  },
+
+  // 25. Refunds (Audit-Grade Refund Tracking)
+  {
+    name: 'refunds',
+    columns: `
+      id SERIAL PRIMARY KEY,
+      order_id INTEGER NOT NULL,
+      payment_attempt_id INTEGER NOT NULL,
+      gateway_payment_transaction_id INTEGER NOT NULL,
+      provider_id INTEGER NOT NULL,
+      gateway_account_id INTEGER NOT NULL,
+      razorpay_payment_id VARCHAR(128) NOT NULL,
+      razorpay_refund_id VARCHAR(128) UNIQUE NULL,
+      amount_paise BIGINT NOT NULL CHECK (amount_paise > 0),
+      currency VARCHAR(8) NOT NULL DEFAULT 'INR',
+      refund_type VARCHAR(16) NOT NULL DEFAULT 'full' CHECK (refund_type IN ('full', 'partial')),
+      reason VARCHAR(64) NOT NULL,
+      status VARCHAR(32) NOT NULL DEFAULT 'initiated' 
+        CHECK (status IN ('initiated', 'processing', 'processed', 'failed')),
+      failure_reason TEXT NULL,
+      receipt VARCHAR(64) UNIQUE NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT fk_refunds_tx_attempt_gateway FOREIGN KEY (gateway_payment_transaction_id, payment_attempt_id, gateway_account_id, razorpay_payment_id) REFERENCES gateway_payment_transactions(id, payment_attempt_id, gateway_account_id, razorpay_payment_id) ON DELETE RESTRICT,
+      CONSTRAINT fk_refunds_attempt_order_gateway FOREIGN KEY (payment_attempt_id, order_id, gateway_account_id) REFERENCES payment_attempts(id, order_id, gateway_account_id) ON DELETE RESTRICT,
+      CONSTRAINT fk_refunds_order_prov_gateway FOREIGN KEY (order_id, provider_id, gateway_account_id) REFERENCES orders(id, provider_id, gateway_account_id) ON DELETE RESTRICT
+    `,
+    indexes: [
+      `CREATE INDEX IF NOT EXISTS idx_refunds_order ON refunds(order_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_refunds_status ON refunds(status);`
+    ],
+    triggers: [
+      `DROP TRIGGER IF EXISTS trg_refunds_updated_at ON refunds;
+       CREATE TRIGGER trg_refunds_updated_at BEFORE UPDATE ON refunds FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();`
+    ]
+  },
+
+  // 26. Refund Attempts (Idempotency and API Recovery Log)
+  {
+    name: 'refund_attempts',
+    columns: `
+      id SERIAL PRIMARY KEY,
+      refund_id INTEGER NOT NULL REFERENCES refunds(id) ON DELETE RESTRICT,
+      attempt_number INTEGER NOT NULL DEFAULT 1,
+      idempotency_key VARCHAR(128) NOT NULL,
+      raw_request JSONB DEFAULT '{}'::jsonb,
+      raw_response JSONB DEFAULT '{}'::jsonb,
+      status VARCHAR(32) NOT NULL DEFAULT 'sent' CHECK (status IN ('sent', 'succeeded', 'failed')),
+      error_code VARCHAR(64) NULL,
+      error_description TEXT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT uq_refund_attempt_step UNIQUE (refund_id, attempt_number),
+      CONSTRAINT uq_refund_attempt_idempotency UNIQUE (idempotency_key)
+    `,
+    indexes: [
+      `CREATE INDEX IF NOT EXISTS idx_refund_attempts_refund ON refund_attempts(refund_id);`
+    ]
+  },
+
+  // 27. Subscription Plans (Configurable SaaS Pricing Catalog)
+  {
+    name: 'subscription_plans',
+    columns: `
+      id SERIAL PRIMARY KEY,
+      plan_code VARCHAR(32) UNIQUE NOT NULL,
+      name VARCHAR(64) NOT NULL,
+      target_role VARCHAR(32) NOT NULL CHECK (target_role IN ('all', 'print_provider', 'designer')),
+      tier VARCHAR(32) NOT NULL CHECK (tier IN ('none', 'pro', 'business', 'enterprise')),
+      billing_interval VARCHAR(16) NOT NULL CHECK (billing_interval IN ('monthly', 'yearly', 'lifetime', 'trial')),
+      price_paise BIGINT NOT NULL DEFAULT 0,
+      currency VARCHAR(8) NOT NULL DEFAULT 'INR',
+      features JSONB NOT NULL DEFAULT '[]'::jsonb,
+      limits JSONB NOT NULL DEFAULT '{}'::jsonb,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      is_popular BOOLEAN NOT NULL DEFAULT FALSE,
+      display_order INTEGER NOT NULL DEFAULT 1,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    `,
+    indexes: [
+      `CREATE INDEX IF NOT EXISTS idx_subscription_plans_role_active ON subscription_plans(target_role, is_active);`,
+      `CREATE INDEX IF NOT EXISTS idx_subscription_plans_code ON subscription_plans(plan_code);`
+    ],
+    triggers: [
+      `DROP TRIGGER IF EXISTS trg_subscription_plans_updated_at ON subscription_plans;
+       CREATE TRIGGER trg_subscription_plans_updated_at BEFORE UPDATE ON subscription_plans FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();`
+    ]
+  },
+
+  // 28. User Subscriptions (Authoritative Active & Historical Subscriptions)
+  {
+    name: 'user_subscriptions',
+    columns: `
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      plan_id INTEGER NOT NULL REFERENCES subscription_plans(id) ON DELETE RESTRICT,
+      status VARCHAR(32) NOT NULL DEFAULT 'active' 
+        CHECK (status IN ('active', 'expired', 'cancelled', 'payment_pending', 'suspended', 'superseded')),
+      billing_interval VARCHAR(16) NOT NULL,
+      price_paise BIGINT NOT NULL,
+      currency VARCHAR(8) NOT NULL DEFAULT 'INR',
+      plan_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+      starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMPTZ NULL,
+      cancelled_at TIMESTAMPTZ NULL,
+      granted_by INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
+      grant_reason TEXT NULL,
+      grant_type VARCHAR(32) NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    `,
+    indexes: [
+      `CREATE INDEX IF NOT EXISTS idx_user_subscriptions_user_status ON user_subscriptions(user_id, status);`,
+      `CREATE INDEX IF NOT EXISTS idx_user_subscriptions_expiry ON user_subscriptions(status, expires_at);`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS uq_active_user_subscription ON user_subscriptions(user_id) WHERE status = 'active';`
+    ],
+    triggers: [
+      `DROP TRIGGER IF EXISTS trg_user_subscriptions_updated_at ON user_subscriptions;
+       CREATE TRIGGER trg_user_subscriptions_updated_at BEFORE UPDATE ON user_subscriptions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();`
+    ]
+  },
+
+  // 29. Subscription Invoices (Audit-Grade Billing Records)
+  {
+    name: 'subscription_invoices',
+    columns: `
+      id SERIAL PRIMARY KEY,
+      user_subscription_id INTEGER NOT NULL REFERENCES user_subscriptions(id) ON DELETE RESTRICT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      invoice_number VARCHAR(64) UNIQUE NOT NULL,
+      amount_paise BIGINT NOT NULL,
+      currency VARCHAR(8) NOT NULL DEFAULT 'INR',
+      period_start TIMESTAMPTZ NOT NULL,
+      period_end TIMESTAMPTZ NULL,
+      status VARCHAR(32) NOT NULL DEFAULT 'pending' 
+        CHECK (status IN ('pending', 'paid', 'failed', 'refunded', 'voided')),
+      paid_at TIMESTAMPTZ NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    `,
+    indexes: [
+      `CREATE INDEX IF NOT EXISTS idx_sub_invoices_user ON subscription_invoices(user_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_sub_invoices_status ON subscription_invoices(status);`
+    ],
+    triggers: [
+      `DROP TRIGGER IF EXISTS trg_subscription_invoices_updated_at ON subscription_invoices;
+       CREATE TRIGGER trg_subscription_invoices_updated_at BEFORE UPDATE ON subscription_invoices FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();`
+    ]
+  },
+
+  // 30. Subscription Payment Attempts (Cycle Payment Attempts & Replay Protection)
+  {
+    name: 'subscription_payment_attempts',
+    columns: `
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      subscription_id INTEGER NOT NULL REFERENCES user_subscriptions(id) ON DELETE RESTRICT,
+      invoice_id INTEGER NOT NULL REFERENCES subscription_invoices(id) ON DELETE RESTRICT,
+      plan_id INTEGER NOT NULL REFERENCES subscription_plans(id) ON DELETE RESTRICT,
+      idempotency_key VARCHAR(128) UNIQUE NOT NULL,
+      receipt VARCHAR(40) UNIQUE NOT NULL,
+      attempt_number INTEGER NOT NULL DEFAULT 1,
+      amount_paise BIGINT NOT NULL CHECK (amount_paise > 0),
+      currency VARCHAR(8) NOT NULL DEFAULT 'INR',
+      razorpay_order_id VARCHAR(128) NULL,
+      razorpay_payment_id VARCHAR(128) NULL,
+      status VARCHAR(32) NOT NULL DEFAULT 'creating' 
+        CHECK (status IN ('creating', 'created', 'processing', 'captured', 'failed')),
+      failure_reason TEXT NULL,
+      raw_response JSONB DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    `,
+    indexes: [
+      `CREATE UNIQUE INDEX IF NOT EXISTS uq_sub_pay_att_order ON subscription_payment_attempts(razorpay_order_id) WHERE razorpay_order_id IS NOT NULL;`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS uq_sub_pay_att_pay ON subscription_payment_attempts(razorpay_payment_id) WHERE razorpay_payment_id IS NOT NULL;`,
+      `CREATE INDEX IF NOT EXISTS idx_sub_pay_att_user ON subscription_payment_attempts(user_id);`
+    ],
+    triggers: [
+      `DROP TRIGGER IF EXISTS trg_sub_pay_attempts_updated_at ON subscription_payment_attempts;
+       CREATE TRIGGER trg_sub_pay_attempts_updated_at BEFORE UPDATE ON subscription_payment_attempts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();`
+    ]
+  },
+
+  // 31. Platform Webhook Events (Isolated from Provider Webhook Ledger)
+  {
+    name: 'platform_webhook_events',
+    columns: `
+      id SERIAL PRIMARY KEY,
+      event_id VARCHAR(128) UNIQUE NOT NULL,
+      event_name VARCHAR(64) NOT NULL,
+      payload JSONB NOT NULL,
+      processing_status VARCHAR(32) NOT NULL DEFAULT 'received' 
+        CHECK (processing_status IN ('received', 'processing', 'processed', 'retry_wait', 'dead_letter', 'ignored')),
+      lease_token UUID NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      max_attempts INTEGER NOT NULL DEFAULT 5,
+      last_error TEXT NULL,
+      locked_at TIMESTAMPTZ NULL,
+      locked_until TIMESTAMPTZ NULL,
+      next_retry_at TIMESTAMPTZ NULL,
+      processed_at TIMESTAMPTZ NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    `,
+    indexes: [
+      `CREATE INDEX IF NOT EXISTS idx_platform_wh_events_queue ON platform_webhook_events(processing_status, next_retry_at, locked_until);`
+    ]
+  },
+
+  // 32. Designer Payout Requests & Settlement Ledger
+  {
+    name: 'designer_payout_requests',
+    columns: `
+      id SERIAL PRIMARY KEY,
+      designer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      provider_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      amount_paise BIGINT NOT NULL CHECK (amount_paise > 0),
+      amount_cents BIGINT NOT NULL CHECK (amount_cents > 0),
+      payout_method VARCHAR(32) NOT NULL DEFAULT 'upi' CHECK (payout_method IN ('upi', 'bank_transfer')),
+      payout_details JSONB NOT NULL DEFAULT '{}'::jsonb,
+      status VARCHAR(32) NOT NULL DEFAULT 'pending' 
+        CHECK (status IN ('pending', 'processing', 'settled', 'rejected')),
+      settlement_reference_utr TEXT NULL,
+      settled_at TIMESTAMPTZ NULL,
+      rejected_reason TEXT NULL,
+      notes TEXT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    `,
+    indexes: [
+      `CREATE INDEX IF NOT EXISTS idx_designer_payouts_designer ON designer_payout_requests(designer_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_designer_payouts_provider ON designer_payout_requests(provider_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_designer_payouts_status ON designer_payout_requests(status);`
+    ],
+    triggers: [
+      `DROP TRIGGER IF EXISTS trg_designer_payouts_updated_at ON designer_payout_requests;
+       CREATE TRIGGER trg_designer_payouts_updated_at BEFORE UPDATE ON designer_payout_requests FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();`
+    ]
   }
 ];
 
@@ -791,6 +1335,98 @@ export const INITIAL_SEEDS = [
    ON CONFLICT (product, color_id, size_id, owner_id) DO NOTHING;`,
   `INSERT INTO cloth_inventory (color_id, size_id, quantity, price, owner_id, product)
    VALUES (2, 2, 120, 25.00, 3, 'hoodie')
-   ON CONFLICT (product, color_id, size_id, owner_id) DO NOTHING;`
+   ON CONFLICT (product, color_id, size_id, owner_id) DO NOTHING;`,
+
+  // Phase 2 Composite Constraints and Inter-Table Foreign Keys
+  `DO $$ 
+   BEGIN
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uq_orders_id_provider') THEN
+       ALTER TABLE orders ADD CONSTRAINT uq_orders_id_provider UNIQUE (id, provider_id);
+     END IF;
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uq_orders_id_gateway') THEN
+       ALTER TABLE orders ADD CONSTRAINT uq_orders_id_gateway UNIQUE (id, gateway_account_id);
+     END IF;
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uq_orders_id_prov_gateway') THEN
+       ALTER TABLE orders ADD CONSTRAINT uq_orders_id_prov_gateway UNIQUE (id, provider_id, gateway_account_id);
+     END IF;
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_orders_provider_gateway') THEN
+       ALTER TABLE orders ADD CONSTRAINT fk_orders_provider_gateway 
+         FOREIGN KEY (provider_id, gateway_account_id) 
+         REFERENCES provider_gateway_accounts(provider_id, id) 
+         ON DELETE RESTRICT NOT VALID;
+       ALTER TABLE orders VALIDATE CONSTRAINT fk_orders_provider_gateway;
+     END IF;
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_payment_attempts_order_gateway') THEN
+       ALTER TABLE payment_attempts ADD CONSTRAINT fk_payment_attempts_order_gateway
+         FOREIGN KEY (order_id, gateway_account_id)
+         REFERENCES orders(id, gateway_account_id)
+         ON DELETE RESTRICT NOT VALID;
+       ALTER TABLE payment_attempts VALIDATE CONSTRAINT fk_payment_attempts_order_gateway;
+     END IF;
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_orders_active_attempt') THEN
+       ALTER TABLE orders ADD CONSTRAINT fk_orders_active_attempt 
+         FOREIGN KEY (id, active_payment_attempt_id) 
+         REFERENCES payment_attempts(order_id, id) 
+         ON DELETE RESTRICT NOT VALID;
+       ALTER TABLE orders VALIDATE CONSTRAINT fk_orders_active_attempt;
+     END IF;
+   END $$;`,
+
+  // Phase 2 Paise Direct Assignment Backfill from Phase 1 integer *_cents
+  `UPDATE orders SET total_paise = total_cents WHERE total_paise = 0 AND total_cents > 0;`,
+  `UPDATE orders SET subtotal_paise = subtotal_cents WHERE subtotal_paise = 0 AND subtotal_cents > 0;`,
+  `UPDATE orders SET shipping_cost_paise = shipping_cost_cents WHERE shipping_cost_paise = 0 AND shipping_cost_cents > 0;`,
+  `UPDATE orders SET tax_paise = tax_cents WHERE tax_paise = 0 AND tax_cents > 0;`,
+  `UPDATE orders SET provider_earnings_paise = provider_earnings_cents WHERE provider_earnings_paise = 0 AND provider_earnings_cents > 0;`,
+  `UPDATE orders SET designer_royalty_payable_paise = designer_earnings_cents WHERE designer_royalty_payable_paise = 0 AND designer_earnings_cents > 0;`,
+
+  // Update billing_interval check constraint to allow 'trial'
+  `ALTER TABLE subscription_plans DROP CONSTRAINT IF EXISTS subscription_plans_billing_interval_check;
+   ALTER TABLE subscription_plans ADD CONSTRAINT subscription_plans_billing_interval_check CHECK (billing_interval IN ('monthly', 'yearly', 'lifetime', 'trial'));`,
+
+  // Phase 3 Standard Subscription Plans (Exactly 4 Plans)
+  `INSERT INTO subscription_plans (
+     id, plan_code, name, target_role, tier, billing_interval, price_paise, display_order, features, limits, is_active
+   ) VALUES
+     (1, 'starter', 'Starter Partner', 'all', 'none', 'trial', 0, 1, 
+      '["7-Day free trial on approval", "Up to 10 product blanks", "Up to 10 design uploads", "Standard order management"]'::jsonb,
+      '{"max_products": 10, "max_designs": 10, "canvas_export": "standard", "priority_routing": false}'::jsonb, TRUE),
+     (2, 'pro_designer', 'Pro Designer', 'designer', 'pro', 'monthly', 29900, 2,
+      '["Unlimited design uploads", "High-resolution canvas exports", "Custom designer storefront badge", "Store analytics & traffic insights", "Priority email support"]'::jsonb,
+      '{"max_products": 50, "max_designs": -1, "canvas_export": "high_res", "priority_routing": false}'::jsonb, TRUE),
+     (3, 'pro_provider', 'Pro Provider', 'print_provider', 'pro', 'monthly', 99900, 3,
+      '["Up to 100 garment blank listings", "Priority customer order routing", "Automated low-stock alerts", "CSV bulk inventory management", "Priority provider support"]'::jsonb,
+      '{"max_products": 100, "max_designs": 50, "canvas_export": "standard", "priority_routing": true}'::jsonb, TRUE),
+     (4, 'business_enterprise', 'Business Enterprise', 'print_provider', 'business', 'monthly', 249900, 4,
+      '["Unlimited garment blank listings", "Industrial techpack platen specs", "Highest priority order routing", "Dedicated SLA support (24/7)", "Custom domain & storefront branding"]'::jsonb,
+      '{"max_products": -1, "max_designs": -1, "canvas_export": "high_res", "priority_routing": true}'::jsonb, TRUE)
+   ON CONFLICT (id) DO UPDATE SET
+     plan_code = EXCLUDED.plan_code,
+     name = EXCLUDED.name,
+     target_role = EXCLUDED.target_role,
+     tier = EXCLUDED.tier,
+     billing_interval = EXCLUDED.billing_interval,
+     price_paise = EXCLUDED.price_paise,
+     display_order = EXCLUDED.display_order,
+     features = EXCLUDED.features,
+     limits = EXCLUDED.limits,
+     is_active = EXCLUDED.is_active;`,
+
+  // Advance sequence for subscription_plans
+  `SELECT setval('subscription_plans_id_seq', (SELECT COALESCE(MAX(id), 1) FROM subscription_plans));`,
+
+  // Idempotent Partner Starter Backfill for existing print providers and designers
+  `INSERT INTO user_subscriptions (
+     user_id, plan_id, status, billing_interval, price_paise, currency, plan_snapshot, starts_at, expires_at, grant_type, grant_reason
+   )
+   SELECT 
+     u.id, 1, 'active', 'trial', 0, 'INR', 
+     p.limits, NOW(), NOW() + INTERVAL '7 days', 'system_default', '7-day introductory free trial'
+   FROM users u
+   JOIN subscription_plans p ON p.id = 1
+   WHERE u.role IN ('print_provider', 'designer')
+     AND NOT EXISTS (
+       SELECT 1 FROM user_subscriptions s WHERE s.user_id = u.id AND s.status = 'active'
+     );`
 ];
 

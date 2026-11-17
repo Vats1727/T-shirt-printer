@@ -21,7 +21,9 @@ import {
   Paintbrush,
   PlusCircle,
   ExternalLink,
-  Tag
+  Tag,
+  CreditCard,
+  FileText
 } from 'lucide-react';
 import { encodeId } from '@/utils/idEncoder';
 import { Button } from '@/components/ui/button';
@@ -100,10 +102,16 @@ export function PrintProviderNavbar({ onRefresh, isRefreshing }) {
       icon: ShoppingBag
     },
     {
-      title: 'Designer Designs',
-      url: '/admin/designer-designs',
-      active: location.startsWith('/admin/designer-designs'),
-      icon: LayoutTemplate
+      title: 'Designers & Royalties',
+      url: '/admin/designers',
+      active: location.startsWith('/admin/designers') || location.startsWith('/admin/designer-designs'),
+      icon: Users
+    },
+    {
+      title: 'Financial Ledger',
+      url: '/admin/ledger',
+      active: location === '/admin/ledger',
+      icon: FileText
     },
     {
       title: 'Store Product Listings',
@@ -234,6 +242,22 @@ export function PrintProviderNavbar({ onRefresh, isRefreshing }) {
                 >
                   <User className="w-3.5 h-3.5 mr-2 text-indigo-600" />
                   Facility Profile & Credentials
+                </DropdownMenuItem>
+
+                <DropdownMenuItem
+                  onClick={() => setLocation('/admin/ledger')}
+                  className="cursor-pointer text-xs font-medium py-2 rounded-lg hover:bg-slate-100 text-slate-700"
+                >
+                  <FileText className="w-3.5 h-3.5 mr-2 text-indigo-600" />
+                  Financial Ledger
+                </DropdownMenuItem>
+
+                <DropdownMenuItem
+                  onClick={() => setLocation('/admin/subscription')}
+                  className="cursor-pointer text-xs font-medium py-2 rounded-lg hover:bg-slate-100 text-slate-700"
+                >
+                  <CreditCard className="w-3.5 h-3.5 mr-2 text-indigo-600" />
+                  Subscription & Plan Tier
                 </DropdownMenuItem>
 
                 <DropdownMenuItem

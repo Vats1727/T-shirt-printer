@@ -13,8 +13,13 @@ const UPLOAD_DIR = path.resolve(__dirname, '../uploads');
 
 const app = express();
 
-// Body parsers with large limits for preview images
-app.use(express.json({ limit: '50mb' }));
+// Body parsers with large limits for preview images and rawBody preservation for webhooks
+app.use(express.json({
+  limit: '50mb',
+  verify: (req, _res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 app.use(express.urlencoded({ limit: '50mb', extended: false }));
 
 // CORS headers - allow local network & configured origins

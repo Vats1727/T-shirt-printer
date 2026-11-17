@@ -584,6 +584,19 @@ export default function PortalAdminRequests() {
                                   Rejected
                                 </Badge>
                               )}
+
+                              {!isDesigner && (
+                                p.gateway_status === "active" ? (
+                                  <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-semibold py-0.5 px-2 flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                    Gateway: {p.gateway_key_masked || "Connected"}
+                                  </Badge>
+                                ) : (
+                                  <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[10px] font-semibold py-0.5 px-2">
+                                    Gateway: Unconfigured
+                                  </Badge>
+                                )
+                              )}
                             </div>
                             <p className="text-xs text-slate-500 font-mono flex items-center gap-1.5">
                               <Mail className="w-3.5 h-3.5 text-slate-400" />
@@ -1262,6 +1275,39 @@ export default function PortalAdminRequests() {
                     {viewingProvider.status || "pending"}
                   </Badge>
                 </div>
+
+                {viewingProvider.role !== "designer" && (
+                  <div className="pt-2 border-t border-slate-200 mt-2 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500 font-medium">Payment Gateway:</span>
+                      <Badge
+                        className={
+                          viewingProvider.gateway_status === "active"
+                            ? "bg-emerald-100 text-emerald-800 border-emerald-300 font-bold"
+                            : "bg-amber-100 text-amber-800 border-amber-300 font-bold"
+                        }
+                      >
+                        {viewingProvider.gateway_status === "active" ? "Connected (Active)" : "Pending Setup"}
+                      </Badge>
+                    </div>
+                    {viewingProvider.gateway_key_masked && (
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-500">Razorpay Key ID:</span>
+                        <span className="font-mono text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">
+                          {viewingProvider.gateway_key_masked}
+                        </span>
+                      </div>
+                    )}
+                    {viewingProvider.gateway_last_ping && (
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-500">Last Live Handshake:</span>
+                        <span className="text-emerald-700 font-medium">
+                          {format(new Date(viewingProvider.gateway_last_ping), "dd-MM-yyyy HH:mm")} (Verified)
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="pt-2 text-xs text-slate-400 text-center">

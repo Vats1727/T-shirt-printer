@@ -224,6 +224,10 @@ export default function Register() {
                     : "Portal Superadmin verifies manufacturing capacity & tax compliance"}
                 </span>
               </div>
+              <div className="flex items-center gap-2 text-slate-700 font-medium">
+                <Sparkles className="size-4 text-indigo-600 shrink-0" />
+                <span>Tier assigned: <strong className="text-slate-900">Starter Partner (Free Lifetime - ₹0)</strong></span>
+              </div>
               <div className="flex items-center gap-2 text-slate-500">
                 <CheckCircle2 className="size-4 text-slate-400 shrink-0" />
                 <span>Instant access and email notification upon approval</span>
@@ -294,7 +298,7 @@ export default function Register() {
               <div className="size-4.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center shrink-0">
                 <Check className="size-3" />
               </div>
-              <span className="font-medium">No subscription fees or inventory commitments required</span>
+              <span className="font-medium">Start with Free Lifetime Starter Partner tier · Zero upfront cost</span>
             </div>
             <div className="flex items-center gap-2.5">
               <div className="size-4.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center shrink-0">
@@ -627,6 +631,28 @@ export default function Register() {
                 )}
               </div>
             </div>
+
+            {/* Step 3: Subscription Plan Allocation Card */}
+            {role !== "customer" && (
+              <div className="bg-gradient-to-r from-indigo-50/60 to-purple-50/60 border border-indigo-100 rounded-xl p-3 space-y-1.5 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-indigo-950 flex items-center gap-1.5 text-xs">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                    Starting Tier: Starter Partner
+                  </span>
+                  <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px] font-bold py-0 px-2">
+                    Free Lifetime (₹0)
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Every new partner begins on the Free Lifetime Starter plan (up to 10 products / 10 designs). You can upgrade to{" "}
+                  <strong className="text-indigo-900 font-semibold">
+                    {role === "designer" ? "Pro Designer (₹299/mo)" : "Pro Provider (₹999/mo)"}
+                  </strong>{" "}
+                  anytime directly from your console.
+                </p>
+              </div>
+            )}
 
             {/* Error Banner */}
             {serverError && (

@@ -9,6 +9,10 @@ import customerRoutes from './customer.routes.js';
 import orderRoutes from './order.routes.js';
 import paymentRoutes from './payment.routes.js';
 import b2bOrderRoutes from './b2bOrder.routes.js';
+import webhookRoutes from './webhook.routes.js';
+import providerGatewayRoutes from './providerGateway.routes.js';
+import subscriptionRoutes from './subscription.routes.js';
+import payoutRoutes from './payout.routes.js';
 import userController from '../controllers/user.controller.js';
 import supplierController from '../controllers/supplier.controller.js';
 import portalController from '../controllers/portal.controller.js';
@@ -38,6 +42,10 @@ router.use('/customer', customerRoutes);
 router.use('/orders', orderRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/b2b-orders', b2bOrderRoutes);
+router.use('/webhooks', webhookRoutes);
+router.use('/provider/gateway', providerGatewayRoutes);
+router.use('/subscriptions', subscriptionRoutes);
+router.use('/payouts', payoutRoutes);
 
 // Public Financial & Pricing Governance Rules
 router.get('/settings/financial', portalController.getPublicFinancialSettings);

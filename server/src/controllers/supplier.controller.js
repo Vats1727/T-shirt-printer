@@ -127,12 +127,6 @@ export async function createListing(req, res, next) {
         );
         if (dCheck.rows.length > 0) {
           const row = dCheck.rows[0];
-          if (row.is_approved === false) {
-            return res.status(422).json({
-              error: 'UnapprovedProduct',
-              message: `Cannot publish listing for "${row.product_name || 'garment'}": underlying product is pending administrative approval.`
-            });
-          }
           if (!row.garment_id || row.garment_active === false) {
             return res.status(422).json({
               error: 'UnmappedGarment',
@@ -183,12 +177,6 @@ export async function updateListingStatus(req, res, next) {
       );
       if (lCheck.rows.length > 0) {
         const row = lCheck.rows[0];
-        if (row.is_approved === false) {
-          return res.status(422).json({
-            error: 'UnapprovedProduct',
-            message: `Cannot publish listing for "${row.product_name || 'garment'}": underlying product is pending administrative approval.`
-          });
-        }
         if (!row.garment_id || row.garment_active === false) {
           return res.status(422).json({
             error: 'UnmappedGarment',

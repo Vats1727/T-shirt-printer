@@ -6,6 +6,7 @@ import productModel from '../models/product.model.js';
 import inventoryModel from '../models/inventory.model.js';
 import designModel from '../models/design.model.js';
 import * as productsStore from '../services/productsStore.js';
+import { SubscriptionEntitlementService } from '../services/subscriptionEntitlement.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -173,6 +174,9 @@ export async function createProduct(req, res, next) {
       return res.status(400).json({ message: "Product name must not exceed 60 characters" });
     }
     const ownerId = req.user?.sub || req.user?.id || null;
+    if (ownerId) {
+      await SubscriptionEntitlementService.assertCanCreateProduct(ownerId);
+    }
     const product = await productsStore.createProduct({ ...body, name: trimmedName, owner_id: ownerId });
     return res.status(201).json(product);
   } catch (err) {

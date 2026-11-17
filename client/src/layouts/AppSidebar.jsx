@@ -19,7 +19,8 @@ import {
   UserCheck,
   Users,
   DollarSign,
-  FileText
+  FileText,
+  CreditCard
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { Button } from '@/components/ui/button';
@@ -100,10 +101,10 @@ export function AppSidebar() {
       hidden: !isPortalAdmin
     },
     {
-      title: 'Financial Governance',
-      icon: DollarSign,
-      url: '/portal/financials',
-      active: location.startsWith('/portal/financials'),
+      title: 'Subscription Plans',
+      icon: CreditCard,
+      url: '/portal/subscriptions',
+      active: location.startsWith('/portal/subscriptions'),
       hidden: !isPortalAdmin
     },
     {
@@ -120,11 +121,18 @@ export function AppSidebar() {
       active: location.includes('clothes'),
       hidden: !isAdmin
     },
-{
-      title: 'Designer Designs',
-      icon: LayoutTemplate,
-      url: '/admin/designer-designs',
-      active: location.includes('designer-designs'),
+    {
+      title: 'Designers & Royalties',
+      icon: Users,
+      url: '/admin/designers',
+      active: location.includes('designers'),
+      hidden: !isAdmin
+    },
+    {
+      title: 'Financial Ledger',
+      icon: FileText,
+      url: '/admin/ledger',
+      active: location.includes('/admin/ledger'),
       hidden: !isAdmin
     },
     {
@@ -156,6 +164,13 @@ export function AppSidebar() {
       hidden: !isDesigner
     },
     {
+      title: 'Earnings Ledger',
+      icon: FileText,
+      url: '/supplier/ledger',
+      active: location.includes('/supplier/ledger'),
+      hidden: !isDesigner
+    },
+    {
       title: 'Customize Store',
       icon: Paintbrush,
       url: '/supplier/customize-store',
@@ -168,6 +183,13 @@ export function AppSidebar() {
       url: isAdmin ? '/admin/orders' : '/supplier/orders',
       active: location.startsWith('/admin/orders') || location.startsWith('/supplier/order') || location.startsWith('/orders') || location === '/order',
       badge: isAdmin && pendingOrdersCount > 0 ? pendingOrdersCount : null,
+      hidden: isPortalAdmin
+    },
+    {
+      title: 'Subscription',
+      icon: CreditCard,
+      url: isAdmin ? '/admin/subscription' : '/supplier/subscription',
+      active: location.includes('subscription'),
       hidden: isPortalAdmin
     },
     {

@@ -129,12 +129,9 @@ export async function validateApparelOnly(req, res, next) {
       req.sanctionedGarment = matched;
     }
 
-    // New products default to is_approved = false unless explicitly approved by admin
+    // New products are automatically approved and ready for listing
     if (req.method === 'POST') {
-      const userRole = req.user?.role;
-      if (userRole !== 'admin' && userRole !== 'portal_admin') {
-        req.body.is_approved = false;
-      }
+      req.body.is_approved = true;
     }
 
     next();

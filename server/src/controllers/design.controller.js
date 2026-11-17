@@ -1,6 +1,7 @@
 import designModel from '../models/design.model.js';
 import orderModel from '../models/order.model.js';
 import assetModel from '../models/asset.model.js';
+import { SubscriptionEntitlementService } from '../services/subscriptionEntitlement.service.js';
 import path from 'path';
 import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
@@ -11,6 +12,9 @@ const UPLOAD_DIR = path.resolve(__dirname, '../../uploads');
 export async function createDesign(req, res, next) {
   try {
     const userId = req.user?.sub || req.user?.id || null;
+    if (userId) {
+      await SubscriptionEntitlementService.assertCanUploadDesign(userId);
+    }
     const result = await designModel.createDesign({ ...req.body, owner_id: userId });
 
     const versions = await designModel.listDesignVersions(result.id);

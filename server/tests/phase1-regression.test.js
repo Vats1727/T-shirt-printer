@@ -1015,6 +1015,7 @@ async function runRegressionSuite() {
     logTest('Test 17: Partner Onboarding Approval Workflow', false, err.message);
   } finally {
     if (testPartnerId) {
+      await pool.query('DELETE FROM provider_gateway_accounts WHERE provider_id = $1', [testPartnerId]);
       await pool.query('DELETE FROM users WHERE id = $1', [testPartnerId]);
     }
   }

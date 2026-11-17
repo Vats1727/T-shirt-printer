@@ -59,11 +59,6 @@ export async function createOrder({
           throw err;
         }
         const p = pCheck.rows[0];
-        if (p.is_approved === false) {
-          const err = new Error(`Cannot purchase product "${p.name}" (ID #${p.id}) because it is pending administrative approval.`);
-          err.statusCode = 422;
-          throw err;
-        }
         if (!p.garment_id || p.garment_active === false) {
           const err = new Error(`Cannot purchase product "${p.name}": master garment is unmapped or inactive.`);
           err.statusCode = 422;
@@ -185,17 +180,38 @@ export async function createOrder({
 
     const totalCents = subtotalCents + effectiveShippingCostCents + effectiveTaxCents;
 
-    // Dynamic global financial split configured by Portal Superadmin (pure percentage commission, no flat fee):
-    const platformFeeCents = Math.round(subtotalCents * (settings.platform_fee_percent / 100));
+    // Dynamic financial split (Provider-Led Checkout: 100% direct split between Provider & Designer):
+    const platformFeeCents = 0;
 
     let designerEarningsCents = 0;
     let providerEarningsCents = 0;
 
     if (designerId && Number(designerId) !== Number(providerId)) {
-      providerEarningsCents = Math.round(subtotalCents * (settings.provider_margin_percent / 100));
-      designerEarningsCents = Math.max(0, subtotalCents - providerEarningsCents - platformFeeCents);
+      // Check if the Print Provider has configured their own custom designer royalty margin
+      let effDesignerMarginPct = Number(settings.designer_margin_percent || 35);
+      if (providerId) {
+        try {
+          const provRes = await client.query('SELECT store_settings FROM users WHERE id = $1', [providerId]);
+          const provSettings = provRes.rows[0]?.store_settings || {};
+          if (provSettings.designer_margin_percent !== undefined && !isNaN(Number(provSettings.designer_margin_percent))) {
+            effDesignerMarginPct = Number(provSettings.designer_margin_percent);
+          }
+        } catch (provLookupErr) {
+          console.warn('[OrderModel] Could not lookup provider custom margin:', provLookupErr.message);
+        }
+      }
+
+      // Safeguard: Ensure designer margin respects platform minimum
+      if (settings.min_designer_margin_percent && effDesignerMarginPct < Number(settings.min_designer_margin_percent)) {
+        effDesignerMarginPct = Number(settings.min_designer_margin_percent);
+      }
+
+      // Designer Royalty
+      designerEarningsCents = Math.round(subtotalCents * (effDesignerMarginPct / 100));
+      // Provider keeps remaining balance
+      providerEarningsCents = Math.max(0, subtotalCents - designerEarningsCents);
     } else {
-      providerEarningsCents = Math.max(0, subtotalCents - platformFeeCents);
+      providerEarningsCents = subtotalCents;
       designerEarningsCents = 0;
     }
 
@@ -233,9 +249,11 @@ export async function createOrder({
         designer_id, provider_id, status, payment_status, payment_method,
         razorpay_order_id, razorpay_payment_id, razorpay_signature,
         currency, subtotal_cents, shipping_cost_cents, tax_cents, total_cents,
+        subtotal_paise, shipping_cost_paise, tax_paise, total_paise,
         designer_earnings_cents, provider_earnings_cents, platform_fee_cents,
+        designer_royalty_payable_paise, provider_earnings_paise,
         shipping_address, tracking_info, notes, created_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,NOW(),NOW())
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,NOW(),NOW())
       RETURNING *`,
       [
         orderNumber,
@@ -256,9 +274,15 @@ export async function createOrder({
         effectiveShippingCostCents,
         effectiveTaxCents,
         totalCents,
+        subtotalCents,
+        effectiveShippingCostCents,
+        effectiveTaxCents,
+        totalCents,
         designerEarningsCents,
         providerEarningsCents,
         platformFeeCents,
+        designerEarningsCents,
+        providerEarningsCents,
         JSON.stringify(shippingAddress),
         JSON.stringify(initialTrackingInfo),
         notes || null
@@ -949,7 +973,7 @@ function formatOrderItem(item) {
       designVersion = typeof item.design_version_payload === 'string'
         ? JSON.parse(item.design_version_payload)
         : item.design_version_payload;
-    } catch (e) {}
+    } catch (e) { }
   }
 
   const frontLayers = designVersion?.sides?.find(s => s.name === 'front')?.layers || [];

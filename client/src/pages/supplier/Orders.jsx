@@ -45,8 +45,13 @@ import {
   Store,
   DollarSign,
   User,
-  MapPin
+  MapPin,
+  Wallet,
+  Send,
+  Copy,
+  Check
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { getMaskedCode } from "@/utils/idEncoder";
 import { cn } from "@/utils/cn";
 import { formatDate } from "@/utils/dateFormatter";
@@ -57,15 +62,118 @@ const PAGE_SIZE = 10;
 
 export default function SupplierOrders() {
   const { token, user } = useAuth();
+  const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [viewingOrder, setViewingOrder] = useState(null);
 
+  // Royalty Payout State
+  const [payoutSummary, setPayoutSummary] = useState(null);
+  const [payoutRequests, setPayoutRequests] = useState([]);
+  const [requestPayoutModalOpen, setRequestPayoutModalOpen] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [withdrawNotes, setWithdrawNotes] = useState("");
+  const [requestingPayout, setRequestingPayout] = useState(false);
+
   // Filters & Pagination State
-  const [activeTab, setActiveTab] = useState("all"); // "all" | "sales" | "in_production" | "shipped" | "samples"
+  const [activeTab, setActiveTab] = useState("all"); // "all" | "sales" | "in_production" | "shipped" | "samples" | "payouts"
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+
+  const fetchPayoutSummary = async () => {
+    try {
+      let res = await fetch("/api/supplier/payout-summary", {
+        headers: { Authorization: token ? `Bearer ${token}` : "" }
+      });
+      if (res.status === 404) {
+        res = await fetch("/api/payouts/designer/summary", {
+          headers: { Authorization: token ? `Bearer ${token}` : "" }
+        });
+      }
+      if (res.ok) {
+        const data = await res.json();
+        setPayoutSummary(data.summary);
+        setPayoutRequests(data.requests || []);
+      }
+    } catch (e) {
+      console.warn("Could not load payout summary", e);
+    }
+  };
+
+  const handleRequestPayout = async (e) => {
+    e.preventDefault();
+    const amountNum = Number(withdrawAmount);
+    if (isNaN(amountNum) || amountNum < 100) {
+      toast({
+        title: "Invalid Amount",
+        description: "Minimum withdrawal amount is ₹100.",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (payoutSummary && amountNum > payoutSummary.availableRupees) {
+      toast({
+        title: "Insufficient Balance",
+        description: `Requested amount exceeds available balance of ₹${payoutSummary.availableRupees.toFixed(2)}.`,
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setRequestingPayout(true);
+    try {
+      let res = await fetch("/api/supplier/request-payout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token ? `Bearer ${token}` : ""
+        },
+        body: JSON.stringify({
+          amountRupees: amountNum,
+          notes: withdrawNotes.trim()
+        })
+      });
+      if (res.status === 404) {
+        res = await fetch("/api/payouts/designer/request", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: token ? `Bearer ${token}` : ""
+          },
+          body: JSON.stringify({
+            amountRupees: amountNum,
+            notes: withdrawNotes.trim()
+          })
+        });
+      }
+      const data = await res.json();
+      if (data.success) {
+        toast({
+          title: "Payout Requested",
+          description: `Withdrawal request for ₹${amountNum.toFixed(2)} submitted to your print provider.`
+        });
+        setRequestPayoutModalOpen(false);
+        setWithdrawAmount("");
+        setWithdrawNotes("");
+        fetchPayoutSummary();
+      } else {
+        toast({
+          title: "Request Failed",
+          description: data.message || "Failed to submit payout request.",
+          variant: "destructive"
+        });
+      }
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: err.message,
+        variant: "destructive"
+      });
+    } finally {
+      setRequestingPayout(false);
+    }
+  };
 
   const fetchOrders = async () => {
     try {
@@ -96,6 +204,7 @@ export default function SupplierOrders() {
 
   useEffect(() => {
     fetchOrders();
+    fetchPayoutSummary();
   }, [token]);
 
   useEffect(() => {
@@ -217,7 +326,7 @@ export default function SupplierOrders() {
     <div className="w-full space-y-5 animate-in fade-in duration-300 pb-12">
       {/* KPI Overview Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* KPI 1: Net Earnings */}
+        {/* KPI 1: Net Earnings & Payouts */}
         <Card className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50/70 to-white shadow-xs">
           <CardHeader className="p-4 pb-1.5 flex flex-row items-center justify-between space-y-0">
             <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">
@@ -229,11 +338,21 @@ export default function SupplierOrders() {
           </CardHeader>
           <CardContent className="p-4 pt-0">
             <div className="text-2xl font-black text-slate-900 font-mono">
-              ₹{totalDesignerEarnings.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ₹{(payoutSummary?.lifetimeEarningsRupees ?? totalDesignerEarnings).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
-            <p className="text-[11px] text-emerald-700 mt-0.5 font-medium">
-              Accumulated earnings from customer sales
-            </p>
+            <div className="flex items-center justify-between mt-2 pt-2 border-t border-emerald-100">
+              <div className="text-[11px] text-emerald-800 font-medium">
+                Avail: <span className="font-mono font-bold">₹{(payoutSummary?.availableRupees ?? 0).toFixed(2)}</span>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => setRequestPayoutModalOpen(true)}
+                className="h-6 px-2 text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-md shadow-2xs cursor-pointer"
+              >
+                <Wallet className="w-2.5 h-2.5 mr-1" />
+                Withdraw
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
@@ -396,6 +515,21 @@ export default function SupplierOrders() {
                 Wholesale & Samples ({sampleOrders.length})
               </Button>
             )}
+
+            <Button
+              size="sm"
+              variant={activeTab === "payouts" ? "default" : "outline"}
+              onClick={() => setActiveTab("payouts")}
+              className={cn(
+                "h-8 rounded-lg text-xs font-bold px-3 gap-1.5 cursor-pointer",
+                activeTab === "payouts"
+                  ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                  : "bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+              )}
+            >
+              <Wallet className="w-3.5 h-3.5" />
+              Royalty Withdrawals ({payoutRequests.length})
+            </Button>
           </div>
 
           <div className="relative w-full sm:w-72">
@@ -411,7 +545,121 @@ export default function SupplierOrders() {
 
         {/* Data Table Content */}
         <CardContent className="p-0">
-          {loading ? (
+          {activeTab === "payouts" ? (
+            payoutRequests.length === 0 ? (
+              <div className="p-16 text-center text-slate-500 flex flex-col items-center justify-center gap-2.5">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+                  <Wallet className="w-6 h-6" />
+                </div>
+                <p className="font-semibold text-slate-800 text-sm">
+                  No royalty withdrawal requests yet
+                </p>
+                <p className="text-xs text-slate-400 max-w-sm">
+                  You have ₹{(payoutSummary?.availableRupees ?? 0).toFixed(2)} in available royalties. Click "Withdraw" to submit a payout request.
+                </p>
+                {(payoutSummary?.availableRupees ?? 0) >= 100 && (
+                  <Button
+                    size="sm"
+                    onClick={() => setRequestPayoutModalOpen(true)}
+                    className="mt-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs"
+                  >
+                    Request Payout Now
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <Table>
+                <TableHeader className="bg-slate-50/70 border-b border-slate-200">
+                  <TableRow>
+                    <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 pl-6">
+                      Request ID & Date
+                    </TableHead>
+                    <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600">
+                      Fulfillment Hub
+                    </TableHead>
+                    <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600">
+                      Amount
+                    </TableHead>
+                    <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600">
+                      Method & Destination
+                    </TableHead>
+                    <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600">
+                      Status
+                    </TableHead>
+                    <TableHead className="text-right font-bold text-xs uppercase tracking-wider text-slate-600 pr-6">
+                      Settlement Reference
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {payoutRequests.map((pr) => {
+                    const isPending = pr.status === "pending";
+                    const isSettled = pr.status === "settled";
+                    const isRejected = pr.status === "rejected";
+                    const details = pr.payout_details || {};
+
+                    return (
+                      <TableRow key={pr.id} className="hover:bg-slate-50/70 transition-colors">
+                        <TableCell className="py-3.5 pl-6 font-mono text-xs font-bold text-slate-900">
+                          <div>REQ-ROYALTY-#{pr.id}</div>
+                          <div className="text-[11px] text-slate-400 font-normal">
+                            {formatDate(pr.created_at)}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-xs font-medium text-slate-700">
+                          {pr.provider_name || "Print Provider"}
+                        </TableCell>
+                        <TableCell className="font-mono font-black text-sm text-emerald-700">
+                          ₹{(Number(pr.amount_cents) / 100).toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-xs font-mono text-slate-700">
+                          <div className="font-semibold text-slate-900 uppercase text-[10px]">
+                            {pr.payout_method === "upi" ? "UPI" : "Direct Bank"}
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            {details.upi_id || `${details.account_number} (${details.ifsc})`}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {isPending && (
+                            <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[10px] gap-1 font-bold">
+                              <Clock className="w-3 h-3" />
+                              Awaiting Provider Transfer
+                            </Badge>
+                          )}
+                          {isSettled && (
+                            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] gap-1 font-bold">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Settled / Paid
+                            </Badge>
+                          )}
+                          {isRejected && (
+                            <Badge className="bg-rose-50 text-rose-700 border-rose-200 text-[10px] gap-1 font-bold">
+                              <XCircle className="w-3 h-3" />
+                              Rejected
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right pr-6 font-mono text-xs">
+                          {pr.settlement_reference_utr ? (
+                            <div className="text-slate-900 font-bold">
+                              UTR: {pr.settlement_reference_utr}
+                            </div>
+                          ) : pr.rejected_reason ? (
+                            <div className="text-rose-600 text-[11px]">
+                              {pr.rejected_reason}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 text-[11px]">Pending verification</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )
+          ) : loading ? (
             <div className="p-16 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
               <RefreshCw className="w-6 h-6 animate-spin text-indigo-500" />
               <p className="text-xs font-medium">Loading your designer orders...</p>
@@ -677,7 +925,7 @@ export default function SupplierOrders() {
 
               {/* Financial Split Highlights Card */}
               {viewingOrder.is_customer_order && (
-                <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/50 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/50 grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
                   <div className="p-2 bg-white rounded-lg border border-emerald-100 shadow-2xs">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
                       Retail Price
@@ -693,15 +941,6 @@ export default function SupplierOrders() {
                     </span>
                     <span className="font-mono font-bold text-sm text-slate-700 mt-0.5 block">
                       ₹{((viewingOrder.provider_earnings_cents || 0) / 100).toFixed(2)}
-                    </span>
-                  </div>
-
-                  <div className="p-2 bg-white rounded-lg border border-emerald-100 shadow-2xs">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
-                      Platform Fee
-                    </span>
-                    <span className="font-mono font-medium text-sm text-slate-500 mt-0.5 block">
-                      ₹{((viewingOrder.platform_fee_cents || 0) / 100).toFixed(2)}
                     </span>
                   </div>
 
@@ -1071,6 +1310,141 @@ export default function SupplierOrders() {
               </DialogFooter>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Request Royalty Payout Modal */}
+      <Dialog open={requestPayoutModalOpen} onOpenChange={setRequestPayoutModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base text-slate-900">
+              <Wallet className="w-5 h-5 text-emerald-600" />
+              Request Royalty Withdrawal
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Transfer earned royalties from retail sales to your verified bank or UPI destination.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleRequestPayout} className="space-y-4 py-2">
+            {/* Balance Overview Box */}
+            <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3.5 space-y-2 text-xs">
+              <div className="flex justify-between items-center text-slate-600">
+                <span>Available to Withdraw:</span>
+                <span className="font-mono font-black text-emerald-700 text-base">
+                  ₹{(payoutSummary?.availableRupees ?? 0).toFixed(2)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-slate-500 text-[11px] pt-1.5 border-t border-emerald-100">
+                <span>Total Lifetime Earnings:</span>
+                <span className="font-mono font-semibold">
+                  ₹{(payoutSummary?.lifetimeEarningsRupees ?? 0).toFixed(2)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-slate-500 text-[11px]">
+                <span>Already Settled / Withdrawn:</span>
+                <span className="font-mono font-semibold">
+                  ₹{(payoutSummary?.settledRupees ?? 0).toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            {/* Payout Destination Info */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-700 text-[11px] uppercase tracking-wider">
+                  Destination Payout Account
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRequestPayoutModalOpen(false);
+                    setLocation("/supplier/profile");
+                  }}
+                  className="text-indigo-600 hover:text-indigo-800 text-[11px] font-semibold underline cursor-pointer"
+                >
+                  Edit in Profile
+                </button>
+              </div>
+              {payoutSummary?.hasConfiguredPayoutDetails ? (
+                <div className="font-mono text-slate-800 text-xs font-semibold pt-1">
+                  {payoutSummary.payoutSettings?.method === "upi" ? (
+                    <div>UPI: {payoutSummary.payoutSettings?.upi_id}</div>
+                  ) : (
+                    <div>
+                      {payoutSummary.payoutSettings?.account_holder_name} • {payoutSummary.payoutSettings?.account_number} ({payoutSummary.payoutSettings?.ifsc})
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-amber-600 text-[11px] font-medium pt-1">
+                  ⚠️ No UPI or Bank details saved. Please add your payout destination in Profile before requesting.
+                </div>
+              )}
+            </div>
+
+            {/* Amount Input */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                <label htmlFor="payoutAmt">Amount to Withdraw (₹)</label>
+                <button
+                  type="button"
+                  onClick={() => setWithdrawAmount(String(payoutSummary?.availableRupees || 0))}
+                  className="text-emerald-700 hover:text-emerald-900 text-[11px] font-bold cursor-pointer underline"
+                >
+                  Max Available
+                </button>
+              </div>
+              <Input
+                id="payoutAmt"
+                type="number"
+                min={100}
+                max={payoutSummary?.availableRupees || 100}
+                step={1}
+                placeholder="Minimum ₹100"
+                value={withdrawAmount}
+                onChange={(e) => setWithdrawAmount(e.target.value)}
+                className="font-mono font-bold text-sm"
+                required
+              />
+              <p className="text-[11px] text-slate-400">
+                Minimum request: ₹100. Payouts are transferred by your associated print provider.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="payoutNotes" className="text-xs font-semibold text-slate-700">
+                Notes for Provider (Optional)
+              </label>
+              <Input
+                id="payoutNotes"
+                placeholder="e.g. November royalty withdrawal"
+                value={withdrawNotes}
+                onChange={(e) => setWithdrawNotes(e.target.value)}
+                className="text-xs"
+              />
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setRequestPayoutModalOpen(false)}
+                className="text-xs"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={requestingPayout || !payoutSummary?.hasConfiguredPayoutDetails || (payoutSummary?.availableRupees || 0) < 100}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold"
+              >
+                {requestingPayout ? "Submitting..." : "Submit Payout Request"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
