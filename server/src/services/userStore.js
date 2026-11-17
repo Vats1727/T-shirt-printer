@@ -198,7 +198,22 @@ export async function createUser({ name, email, role, password, associated_provi
 export async function getDesignersByProvider(providerId) {
   const pool = getPool();
   if (pool) {
-    const res = await pool.query("SELECT id, name, email, role, status, subscription_tier, subscription_expiry, associated_provider_id, created_at FROM users WHERE associated_provider_id = $1 AND role = 'designer' ORDER BY id", [providerId]);
+    const res = await pool.query(
+      `SELECT DISTINCT u.id, u.name, u.email, u.role, u.status, u.subscription_tier, 
+              u.subscription_expiry, u.associated_provider_id, u.created_at
+       FROM users u
+       LEFT JOIN designs d ON d.owner_id = u.id
+       LEFT JOIN products_full pf ON pf.id = d.product_id
+       LEFT JOIN listings l ON l.supplier_id = u.id
+       WHERE u.role = 'designer'
+         AND (
+           u.associated_provider_id = $1 
+           OR d.provider_id = $1 
+           OR pf.owner_id = $1
+         )
+       ORDER BY u.id`,
+      [Number(providerId)]
+    );
     return res.rows.map((row) => ({
       id: row.id,
       name: row.name,
@@ -212,7 +227,7 @@ export async function getDesignersByProvider(providerId) {
     }));
   }
   const users = await readUsers();
-  return users.filter((u) => u.associated_provider_id === providerId && u.role === "designer");
+  return users.filter((u) => u.associated_provider_id === Number(providerId) && u.role === "designer");
 }
 export async function getAllUsers() {
   const pool = getPool();

@@ -45,10 +45,17 @@ export async function getAllProviders(includeDesigners = true) {
         `SELECT owner_id, COUNT(*) as count FROM products_full WHERE COALESCE(is_deleted, false) = false GROUP BY owner_id`
       );
       const designerCounts = await pool.query(
-        `SELECT associated_provider_id, COUNT(*) as count FROM users WHERE associated_provider_id IS NOT NULL GROUP BY associated_provider_id`
+        `SELECT COALESCE(u.associated_provider_id, d.provider_id, pf.owner_id) AS provider_id, 
+                COUNT(DISTINCT u.id) as count 
+         FROM users u 
+         LEFT JOIN designs d ON d.owner_id = u.id 
+         LEFT JOIN products_full pf ON pf.id = d.product_id 
+         WHERE u.role = 'designer' 
+           AND COALESCE(u.associated_provider_id, d.provider_id, pf.owner_id) IS NOT NULL 
+         GROUP BY 1`
       );
       const prodMap = Object.fromEntries(prodCounts.rows.map((r) => [r.owner_id, Number(r.count)]));
-      const desMap = Object.fromEntries(designerCounts.rows.map((r) => [r.associated_provider_id, Number(r.count)]));
+      const desMap = Object.fromEntries(designerCounts.rows.map((r) => [Number(r.provider_id), Number(r.count)]));
 
       return matchedUsers.map((p) => enrichUser(p, prodMap[p.id] || 0, desMap[p.id] || 0));
     } catch {
@@ -75,9 +82,16 @@ export async function getPublicProviders() {
       prodMap = Object.fromEntries(prodCounts.rows.map((r) => [r.owner_id, Number(r.count)]));
 
       const desCounts = await pool.query(
-        `SELECT associated_provider_id, COUNT(*) as count FROM users WHERE associated_provider_id IS NOT NULL GROUP BY associated_provider_id`
+        `SELECT COALESCE(u.associated_provider_id, d.provider_id, pf.owner_id) AS provider_id, 
+                COUNT(DISTINCT u.id) as count 
+         FROM users u 
+         LEFT JOIN designs d ON d.owner_id = u.id 
+         LEFT JOIN products_full pf ON pf.id = d.product_id 
+         WHERE u.role = 'designer' 
+           AND COALESCE(u.associated_provider_id, d.provider_id, pf.owner_id) IS NOT NULL 
+         GROUP BY 1`
       );
-      desMap = Object.fromEntries(desCounts.rows.map((r) => [r.associated_provider_id, Number(r.count)]));
+      desMap = Object.fromEntries(desCounts.rows.map((r) => [Number(r.provider_id), Number(r.count)]));
     } catch {}
   }
 

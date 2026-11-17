@@ -110,6 +110,7 @@ export async function createListing(req, res, next) {
     if (!title) return res.status(400).json({ message: 'title is required' });
 
     // Enforce Product Approval: verify that design's underlying product is approved & mapped
+    let resolvedProviderId = null;
     if (design_key && pool) {
       let designNum = null;
       const m = String(design_key).match(/design-(\d+)/i);
@@ -118,7 +119,7 @@ export async function createListing(req, res, next) {
 
       if (designNum) {
         const dCheck = await pool.query(
-          `SELECT d.id, d.product_id, pf.name as product_name, pf.is_approved, pf.garment_id, amg.is_active as garment_active
+          `SELECT d.id, d.provider_id, d.product_id, pf.owner_id as product_owner_id, pf.name as product_name, pf.is_approved, pf.garment_id, amg.is_active as garment_active
            FROM designs d
            LEFT JOIN products_full pf ON pf.id = d.product_id
            LEFT JOIN apparel_master_garments amg ON amg.id = pf.garment_id
@@ -127,6 +128,7 @@ export async function createListing(req, res, next) {
         );
         if (dCheck.rows.length > 0) {
           const row = dCheck.rows[0];
+          resolvedProviderId = row.provider_id || row.product_owner_id || null;
           if (!row.garment_id || row.garment_active === false) {
             return res.status(422).json({
               error: 'UnmappedGarment',
@@ -138,6 +140,20 @@ export async function createListing(req, res, next) {
     }
 
     const listing = await listingModel.createListing(userId, title, description, slug, design_key, visibility, price);
+
+    // Auto-associate designer with provider when listing is published
+    if (resolvedProviderId && userId && pool) {
+      try {
+        await pool.query(
+          `UPDATE users 
+           SET associated_provider_id = $1 
+           WHERE id = $2 AND role = 'designer'`,
+          [resolvedProviderId, userId]
+        );
+      } catch (assocErr) {
+        console.warn('createListing: error auto-associating designer to provider:', assocErr.message);
+      }
+    }
     return res.status(201).json(listing);
   } catch (err) {
     next(err);

@@ -37,9 +37,21 @@ export async function createDesign(input) {
   const ownerId = input.owner_id || null;
 
   const productId = input.product_id ? Number(input.product_id) : null;
-  const providerId = input.provider_id ? Number(input.provider_id) : null;
+  let providerId = input.provider_id ? Number(input.provider_id) : null;
 
   if (pool) {
+    // If providerId not explicitly provided, look up the owning print provider from products_full
+    if (!providerId && productId) {
+      try {
+        const prodRes = await pool.query('SELECT owner_id FROM products_full WHERE id = $1', [productId]);
+        if (prodRes.rows.length > 0 && prodRes.rows[0].owner_id) {
+          providerId = Number(prodRes.rows[0].owner_id);
+        }
+      } catch (lookupErr) {
+        // non-blocking
+      }
+    }
+
     const insertRes = await pool.query(
       `INSERT INTO designs (slogan, color, text_size, text_rotation, text_position, image, image_scale, image_rotation, image_position, product, template, template_color, owner_id, group_id, design_code, product_id, provider_id, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW()) RETURNING *`,
@@ -64,6 +76,20 @@ export async function createDesign(input) {
       ]
     );
     const design = insertRes.rows[0];
+
+    // Auto-associate designer with provider when design is created
+    if (ownerId && providerId) {
+      try {
+        await pool.query(
+          `UPDATE users 
+           SET associated_provider_id = $1 
+           WHERE id = $2 AND role = 'designer'`,
+          [providerId, ownerId]
+        );
+      } catch (linkErr) {
+        console.warn('createDesign: could not auto-link designer to provider:', linkErr.message);
+      }
+    }
 
     if (isV2 && design) {
       const payload = {

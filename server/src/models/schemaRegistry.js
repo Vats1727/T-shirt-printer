@@ -1427,6 +1427,26 @@ export const INITIAL_SEEDS = [
    WHERE u.role IN ('print_provider', 'designer')
      AND NOT EXISTS (
        SELECT 1 FROM user_subscriptions s WHERE s.user_id = u.id AND s.status = 'active'
-     );`
+     );`,
+
+  // Idempotent Backfill: populate provider_id on designs from products_full owner_id
+  `UPDATE designs d
+   SET provider_id = pf.owner_id
+   FROM products_full pf
+   WHERE d.product_id = pf.id AND d.provider_id IS NULL AND pf.owner_id IS NOT NULL;`,
+
+  // Idempotent Auto-Association Backfill: link designers to the provider whose garments they designed on
+  `UPDATE users u
+   SET associated_provider_id = sub.provider_id
+   FROM (
+     SELECT d.owner_id AS designer_id, COALESCE(d.provider_id, pf.owner_id) AS provider_id
+     FROM designs d
+     LEFT JOIN products_full pf ON pf.id = d.product_id
+     WHERE COALESCE(d.provider_id, pf.owner_id) IS NOT NULL
+     ORDER BY d.id DESC
+   ) sub
+   WHERE u.id = sub.designer_id
+     AND u.role = 'designer'
+     AND (u.associated_provider_id IS NULL OR u.associated_provider_id = 0);`
 ];
 
